@@ -1,0 +1,217 @@
+use anyhow::Result;
+use comfy_quant_node::workflow::{Link, Workflow};
+use futures::stream::StreamExt as _;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio_stream::StreamExt;
+
+// 定义一个通用的数据类型，用于节点间传递数据
+#[derive(Clone, Debug)]
+enum NodeData {
+    Ticker(f64),
+    Account(String),
+    Backtest(String),
+    TradeSignal(String),
+    // 添加其他需要的数据类型
+}
+
+// 定义节点trait
+trait Node: Send + Sync {
+    fn run(&self, inputs: HashMap<String, mpsc::Receiver<NodeData>>) -> mpsc::Receiver<NodeData>;
+}
+
+// 定义不同类型的节点
+struct BinanceSpotTicker {
+    symbol: String,
+    quote: String,
+}
+
+impl Node for BinanceSpotTicker {
+    fn run(&self, _inputs: HashMap<String, mpsc::Receiver<NodeData>>) -> mpsc::Receiver<NodeData> {
+        let (tx, rx) = mpsc::channel(100);
+        let symbol = self.symbol.clone();
+        let quote = self.quote.clone();
+
+        tokio::spawn(async move {
+            loop {
+                // 模拟获取实时价格
+                let price = 42.0; // 这里应该是实际从 Binance API 获取价格的逻辑
+                if tx.send(NodeData::Ticker(price)).await.is_err() {
+                    break;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            }
+        });
+
+        rx
+    }
+}
+
+struct BinanceSubAccount;
+
+impl Node for BinanceSubAccount {
+    fn run(&self, _inputs: HashMap<String, mpsc::Receiver<NodeData>>) -> mpsc::Receiver<NodeData> {
+        let (tx, rx) = mpsc::channel(100);
+
+        tokio::spawn(async move {
+            loop {
+                // 模拟获取账户信息
+                let account_info = "Account balance: 1000 USDT".to_string();
+                if tx.send(NodeData::Account(account_info)).await.is_err() {
+                    break;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            }
+        });
+
+        rx
+    }
+}
+
+struct BacktestSettings;
+
+impl Node for BacktestSettings {
+    fn run(&self, _inputs: HashMap<String, mpsc::Receiver<NodeData>>) -> mpsc::Receiver<NodeData> {
+        let (tx, rx) = mpsc::channel(100);
+
+        tokio::spawn(async move {
+            loop {
+                // 模拟回测设置更新
+                let backtest_info = "Backtest period: 2023-01-01 to 2023-12-31".to_string();
+                if tx.send(NodeData::Backtest(backtest_info)).await.is_err() {
+                    break;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+            }
+        });
+
+        rx
+    }
+}
+
+struct GridTradingStrategy {
+    params: Vec<serde_json::Value>,
+}
+
+impl Node for GridTradingStrategy {
+    fn run(
+        &self,
+        mut inputs: HashMap<String, mpsc::Receiver<NodeData>>,
+    ) -> mpsc::Receiver<NodeData> {
+        let (tx, rx) = mpsc::channel(100);
+        let params = self.params.clone();
+
+        tokio::spawn(async move {
+            let mut ticker_stream = inputs.remove("最新成交价格").unwrap();
+            let mut account_stream = inputs.remove("账户").unwrap();
+            let mut backtest_stream = inputs.remove("回测").unwrap();
+
+            loop {
+                tokio::select! {
+                    Some(ticker_data) = ticker_stream.recv() => {
+                        if let NodeData::Ticker(price) = ticker_data {
+                            // 处理价格数据，生成交易信号
+                            let signal = format!("Trade signal for price: {}", price);
+                            if tx.send(NodeData::TradeSignal(signal)).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Some(account_data) = account_stream.recv() => {
+                        // 处理账户数据
+                    }
+                    Some(backtest_data) = backtest_stream.recv() => {
+                        // 处理回测数据
+                    }
+                    else => break,
+                }
+            }
+        });
+
+        rx
+    }
+}
+
+// 工作流执行器
+struct WorkflowExecutor {
+    nodes: HashMap<u32, Arc<dyn Node>>,
+    links: Vec<Link>,
+}
+
+impl WorkflowExecutor {
+    fn new(workflow: &Workflow) -> Result<Self> {
+        let mut nodes = HashMap::new();
+
+        for node in &workflow.nodes {
+            let node_instance: Arc<dyn Node> = match node.node_type.as_str() {
+                "加密货币交易所/币安现货(Ticker)" => {
+                    let params = node.properties.params.as_ref().unwrap();
+                    Arc::new(BinanceSpotTicker {
+                        symbol: params[0].as_str().unwrap().to_string(),
+                        quote: params[1].as_str().unwrap().to_string(),
+                    })
+                }
+                "账户/币安子账户" => Arc::new(BinanceSubAccount),
+                "工具/回测设置" => Arc::new(BacktestSettings),
+                "交易策略/网格(现货)" => {
+                    let params = node.properties.params.as_ref().unwrap().clone();
+                    Arc::new(GridTradingStrategy { params })
+                }
+                _ => return Err(anyhow::anyhow!("未知的节点类型: {}", node.node_type)),
+            };
+            nodes.insert(node.id, node_instance);
+        }
+
+        Ok(Self {
+            nodes,
+            links: workflow.links.clone(),
+        })
+    }
+
+    async fn execute(&self) -> Result<()> {
+        let mut node_outputs: HashMap<u32, mpsc::Receiver<NodeData>> = HashMap::new();
+
+        // 按照 order 排序节点
+        let mut ordered_nodes: Vec<_> = self.nodes.iter().collect();
+        // ordered_nodes.sort_by_key(|&(_, node)| node.order);
+
+        for (node_id, node) in ordered_nodes {
+            let mut inputs = HashMap::new();
+
+            // 收集输入
+            for link in &self.links {
+                if link.target_id == *node_id {
+                    if let Some(source_output) = node_outputs.remove(&link.origin_id) {
+                        inputs.insert(link.link_type.clone(), source_output);
+                    }
+                }
+            }
+
+            // 运行节点
+            let output = node.run(inputs);
+            node_outputs.insert(*node_id, output);
+        }
+
+        // 监听最后一个节点的输出
+        if let Some((_, last_output)) = node_outputs.iter_mut().next() {
+            while let Some(data) = last_output.recv().await {
+                println!("Final output: {:?}", data);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // 假设我们已经反序列化了workflow
+    let json_str = r#"..."#; // 这里放入完整的 JSON 字符串
+    let workflow: Workflow = serde_json::from_str(json_str)?;
+
+    let executor = WorkflowExecutor::new(&workflow)?;
+    executor.execute().await?;
+
+    Ok(())
+}

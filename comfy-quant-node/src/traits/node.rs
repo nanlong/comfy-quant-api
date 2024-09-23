@@ -1,13 +1,13 @@
-use anyhow::Result;
 use std::future::Future;
-use tokio::sync::mpsc;
 
-pub trait Node<Input> {
-    type Output;
+use anyhow::Result;
 
-    fn execute(
+pub trait Node {
+    fn connection<T: Send + Sync + 'static>(
         &self,
-        input: Input,
-        tx: mpsc::UnboundedSender<Self::Output>,
+        target: &Self,
+        origin_slot: usize,
+        target_slot: usize,
     ) -> impl Future<Output = Result<()>> + Send;
+    fn execute(&self) -> impl Future<Output = Result<()>> + Send;
 }

@@ -238,6 +238,8 @@ dependencies = [
  "binance",
  "futures",
  "futures-util",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-stream",
 ]
@@ -1204,6 +1206,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
