@@ -10,10 +10,13 @@ pub struct DataPorts {
 
 impl DataPorts {
     pub fn new(i: usize, o: usize) -> Self {
-        DataPorts {
-            inputs: (0..i).map(|_| None).collect(),
-            outputs: (0..o).map(|_| None).collect(),
-        }
+        let mut inputs = Vec::with_capacity(i);
+        inputs.extend((0..i).map(|_| None));
+
+        let mut outputs = Vec::with_capacity(o);
+        outputs.extend((0..o).map(|_| None));
+
+        DataPorts { inputs, outputs }
     }
 }
 
