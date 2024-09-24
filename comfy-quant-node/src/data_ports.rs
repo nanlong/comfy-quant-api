@@ -60,6 +60,14 @@ impl DataPorts {
         Ok(tx)
     }
 
+    pub fn get_input_count(&self) -> usize {
+        self.inputs.len()
+    }
+
+    pub fn get_output_count(&self) -> usize {
+        self.outputs.len()
+    }
+
     pub fn connection<T: Send + Sync + 'static>(
         &mut self,
         other: &mut Self,

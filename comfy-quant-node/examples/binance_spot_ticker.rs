@@ -8,7 +8,6 @@ use comfy_quant_node::{
     DataPorts,
 };
 use tokio::time::sleep;
-use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 
 struct DebugNode {
     data_ports: DataPorts,
@@ -47,7 +46,8 @@ impl NodeExecutor for DebugNode {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut node1 = BinanceSpotTicker::try_new("BTC", "USDT")?;
+    let widget = comfy_quant_node::exchange::binance_spot_ticker::Widget::new("BTC", "USDT");
+    let mut node1 = BinanceSpotTicker::try_new(widget)?;
     let mut node2 = DebugNode::new();
 
     node1.connection::<Ticker>(&mut node2, 1, 1).await?;
