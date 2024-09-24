@@ -1,15 +1,12 @@
 use crate::{
-    data::{CryptoExchange, Ticker},
-    data_ports::DataPorts,
-    traits::Node,
+    data::{ExchangeInfo, Ticker},
+    traits::{NodeDataPort, NodeExecutor},
+    DataPorts,
 };
 use anyhow::Result;
 use binance::websockets::{WebSockets, WebsocketEvent};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use tokio::sync::{broadcast, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::broadcast;
 
 struct Widget {
     base_currency: String,
@@ -27,40 +24,42 @@ impl Widget {
 
 pub struct BinanceSpotTicker {
     widget: Widget,
-    data_ports: Arc<Mutex<DataPorts<0, 2>>>,
+    data_ports: DataPorts,
 }
 
 impl BinanceSpotTicker {
-    pub fn try_new(base_currency: String, quote_currency: String) -> Result<Self> {
-        let widget = Widget::new(base_currency, quote_currency);
+    pub fn try_new(
+        base_currency: impl Into<String>,
+        quote_currency: impl Into<String>,
+    ) -> Result<Self> {
+        let widget = Widget::new(base_currency.into(), quote_currency.into());
 
-        let mut data_ports = DataPorts::<0, 2>::new();
-        data_ports.add_output(0, broadcast::channel::<CryptoExchange>(1).0)?;
-        data_ports.add_output(1, broadcast::channel::<Ticker>(1).0)?;
+        let mut data_ports = DataPorts::new(0, 2);
+        data_ports.add_output(0, broadcast::channel::<ExchangeInfo>(1).0)?;
+        data_ports.add_output(1, broadcast::channel::<Ticker>(1024).0)?;
 
-        Ok(BinanceSpotTicker {
-            widget,
-            data_ports: Arc::new(Mutex::new(data_ports)),
-        })
+        Ok(BinanceSpotTicker { widget, data_ports })
     }
 
     async fn output0(&self) -> Result<()> {
-        let data_ports = self.data_ports.lock().await;
-        let tx = data_ports.get_output::<CryptoExchange>(0)?;
-        let exchange = CryptoExchange::new(
-            "binance",
-            "spot",
-            &self.widget.base_currency,
-            &self.widget.quote_currency,
-        );
+        let tx = self.data_ports.get_output::<ExchangeInfo>(0)?;
 
-        tx.send(exchange)?;
+        if tx.receiver_count() > 0 {
+            let exchange = ExchangeInfo::new(
+                "binance",
+                "spot",
+                &self.widget.base_currency,
+                &self.widget.quote_currency,
+            );
+
+            tx.send(exchange)?;
+        }
+
         Ok(())
     }
 
     async fn output1(&self) -> Result<()> {
-        let data_ports = self.data_ports.lock().await;
-        let tx = data_ports.get_output::<Ticker>(1)?.clone();
+        let tx = self.data_ports.get_output::<Ticker>(1)?.clone();
         let keep_running = AtomicBool::new(true);
         let symbol = format!(
             "{}{}@ticker",
@@ -70,6 +69,8 @@ impl BinanceSpotTicker {
 
         tokio::spawn(async move {
             let mut web_socket = WebSockets::new(|event: WebsocketEvent| {
+                println!("event: {:?}", event);
+
                 if let WebsocketEvent::DayTicker(ticker_event) = event {
                     if let Ok(price) = ticker_event.current_close.parse::<f64>() {
                         let ticker = Ticker {
@@ -77,11 +78,13 @@ impl BinanceSpotTicker {
                             price,
                         };
 
-                        tx.send(ticker).map_err(|e| {
-                            binance::errors::Error::from(binance::errors::ErrorKind::Msg(
-                                e.to_string(),
-                            ))
-                        })?;
+                        if tx.receiver_count() > 0 {
+                            tx.send(ticker).map_err(|e| {
+                                binance::errors::Error::from(binance::errors::ErrorKind::Msg(
+                                    e.to_string(),
+                                ))
+                            })?;
+                        }
                     }
                 }
 
@@ -109,24 +112,18 @@ impl BinanceSpotTicker {
     }
 }
 
-impl Node for BinanceSpotTicker {
-    async fn connection<T: Send + Sync + 'static>(
-        &self,
-        target: &Self,
-        origin_slot: usize,
-        target_slot: usize,
-    ) -> Result<()> {
-        let origin = self.data_ports.lock().await;
-        let mut target = target.data_ports.lock().await;
-
-        let tx = origin.get_output::<T>(origin_slot)?;
-        let rx = tx.subscribe();
-        target.add_input(target_slot, rx)?;
-
-        Ok(())
+impl NodeDataPort for BinanceSpotTicker {
+    fn get_data_port(&self) -> Result<&DataPorts> {
+        Ok(&self.data_ports)
     }
 
-    async fn execute(&self) -> Result<()> {
+    fn get_data_port_mut(&mut self) -> Result<&mut DataPorts> {
+        Ok(&mut self.data_ports)
+    }
+}
+
+impl NodeExecutor for BinanceSpotTicker {
+    async fn execute(&mut self) -> Result<()> {
         self.output0().await?;
         self.output1().await?;
         Ok(())

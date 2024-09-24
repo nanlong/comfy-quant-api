@@ -1,22 +1,23 @@
 use anyhow::Result;
-use std::{any::Any, array};
+use std::any::Any;
 use tokio::sync::broadcast::{Receiver, Sender};
 
-pub struct DataPorts<const I: usize, const O: usize> {
-    inputs: [Option<Box<dyn Any + Send + Sync + 'static>>; I],
-    outputs: [Option<Box<dyn Any + Send + Sync + 'static>>; O],
+#[derive(Debug)]
+pub struct DataPorts {
+    inputs: Vec<Option<Box<dyn Any + Send + Sync + 'static>>>,
+    outputs: Vec<Option<Box<dyn Any + Send + Sync + 'static>>>,
 }
 
-impl<const I: usize, const O: usize> DataPorts<I, O> {
-    pub fn new() -> Self {
+impl DataPorts {
+    pub fn new(i: usize, o: usize) -> Self {
         DataPorts {
-            inputs: array::from_fn(|_| None),
-            outputs: array::from_fn(|_| None),
+            inputs: (0..i).map(|_| None).collect(),
+            outputs: (0..o).map(|_| None).collect(),
         }
     }
 }
 
-impl<const I: usize, const O: usize> DataPorts<I, O> {
+impl DataPorts {
     pub fn add_input<T: Send + Sync + 'static>(
         &mut self,
         slot: usize,
@@ -41,11 +42,11 @@ impl<const I: usize, const O: usize> DataPorts<I, O> {
         Ok(())
     }
 
-    pub fn get_input<T: Send + Sync + 'static>(&self, slot: usize) -> Result<&Receiver<T>> {
+    pub fn get_input<T: Send + Sync + 'static>(&mut self, slot: usize) -> Result<&mut Receiver<T>> {
         let rx = self.inputs[slot]
-            .as_ref()
+            .as_mut()
             .ok_or(anyhow::anyhow!("Input slot {} is not connected", slot))?
-            .downcast_ref::<Receiver<T>>()
+            .downcast_mut::<Receiver<T>>()
             .ok_or(anyhow::anyhow!("Input slot {} is not connected", slot))?;
         Ok(rx)
     }
@@ -53,9 +54,9 @@ impl<const I: usize, const O: usize> DataPorts<I, O> {
     pub fn get_output<T: Send + Sync + 'static>(&self, slot: usize) -> Result<&Sender<T>> {
         let tx = self.outputs[slot]
             .as_ref()
-            .ok_or(anyhow::anyhow!("Output slot {} is not connected", slot))?
+            .ok_or(anyhow::anyhow!("Output slot {} is not connected 1", slot))?
             .downcast_ref::<Sender<T>>()
-            .ok_or(anyhow::anyhow!("Output slot {} is not connected", slot))?;
+            .ok_or(anyhow::anyhow!("Output slot {} is not connected 2", slot))?;
         Ok(tx)
     }
 
@@ -79,14 +80,14 @@ mod tests {
 
     #[test]
     fn test_data_ports_new() {
-        let ports = DataPorts::<1, 1>::new();
+        let ports = DataPorts::new(1, 1);
         assert_eq!(ports.inputs.len(), 1);
         assert_eq!(ports.outputs.len(), 1);
     }
 
     #[test]
     fn test_data_ports_add_input() {
-        let mut ports = DataPorts::<1, 1>::new();
+        let mut ports = DataPorts::new(1, 1);
         let (_tx, rx) = broadcast::channel::<u32>(16);
         ports.add_input(0, rx).unwrap();
 
@@ -96,17 +97,18 @@ mod tests {
 
     #[test]
     fn test_data_ports_add_output() {
-        let mut ports = DataPorts::<1, 1>::new();
+        let mut ports = DataPorts::new(1, 1);
         let (tx, _rx) = broadcast::channel::<u32>(16);
         ports.add_output(0, tx).unwrap();
+
         assert!(ports.get_output::<u32>(0).is_ok());
         assert!(ports.get_output::<u64>(0).is_err());
     }
 
     #[test]
     fn test_data_ports_connection() -> anyhow::Result<()> {
-        let mut ports1 = DataPorts::<1, 1>::new();
-        let mut ports2 = DataPorts::<1, 1>::new();
+        let mut ports1 = DataPorts::new(1, 1);
+        let mut ports2 = DataPorts::new(1, 1);
         let (tx, _rx) = broadcast::channel::<u32>(16);
         ports1.add_output(0, tx)?;
         assert!(ports2.get_input::<u32>(0).is_err());

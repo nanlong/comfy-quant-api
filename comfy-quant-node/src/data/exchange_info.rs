@@ -1,12 +1,12 @@
 #[derive(Debug, Clone)]
-pub struct CryptoExchange {
+pub struct ExchangeInfo {
     pub name: String,
     pub market: String,
     pub base_currency: String,
     pub quote_currency: String,
 }
 
-impl CryptoExchange {
+impl ExchangeInfo {
     pub fn new(
         name: impl Into<String>,
         market: impl Into<String>,
