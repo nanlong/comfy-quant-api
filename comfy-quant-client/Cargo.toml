@@ -1,0 +1,8 @@
+[package]
+name = "comfy-quant-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+enum_dispatch = { workspace = true }
+binance = { workspace = true }
