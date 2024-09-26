@@ -1,5 +1,10 @@
 [workspace]
-members = ["comfy-quant-api", "comfy-quant-client", "comfy-quant-data", "comfy-quant-node"]
+members = [
+    "comfy-quant-api",
+    "comfy-quant-client",
+    "comfy-quant-data",
+    "comfy-quant-node",
+]
 # Only check / build main crates by default (check all with `--workspace`)
 default-members = ["comfy-quant-api"]
 resolver = "2"
@@ -12,8 +17,9 @@ tokio = { version = "1.40.0", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-stream = { version = "0.1.16", features = ["sync"] }
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.128"
-chrono = "0.4.38"
+chrono = { version = "0.4.38", features = ["serde"] }
 enum_dispatch = "0.3.13"
 binance = { git = "https://github.com/wisespace-io/binance-rs.git", rev = "fe58a92" }
 futures = "0.3.30"
 futures-util = "0.3.30"
+rust_decimal = { version = "1.36.0", features = ["db-postgres"] }
