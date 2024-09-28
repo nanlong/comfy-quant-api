@@ -2,9 +2,9 @@
 CREATE TABLE IF NOT EXISTS klines (
     id SERIAL PRIMARY KEY,
     exchange VARCHAR(20) NOT NULL,
-    symbol VARCHAR(10) NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
     interval VARCHAR(10) NOT NULL,
-    open_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    open_time BIGINT NOT NULL,
     open_price NUMERIC NOT NULL,
     high_price NUMERIC NOT NULL,
     low_price NUMERIC NOT NULL,

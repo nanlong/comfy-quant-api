@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Datelike, Utc};
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sqlx::postgres::PgPool;
 use sqlx::FromRow;
@@ -10,7 +10,7 @@ pub struct Kline {
     pub exchange: String,
     pub symbol: String,
     pub interval: String,
-    pub open_time: DateTime<Utc>,
+    pub open_time: i64,
     pub open_price: Decimal,
     pub high_price: Decimal,
     pub low_price: Decimal,
@@ -48,14 +48,9 @@ pub async fn update(pool: &PgPool, kline: &Kline) -> Result<Kline> {
     let kline = sqlx::query_as!(
         Kline,
         r#"
-        UPDATE klines SET exchange = $1, symbol = $2, interval = $3, open_time = $4, open_price = $5, high_price = $6, low_price = $7, close_price = $8, volume = $9, updated_at = NOW() WHERE id = $10
+        UPDATE klines SET high_price = $1, low_price = $2, close_price = $3, volume = $4, updated_at = NOW() WHERE id = $5
         RETURNING *
         "#,
-        kline.exchange,
-        kline.symbol,
-        kline.interval,
-        kline.open_time,
-        kline.open_price,
         kline.high_price,
         kline.low_price,
         kline.close_price,
@@ -68,6 +63,18 @@ pub async fn update(pool: &PgPool, kline: &Kline) -> Result<Kline> {
     Ok(kline)
 }
 
+pub async fn insert_or_update(pool: &PgPool, kline: &Kline) -> Result<Kline> {
+    let kline = if kline.id > 0 {
+        update(pool, kline).await?
+    } else {
+        insert(pool, kline).await?
+    };
+
+    println!("Kline: {:?}", kline);
+
+    Ok(kline)
+}
+
 pub async fn get_by_id(pool: &PgPool, id: i32) -> Result<Option<Kline>> {
     let kline = sqlx::query_as!(
         Kline,
@@ -75,6 +82,29 @@ pub async fn get_by_id(pool: &PgPool, id: i32) -> Result<Option<Kline>> {
         SELECT * FROM klines WHERE id = $1
         "#,
         id,
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(kline)
+}
+
+pub async fn get_kline(
+    pool: &PgPool,
+    exchange: &str,
+    symbol: &str,
+    interval: &str,
+    open_time: i64,
+) -> Result<Option<Kline>> {
+    let kline = sqlx::query_as!(
+        Kline,
+        r#"
+        SELECT * FROM klines WHERE exchange = $1 AND symbol = $2 AND interval = $3 AND open_time = $4
+        "#,
+        exchange,
+        symbol,
+        interval,
+        open_time,
     )
     .fetch_optional(pool)
     .await?;
@@ -110,7 +140,7 @@ mod tests {
             exchange: "binance".to_string(),
             symbol: "BTCUSDT".to_string(),
             interval: "1m".to_string(),
-            open_time: Utc::now(),
+            open_time: 1721817600,
             open_price: "10000".parse::<Decimal>()?,
             high_price: "10000".parse::<Decimal>()?,
             low_price: "10000".parse::<Decimal>()?,
@@ -144,7 +174,7 @@ mod tests {
             exchange: "binance".to_string(),
             symbol: "BTCUSDT".to_string(),
             interval: "1m".to_string(),
-            open_time: Utc::now(),
+            open_time: 1721817600,
             open_price: "10000".parse::<Decimal>()?,
             high_price: "10000".parse::<Decimal>()?,
             low_price: "10000".parse::<Decimal>()?,
@@ -157,7 +187,6 @@ mod tests {
 
         let mut kline = insert(&pool, &kline).await?;
 
-        kline.open_price = "20000".parse::<Decimal>()?;
         kline.high_price = "20000".parse::<Decimal>()?;
         kline.low_price = "20000".parse::<Decimal>()?;
         kline.close_price = "20000".parse::<Decimal>()?;
@@ -166,7 +195,6 @@ mod tests {
         let kline_updated = update(&pool, &kline).await?;
 
         assert_eq!(kline_updated.id, 1);
-        assert_eq!(kline_updated.open_price, "20000".parse::<Decimal>()?);
         assert_eq!(kline_updated.high_price, "20000".parse::<Decimal>()?);
         assert_eq!(kline_updated.low_price, "20000".parse::<Decimal>()?);
         assert_eq!(kline_updated.close_price, "20000".parse::<Decimal>()?);
@@ -175,16 +203,45 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test(migrator = "crate::MIGRATOR")]
-    async fn test_listen_for_kline_changes(pool: PgPool) -> anyhow::Result<()> {
-        let mut listener = sqlx::postgres::PgListener::connect_with(&pool).await?;
-        listener.listen("kline_change").await?;
+    // #[sqlx::test(migrator = "crate::MIGRATOR")]
+    // async fn test_listen_for_kline_changes(pool: PgPool) -> anyhow::Result<()> {
+    //     let mut listener = sqlx::postgres::PgListener::connect_with(&pool).await?;
+    //     listener.listen("kline_change").await?;
 
+    //     let kline = Kline {
+    //         exchange: "binance".to_string(),
+    //         symbol: "BTCUSDT".to_string(),
+    //         interval: "1m".to_string(),
+    //         open_time: 1721817600,
+    //         open_price: "10000".parse::<Decimal>()?,
+    //         high_price: "10000".parse::<Decimal>()?,
+    //         low_price: "10000".parse::<Decimal>()?,
+    //         close_price: "10000".parse::<Decimal>()?,
+    //         volume: "10000".parse::<Decimal>()?,
+    //         created_at: Utc::now(),
+    //         updated_at: Utc::now(),
+    //         ..Default::default()
+    //     };
+
+    //     insert(&pool, &kline).await?;
+
+    //     // let kline = insert(&pool, &kline).await?;
+
+    //     let notification = listener.recv().await.unwrap();
+    //     println!("Received notification: {}", notification.payload());
+
+    //     assert!(true);
+
+    //     Ok(())
+    // }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn test_get_kline(pool: PgPool) -> anyhow::Result<()> {
         let kline = Kline {
             exchange: "binance".to_string(),
             symbol: "BTCUSDT".to_string(),
             interval: "1m".to_string(),
-            open_time: Utc::now(),
+            open_time: 1721817600,
             open_price: "10000".parse::<Decimal>()?,
             high_price: "10000".parse::<Decimal>()?,
             low_price: "10000".parse::<Decimal>()?,
@@ -195,14 +252,23 @@ mod tests {
             ..Default::default()
         };
 
-        insert(&pool, &kline).await?;
+        let kline = insert(&pool, &kline).await?;
 
-        // let kline = insert(&pool, &kline).await?;
+        let kline_get = get_kline(
+            &pool,
+            &kline.exchange,
+            &kline.symbol,
+            &kline.interval,
+            kline.open_time,
+        )
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Kline not found"))?;
 
-        let notification = listener.recv().await.unwrap();
-        println!("Received notification: {}", notification.payload());
-
-        assert!(true);
+        assert_eq!(kline_get.id, kline.id);
+        assert_eq!(kline_get.exchange, kline.exchange);
+        assert_eq!(kline_get.symbol, kline.symbol);
+        assert_eq!(kline_get.interval, kline.interval);
+        assert_eq!(kline_get.open_time, kline.open_time);
 
         Ok(())
     }

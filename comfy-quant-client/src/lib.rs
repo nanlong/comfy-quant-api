@@ -1,5 +1,6 @@
 mod behavior;
 mod binance_spot_client;
+pub mod subscription;
 
 use behavior::ClientBehavior;
 use binance_spot_client::BinanceSpotClient;
