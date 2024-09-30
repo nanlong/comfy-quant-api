@@ -1,12 +1,12 @@
 mod behavior;
+pub mod binance_client;
 mod binance_spot_client;
 pub mod subscription;
 
 use behavior::ClientBehavior;
-use binance_spot_client::BinanceSpotClient;
+pub use binance_spot_client::BinanceSpotClient;
 use enum_dispatch::enum_dispatch;
 
-#[derive(Debug)]
 #[enum_dispatch]
 pub enum Client {
     BinanceSpotClient(BinanceSpotClient),

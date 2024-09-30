@@ -1,3 +1,5 @@
+/// 网格交易策略
+/// 1. 订单系统
 use crate::{
     traits::{NodeDataPort, NodeExecutor},
     workflow, DataPorts,
@@ -6,7 +8,7 @@ use anyhow::Result;
 use std::str::FromStr;
 use tokio::sync::broadcast;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Mode {
     // 等差
     Arithmetic,
@@ -97,6 +99,18 @@ impl NodeDataPort for SpotGrid {
 
 impl NodeExecutor for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
+        // 根据最低价、最高价、网格数量计算网格价格
+        let grid_prices = calculate_grids(
+            self.widget.mode.clone(),
+            self.widget.lower_price,
+            self.widget.upper_price,
+            self.widget.grids,
+            10,
+        );
+
+        // 根据总投资额、网格数量、每格收益率计算每格投资额
+        let grid_investment = self.widget.investment / self.widget.grids as f64;
+
         Ok(())
     }
 }
@@ -173,7 +187,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
 }
 
 // 计算网格价格
-fn calculate_grid_prices(
+fn calculate_grids(
     mode: Mode,
     lower_price: f64,
     upper_price: f64,
@@ -194,6 +208,37 @@ fn calculate_grid_prices(
                 .collect()
         }
     }
+}
+
+struct GridProfit {
+    // 最小收益率
+    min_rate: f64,
+    // 最大收益率
+    max_rate: f64,
+}
+
+// 计算网格利润
+fn calculate_grid_profit(
+    mode: Mode,
+    lower_price: f64,
+    upper_price: f64,
+    grids: u64,
+    investment: f64,
+) -> GridProfit {
+    let grid_prices = calculate_grids(mode, lower_price, upper_price, grids, 8);
+    let mut min_rate = f64::MAX;
+    let mut max_rate = f64::MIN;
+
+    for i in 0..grid_prices.len() - 1 {
+        let buy_price = grid_prices[i];
+        let sell_price = grid_prices[i + 1];
+        let profit_rate = (sell_price - buy_price) / buy_price;
+
+        min_rate = min_rate.min(profit_rate);
+        max_rate = max_rate.max(profit_rate);
+    }
+
+    GridProfit { min_rate, max_rate }
 }
 
 // 保留小数点位数
@@ -228,14 +273,14 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_grid_prices() -> Result<()> {
-        let prices = calculate_grid_prices(Mode::Arithmetic, 1.0, 1.1, 8, 6);
+    fn test_calculate_grids() -> Result<()> {
+        let prices = calculate_grids(Mode::Arithmetic, 1.0, 1.1, 8, 6);
         assert_eq!(
             prices,
             vec![1.0, 1.0125, 1.025, 1.0375, 1.05, 1.0625, 1.075, 1.0875, 1.1]
         );
 
-        let prices = calculate_grid_prices(Mode::Geometric, 1.0, 1.1, 8, 6);
+        let prices = calculate_grids(Mode::Geometric, 1.0, 1.1, 8, 6);
         assert_eq!(
             prices,
             vec![1.0, 1.011985, 1.024114, 1.036388, 1.048809, 1.061379, 1.074099, 1.086973, 1.1]

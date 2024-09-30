@@ -1,22 +1,23 @@
-use binance::{account::Account, api::Binance};
+use anyhow::Result;
+use binance::{account::Account, api::Binance, model::AccountInformation};
 
-#[derive(Debug)]
 pub struct BinanceSpotClient {
-    api_key: String,
-    secret_key: String,
+    account: Account,
 }
 
 impl BinanceSpotClient {
     pub fn new(api_key: String, secret_key: String) -> Self {
-        // let client = Account::new(Some(api_key), Some(secret_key));
+        let account = Account::new(Some(api_key), Some(secret_key));
 
-        BinanceSpotClient {
-            api_key,
-            secret_key,
-        }
+        BinanceSpotClient { account }
     }
 
-    pub fn get_account(&self) -> Account {
-        Account::new(Some(self.api_key.clone()), Some(self.secret_key.clone()))
+    pub fn get_account(&self) -> Result<AccountInformation> {
+        let account_information = self
+            .account
+            .get_account()
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+        Ok(account_information)
     }
 }

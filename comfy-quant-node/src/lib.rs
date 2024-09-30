@@ -2,6 +2,7 @@ pub mod account;
 pub mod data;
 mod data_ports;
 pub mod exchange;
+pub mod manager;
 pub mod strategy;
 pub mod traits;
 pub mod utils;
