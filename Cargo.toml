@@ -32,3 +32,4 @@ sqlx = { version = "0.8.2", features = [
     "rust_decimal",
     "json",
 ] }
+bon = "2.3.0"

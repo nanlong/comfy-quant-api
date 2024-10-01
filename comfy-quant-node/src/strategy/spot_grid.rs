@@ -5,6 +5,7 @@ use crate::{
     workflow, DataPorts,
 };
 use anyhow::Result;
+use bon::Builder;
 use std::str::FromStr;
 use tokio::sync::broadcast;
 
@@ -28,61 +29,32 @@ impl FromStr for Mode {
     }
 }
 
+#[derive(Builder, Debug, Clone)]
 pub struct Widget {
-    // 网格模式
-    mode: Mode,
-    // 网格下界
-    lower_price: f64,
-    // 网格上界
-    upper_price: f64,
-    // 网格数量
-    grids: u64,
-    // 投资金额
-    investment: f64,
-    // 触发价格
-    trigger_price: Option<f64>,
-    // 止损价格
-    stop_loss: Option<f64>,
-    // 止盈价格
-    take_profit: Option<f64>,
-    // 是否在止损时卖出所有基准币，默认为true
-    sell_all_on_stop: bool,
-}
-
-impl Widget {
-    pub fn new(
-        mode: Mode,
-        lower_price: f64,
-        upper_price: f64,
-        grids: u64,
-        investment: f64,
-        trigger_price: Option<f64>,
-        stop_loss: Option<f64>,
-        take_profit: Option<f64>,
-        sell_all_on_stop: bool,
-    ) -> Self {
-        Self {
-            mode,
-            lower_price,
-            upper_price,
-            grids,
-            investment,
-            trigger_price,
-            stop_loss,
-            take_profit,
-            sell_all_on_stop,
-        }
-    }
+    mode: Mode,                 // 网格模式
+    lower_price: f64,           // 网格下界
+    upper_price: f64,           // 网格上界
+    grids: u64,                 // 网格数量
+    investment: f64,            // 投资金额
+    trigger_price: Option<f64>, // 触发价格
+    stop_loss: Option<f64>,     // 止损价格
+    take_profit: Option<f64>,   // 止盈价格
+    sell_all_on_stop: bool,     // 是否在止损时卖出所有基准币，默认为true
 }
 
 pub struct SpotGrid {
     pub(crate) widget: Widget,
+    // inputs:
+    //      0: exchangeInfo
+    //      1: accountKey
+    //      2: tickerStream
+    //      3: backtestConfig
     pub(crate) data_ports: DataPorts,
 }
 
 impl SpotGrid {
     pub fn try_new(widget: Widget) -> Result<Self> {
-        let data_ports = DataPorts::new(5, 0);
+        let data_ports = DataPorts::new(4, 0);
         Ok(SpotGrid { widget, data_ports })
     }
 }
@@ -112,7 +84,7 @@ impl NodeExecutor for SpotGrid {
             decimals,
         );
 
-        // 根据总投资额、网格数量、每格收益率计算每格投资额
+        // 计算每格利润率
         let profit = calculate_grid_profit(
             self.widget.mode.clone(),
             self.widget.lower_price,
@@ -180,17 +152,17 @@ impl TryFrom<workflow::Node> for SpotGrid {
 
         let sell_all_on_stop = sell_all_on_stop.as_bool().unwrap_or(true);
 
-        let widget = Widget::new(
-            mode,
-            lower_price,
-            upper_price,
-            grids,
-            investment,
-            trigger_price,
-            stop_loss,
-            take_profit,
-            sell_all_on_stop,
-        );
+        let widget = Widget::builder()
+            .mode(mode)
+            .lower_price(lower_price)
+            .upper_price(upper_price)
+            .grids(grids)
+            .investment(investment)
+            .maybe_trigger_price(trigger_price)
+            .maybe_stop_loss(stop_loss)
+            .maybe_take_profit(take_profit)
+            .sell_all_on_stop(sell_all_on_stop)
+            .build();
 
         SpotGrid::try_new(widget)
     }
@@ -198,11 +170,11 @@ impl TryFrom<workflow::Node> for SpotGrid {
 
 // 计算网格价格
 fn calculate_grids(
-    mode: Mode,
-    lower_price: f64,
-    upper_price: f64,
-    grids: u64,
-    decimals: u32,
+    mode: Mode,       // 网格模式
+    lower_price: f64, // 网格下界
+    upper_price: f64, // 网格上界
+    grids: u64,       // 网格数量
+    decimals: u32,    // 小数点位数
 ) -> Vec<f64> {
     match mode {
         Mode::Arithmetic => {
@@ -228,11 +200,11 @@ enum GridProfitRate {
 
 // 计算网格的每格利润率
 fn calculate_grid_profit(
-    mode: Mode,
-    lower_price: f64,
-    upper_price: f64,
-    taker_commission: f64,
-    grids: u64,
+    mode: Mode,            // 网格模式
+    lower_price: f64,      // 网格下界
+    upper_price: f64,      // 网格上界
+    taker_commission: f64, // 手续费
+    grids: u64,            // 网格数量
 ) -> GridProfitRate {
     // https://www.binance.com/zh-CN/support/faq/%E5%B8%81%E5%AE%89%E7%8E%B0%E8%B4%A7%E7%BD%91%E6%A0%BC%E4%BA%A4%E6%98%93%E7%9A%84%E5%8F%82%E6%95%B0%E8%AF%B4%E6%98%8E-688ff6ff08734848915de76a07b953dd
     match mode {
@@ -260,24 +232,13 @@ fn calculate_grid_profit(
     }
 }
 
-// 计算网格最低投资额
-fn calculate_grid_min_investment(
-    mode: Mode,
-    lower_price: f64,
-    upper_price: f64,
-    grids: u64,
-    decimals: u32,
-) -> f64 {
-    1.
-}
-
 fn calculate_minimum_investment(
-    upper_price: f64,
-    lower_price: f64,
-    grid_count: u32,
-    minimum_order_amount: f64,
-    taker_commission: f64,
-    current_price: f64,
+    min_qty: f64,              // 最小交易数量
+    min_notional: Option<f64>, // 最小名义价值
+    upper_price: f64,          // 网格上界
+    lower_price: f64,          // 网格下界
+    grid_count: u32,           // 网格数量
+    current_price: f64,        // 当前价格
 ) -> f64 {
     todo!()
 }

@@ -88,9 +88,9 @@ impl<'a> Spot<'a> {
     // 限价买入
     pub fn limit_buy(
         &self,
-        symbol: impl Into<String>,
-        qty: impl Into<f64>,
-        price: f64,
+        symbol: impl Into<String>, // 交易对
+        qty: impl Into<f64>,       // 数量
+        price: f64,                // 价格
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -104,8 +104,8 @@ impl<'a> Spot<'a> {
     pub fn limit_sell(
         &self,
         symbol: impl Into<String>,
-        qty: impl Into<f64>,
-        price: f64,
+        qty: impl Into<f64>, // 数量
+        price: f64,          // 价格
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -118,8 +118,8 @@ impl<'a> Spot<'a> {
     // 市价买入
     pub fn market_buy(
         &self,
-        symbol: impl Into<String>,
-        qty: impl Into<f64>,
+        symbol: impl Into<String>, // 交易对
+        qty: impl Into<f64>,       // 数量
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -132,8 +132,8 @@ impl<'a> Spot<'a> {
     // 市价卖出
     pub fn market_sell(
         &self,
-        symbol: impl Into<String>,
-        qty: impl Into<f64>,
+        symbol: impl Into<String>, // 交易对
+        qty: impl Into<f64>,       // 数量
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -166,11 +166,11 @@ impl<'a> Spot<'a> {
     // 获取K线
     pub fn get_klines(
         &self,
-        symbol: impl Into<String>,
-        interval: impl Into<String>,
-        limit: impl Into<Option<u16>>,
-        start_time: impl Into<Option<u64>>,
-        end_time: impl Into<Option<u64>>,
+        symbol: impl Into<String>,          // 交易对
+        interval: impl Into<String>,        // 时间间隔
+        limit: impl Into<Option<u16>>,      // 限制数量
+        start_time: impl Into<Option<u64>>, // 开始时间
+        end_time: impl Into<Option<u64>>,   // 结束时间
     ) -> Result<KlineSummaries> {
         let klines = self
             .market()

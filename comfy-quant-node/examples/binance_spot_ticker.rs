@@ -46,7 +46,10 @@ impl NodeExecutor for DebugNode {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let widget = comfy_quant_node::exchange::binance_spot_ticker::Widget::new("BTC", "USDT");
+    let widget = comfy_quant_node::exchange::binance_spot_ticker::Widget::builder()
+        .base_currency("BTC")
+        .quote_currency("USDT")
+        .build();
     let mut node1 = BinanceSpotTicker::try_new(widget)?;
     let mut node2 = DebugNode::new();
 

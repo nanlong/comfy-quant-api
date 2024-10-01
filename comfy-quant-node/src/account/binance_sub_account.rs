@@ -1,23 +1,17 @@
 use crate::{
-    data::Account,
+    data::AccountKey,
     traits::{NodeDataPort, NodeExecutor},
     workflow, DataPorts,
 };
 use anyhow::Result;
+use bon::Builder;
 use tokio::sync::broadcast;
 
+#[derive(Builder, Debug, Clone)]
+#[builder(on(String, into))]
 pub struct Widget {
-    api_secret: String,
-    secret: String,
-}
-
-impl Widget {
-    pub fn new(api_secret: impl Into<String>, secret: impl Into<String>) -> Self {
-        Widget {
-            api_secret: api_secret.into(),
-            secret: secret.into(),
-        }
-    }
+    api_key: String,
+    secret_key: String,
 }
 
 pub struct BinanceSubAccount {
@@ -28,16 +22,16 @@ pub struct BinanceSubAccount {
 impl BinanceSubAccount {
     pub fn try_new(widget: Widget) -> Result<Self> {
         let mut data_ports = DataPorts::new(0, 1);
-        data_ports.add_output(0, broadcast::channel::<Account>(1).0)?;
+        data_ports.add_output(0, broadcast::channel::<AccountKey>(1).0)?;
         Ok(BinanceSubAccount { widget, data_ports })
     }
 
     async fn output0(&self) -> Result<()> {
-        let tx = self.data_ports.get_output::<Account>(0)?.clone();
+        let tx = self.data_ports.get_output::<AccountKey>(0)?.clone();
 
-        let account = Account {
-            api_secret: self.widget.api_secret.clone(),
-            secret: self.widget.secret.clone(),
+        let account = AccountKey {
+            api_key: self.widget.api_key.clone(),
+            secret_key: self.widget.secret_key.clone(),
         };
 
         tokio::spawn(async move {
@@ -78,19 +72,23 @@ impl TryFrom<workflow::Node> for BinanceSubAccount {
             anyhow::bail!("Try from workflow::Node to BinanceSubAccount failed: Invalid prop_type");
         }
 
-        let [api_secret, secret] = node.properties.params.as_slice() else {
+        let [api_key, secret_key] = node.properties.params.as_slice() else {
             anyhow::bail!("Try from workflow::Node to BinanceSubAccount failed: Invalid params");
         };
 
-        let api_secret = api_secret.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSubAccount failed: Invalid api_secret"
+        let api_key = api_key.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BinanceSubAccount failed: Invalid api_key"
         ))?;
 
-        let secret = secret.as_str().ok_or(anyhow::anyhow!(
+        let secret_key = secret_key.as_str().ok_or(anyhow::anyhow!(
             "Try from workflow::Node to BinanceSubAccount failed: Invalid secret"
         ))?;
 
-        let widget = Widget::new(api_secret, secret);
+        let widget = Widget::builder()
+            .api_key(api_key)
+            .secret_key(secret_key)
+            .build();
+
         BinanceSubAccount::try_new(widget)
     }
 }
@@ -106,8 +104,8 @@ mod tests {
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = BinanceSubAccount::try_from(node)?;
 
-        assert_eq!(account.widget.api_secret, "api_secret");
-        assert_eq!(account.widget.secret, "secret");
+        assert_eq!(account.widget.api_key, "api_secret");
+        assert_eq!(account.widget.secret_key, "secret");
         assert_eq!(account.data_ports.get_input_count(), 0);
         assert_eq!(account.data_ports.get_output_count(), 1);
 
@@ -121,14 +119,14 @@ mod tests {
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let mut account = BinanceSubAccount::try_from(node)?;
 
-        let tx = account.data_ports.get_output::<Account>(0)?;
+        let tx = account.data_ports.get_output::<AccountKey>(0)?;
         let mut rx = tx.subscribe();
 
         account.execute().await?;
 
         let account = rx.recv().await?;
-        assert_eq!(account.api_secret, "api_secret");
-        assert_eq!(account.secret, "secret");
+        assert_eq!(account.api_key, "api_secret");
+        assert_eq!(account.secret_key, "secret");
 
         Ok(())
     }

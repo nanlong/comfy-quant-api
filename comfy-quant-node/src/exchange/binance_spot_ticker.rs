@@ -5,25 +5,22 @@ use crate::{
 };
 use anyhow::Result;
 use binance::websockets::{WebSockets, WebsocketEvent};
+use bon::Builder;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::broadcast;
 
+#[derive(Builder, Debug, Clone)]
+#[builder(on(String, into))]
 pub struct Widget {
     base_currency: String,
     quote_currency: String,
 }
 
-impl Widget {
-    pub fn new(base_currency: impl Into<String>, quote_currency: impl Into<String>) -> Self {
-        Widget {
-            base_currency: base_currency.into(),
-            quote_currency: quote_currency.into(),
-        }
-    }
-}
-
 pub struct BinanceSpotTicker {
     pub(crate) widget: Widget,
+    // outputs:
+    //      0: ExchangeInfo
+    //      1: Ticker
     pub(crate) data_ports: DataPorts,
 }
 
@@ -39,16 +36,16 @@ impl BinanceSpotTicker {
     async fn output0(&self) -> Result<()> {
         let tx = self.data_ports.get_output::<ExchangeInfo>(0)?.clone();
 
-        let exchange = ExchangeInfo::new(
-            "binance",
-            "spot",
-            &self.widget.base_currency,
-            &self.widget.quote_currency,
-        );
+        let exchange_info = ExchangeInfo::builder()
+            .name("binance")
+            .market("spot")
+            .base_currency(&self.widget.base_currency)
+            .quote_currency(&self.widget.quote_currency)
+            .build();
 
         tokio::spawn(async move {
             while tx.receiver_count() > 0 {
-                tx.send(exchange)?;
+                tx.send(exchange_info)?;
                 break;
             }
 
@@ -148,7 +145,11 @@ impl TryFrom<workflow::Node> for BinanceSpotTicker {
             "Try from workflow::Node to binanceSpotTicker failed: Invalid quote_currency"
         ))?;
 
-        let widget = Widget::new(base_currency, quote_currency);
+        let widget = Widget::builder()
+            .base_currency(base_currency)
+            .quote_currency(quote_currency)
+            .build();
+
         BinanceSpotTicker::try_new(widget)
     }
 }
