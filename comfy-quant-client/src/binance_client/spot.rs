@@ -1,10 +1,14 @@
 use super::BinanceClient;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use binance::{
     account::Account,
     api::Binance,
+    general::General,
     market::Market,
-    model::{AccountInformation, Balance, KlineSummaries, OrderBook, SymbolPrice, Transaction},
+    model::{
+        AccountInformation, Balance, ExchangeInformation, KlineSummaries, OrderBook, Symbol,
+        SymbolPrice, Transaction,
+    },
 };
 
 pub struct Spot<'a> {
@@ -30,12 +34,43 @@ impl<'a> Spot<'a> {
         )
     }
 
+    fn general(&self) -> General {
+        General::new(
+            Some(self.client.api_key.clone()),
+            Some(self.client.secret_key.clone()),
+        )
+    }
+
+    pub fn ping(&self) -> Result<String> {
+        let ping = self.general().ping().map_err(|e| anyhow!(e.to_string()))?;
+
+        Ok(ping)
+    }
+
+    pub fn get_exchange_info(&self) -> Result<ExchangeInformation> {
+        let exchange_info = self
+            .general()
+            .exchange_info()
+            .map_err(|e| anyhow!(e.to_string()))?;
+
+        Ok(exchange_info)
+    }
+
+    pub fn get_symbol_info(&self, symbol: impl Into<String>) -> Result<Symbol> {
+        let symbol_info = self
+            .general()
+            .get_symbol_info(symbol)
+            .map_err(|e| anyhow!(e.to_string()))?;
+
+        Ok(symbol_info)
+    }
+
     // 获取账户信息
     pub fn get_account(&self) -> Result<AccountInformation> {
         let account_information = self
             .account()
             .get_account()
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(account_information)
     }
@@ -45,7 +80,8 @@ impl<'a> Spot<'a> {
         let balance = self
             .account()
             .get_balance(asset)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
+
         Ok(balance)
     }
 
@@ -59,7 +95,7 @@ impl<'a> Spot<'a> {
         let transaction = self
             .account()
             .limit_buy(symbol, qty, price)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(transaction)
     }
@@ -74,7 +110,8 @@ impl<'a> Spot<'a> {
         let transaction = self
             .account()
             .limit_sell(symbol, qty, price)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
+
         Ok(transaction)
     }
 
@@ -87,7 +124,8 @@ impl<'a> Spot<'a> {
         let transaction = self
             .account()
             .market_buy(symbol, qty)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
+
         Ok(transaction)
     }
 
@@ -100,7 +138,8 @@ impl<'a> Spot<'a> {
         let transaction = self
             .account()
             .market_sell(symbol, qty)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
+
         Ok(transaction)
     }
 
@@ -109,7 +148,7 @@ impl<'a> Spot<'a> {
         let price = self
             .market()
             .get_price(symbol)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(price)
     }
@@ -119,7 +158,7 @@ impl<'a> Spot<'a> {
         let order_book = self
             .market()
             .get_depth(symbol)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(order_book)
     }
@@ -136,7 +175,7 @@ impl<'a> Spot<'a> {
         let klines = self
             .market()
             .get_klines(symbol, interval, limit, start_time, end_time)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(klines)
     }

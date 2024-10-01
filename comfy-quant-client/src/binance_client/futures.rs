@@ -1,11 +1,14 @@
 use super::BinanceClient;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use binance::{
     api::Binance,
     futures::{
         account::{FuturesAccount, TimeInForce},
+        general::FuturesGeneral,
         market::FuturesMarket,
-        model::{AccountBalance, AccountInformation, OrderBook, Transaction},
+        model::{
+            AccountBalance, AccountInformation, ExchangeInformation, OrderBook, Symbol, Transaction,
+        },
     },
     model::{KlineSummaries, SymbolPrice},
 };
@@ -33,12 +36,43 @@ impl<'a> Futures<'a> {
         )
     }
 
+    fn general(&self) -> FuturesGeneral {
+        FuturesGeneral::new(
+            Some(self.client.api_key.clone()),
+            Some(self.client.secret_key.clone()),
+        )
+    }
+
+    pub fn ping(&self) -> Result<String> {
+        let ping = self.general().ping().map_err(|e| anyhow!(e.to_string()))?;
+
+        Ok(ping)
+    }
+
+    pub fn get_exchange_info(&self) -> Result<ExchangeInformation> {
+        let exchange_info = self
+            .general()
+            .exchange_info()
+            .map_err(|e| anyhow!(e.to_string()))?;
+
+        Ok(exchange_info)
+    }
+
+    pub fn get_symbol_info(&self, symbol: impl Into<String>) -> Result<Symbol> {
+        let symbol_info = self
+            .general()
+            .get_symbol_info(symbol)
+            .map_err(|e| anyhow!(e.to_string()))?;
+
+        Ok(symbol_info)
+    }
+
     // 获取账户信息
     pub fn get_account(&self) -> Result<AccountInformation> {
         let account_information = self
             .account()
             .account_information()
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(account_information)
     }
@@ -50,12 +84,12 @@ impl<'a> Futures<'a> {
         let balances = self
             .account()
             .account_balance()
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         let balance = balances
             .iter()
             .find(|b| &b.asset == &asset)
-            .ok_or_else(|| anyhow::anyhow!("Asset not found"))?
+            .ok_or_else(|| anyhow!("Asset not found"))?
             .clone();
 
         Ok(balance)
@@ -72,7 +106,7 @@ impl<'a> Futures<'a> {
         let transaction = self
             .account()
             .limit_buy(symbol, qty, price, time_in_force)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(transaction)
     }
@@ -88,7 +122,7 @@ impl<'a> Futures<'a> {
         let transaction = self
             .account()
             .limit_sell(symbol, qty, price, time_in_force)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(transaction)
     }
@@ -102,7 +136,7 @@ impl<'a> Futures<'a> {
         let transaction = self
             .account()
             .market_buy(symbol, qty)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(transaction)
     }
@@ -116,7 +150,7 @@ impl<'a> Futures<'a> {
         let transaction = self
             .account()
             .market_sell(symbol, qty)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(transaction)
     }
@@ -126,7 +160,7 @@ impl<'a> Futures<'a> {
         let price = self
             .market()
             .get_price(symbol)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(price)
     }
@@ -136,7 +170,7 @@ impl<'a> Futures<'a> {
         let order_book = self
             .market()
             .get_depth(symbol)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(order_book)
     }
@@ -153,7 +187,7 @@ impl<'a> Futures<'a> {
         let klines = self
             .market()
             .get_klines(symbol, interval, limit, start_time, end_time)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(klines)
     }

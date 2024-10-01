@@ -99,17 +99,27 @@ impl NodeDataPort for SpotGrid {
 
 impl NodeExecutor for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
+        let decimals = 10;
+        let maker_commission = 0.001;
+        let taker_commission = 0.001;
+
         // 根据最低价、最高价、网格数量计算网格价格
-        let grid_prices = calculate_grids(
+        let grids = calculate_grids(
             self.widget.mode.clone(),
             self.widget.lower_price,
             self.widget.upper_price,
             self.widget.grids,
-            10,
+            decimals,
         );
 
         // 根据总投资额、网格数量、每格收益率计算每格投资额
-        let grid_investment = self.widget.investment / self.widget.grids as f64;
+        let profit = calculate_grid_profit(
+            self.widget.mode.clone(),
+            self.widget.lower_price,
+            self.widget.upper_price,
+            taker_commission,
+            self.widget.grids,
+        );
 
         Ok(())
     }
@@ -210,41 +220,78 @@ fn calculate_grids(
     }
 }
 
-struct GridProfit {
-    // 最小收益率
-    min_rate: f64,
-    // 最大收益率
-    max_rate: f64,
+#[derive(Debug, PartialEq, Clone)]
+enum GridProfitRate {
+    Arithmetic { min_rate: f64, max_rate: f64 },
+    Geometric { rate: f64 },
 }
 
-// 计算网格利润
+// 计算网格的每格利润率
 fn calculate_grid_profit(
     mode: Mode,
     lower_price: f64,
     upper_price: f64,
+    taker_commission: f64,
     grids: u64,
-    investment: f64,
-) -> GridProfit {
-    let grid_prices = calculate_grids(mode, lower_price, upper_price, grids, 8);
-    let mut min_rate = f64::MAX;
-    let mut max_rate = f64::MIN;
+) -> GridProfitRate {
+    // https://www.binance.com/zh-CN/support/faq/%E5%B8%81%E5%AE%89%E7%8E%B0%E8%B4%A7%E7%BD%91%E6%A0%BC%E4%BA%A4%E6%98%93%E7%9A%84%E5%8F%82%E6%95%B0%E8%AF%B4%E6%98%8E-688ff6ff08734848915de76a07b953dd
+    match mode {
+        Mode::Arithmetic => {
+            let step = (upper_price - lower_price) / grids as f64;
+            let max_profit_rate =
+                (1. - taker_commission) * step / lower_price - 2. * taker_commission;
+            let min_profit_rate = (upper_price * (1. - taker_commission)) / (upper_price - step)
+                - 1.
+                - taker_commission;
 
-    for i in 0..grid_prices.len() - 1 {
-        let buy_price = grid_prices[i];
-        let sell_price = grid_prices[i + 1];
-        let profit_rate = (sell_price - buy_price) / buy_price;
+            GridProfitRate::Arithmetic {
+                min_rate: floor_to(min_profit_rate, 4),
+                max_rate: floor_to(max_profit_rate, 4),
+            }
+        }
+        Mode::Geometric => {
+            let step = (upper_price / lower_price).powf(1.0 / grids as f64);
+            let profit_rate = (1. - taker_commission) * step - 1. - taker_commission;
 
-        min_rate = min_rate.min(profit_rate);
-        max_rate = max_rate.max(profit_rate);
+            GridProfitRate::Geometric {
+                rate: floor_to(profit_rate, 4),
+            }
+        }
     }
-
-    GridProfit { min_rate, max_rate }
 }
 
-// 保留小数点位数
-fn round_to(price: f64, decimals: u32) -> f64 {
+// 计算网格最低投资额
+fn calculate_grid_min_investment(
+    mode: Mode,
+    lower_price: f64,
+    upper_price: f64,
+    grids: u64,
+    decimals: u32,
+) -> f64 {
+    1.
+}
+
+fn calculate_minimum_investment(
+    upper_price: f64,
+    lower_price: f64,
+    grid_count: u32,
+    minimum_order_amount: f64,
+    taker_commission: f64,
+    current_price: f64,
+) -> f64 {
+    todo!()
+}
+
+// 保留小数点位数，向下取整
+fn floor_to(f: f64, decimals: u32) -> f64 {
     let scale = 10_u64.pow(decimals);
-    (price * scale as f64).round() / scale as f64
+    (f * scale as f64).floor() / scale as f64
+}
+
+// 保留小数点位数，四舍五入
+fn round_to(f: f64, decimals: u32) -> f64 {
+    let scale = 10_u64.pow(decimals);
+    (f * scale as f64).round() / scale as f64
 }
 
 #[cfg(test)]
@@ -274,18 +321,52 @@ mod tests {
 
     #[test]
     fn test_calculate_grids() -> Result<()> {
-        let prices = calculate_grids(Mode::Arithmetic, 1.0, 1.1, 8, 6);
+        let grids = calculate_grids(Mode::Arithmetic, 1.0, 1.1, 8, 3);
         assert_eq!(
-            prices,
-            vec![1.0, 1.0125, 1.025, 1.0375, 1.05, 1.0625, 1.075, 1.0875, 1.1]
+            grids,
+            vec![1.0, 1.013, 1.025, 1.038, 1.05, 1.063, 1.075, 1.088, 1.1]
         );
 
-        let prices = calculate_grids(Mode::Geometric, 1.0, 1.1, 8, 6);
+        let grids = calculate_grids(Mode::Geometric, 1.0, 1.1, 8, 3);
         assert_eq!(
-            prices,
-            vec![1.0, 1.011985, 1.024114, 1.036388, 1.048809, 1.061379, 1.074099, 1.086973, 1.1]
+            grids,
+            vec![1.0, 1.012, 1.024, 1.036, 1.049, 1.061, 1.074, 1.087, 1.1]
         );
+
+        let grids = calculate_grids(Mode::Geometric, 4.0, 20.0, 10, 3);
+        assert_eq!(
+            grids,
+            vec![4.0, 4.698, 5.519, 6.483, 7.615, 8.944, 10.506, 12.341, 14.496, 17.027, 20.0]
+        );
+
+        let grids = calculate_grids(Mode::Geometric, 4.0, 20.0, 2, 3);
+        assert_eq!(grids, vec![4.0, 8.944, 20.0]);
 
         Ok(())
     }
+
+    #[test]
+    fn test_calculate_grid_profit() -> Result<()> {
+        let profit = calculate_grid_profit(Mode::Arithmetic, 4.0, 20.0, 0.001, 10);
+        assert_eq!(
+            profit,
+            GridProfitRate::Arithmetic {
+                min_rate: 0.0848,
+                max_rate: 0.3976
+            }
+        );
+
+        let profit = calculate_grid_profit(Mode::Geometric, 4.0, 20.0, 0.001, 10);
+        assert_eq!(profit, GridProfitRate::Geometric { rate: 0.1724 });
+
+        Ok(())
+    }
+
+    // #[test]
+    // fn test_calculate_minimum_investment() -> Result<()> {
+    //     let minimum_investment = calculate_minimum_investment(20.0, 4.0, 10, 4.3, 0.001, 0.01);
+    //     assert_eq!(minimum_investment, 1.0101);
+
+    //     Ok(())
+    // }
 }
