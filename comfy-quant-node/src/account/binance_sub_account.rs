@@ -29,14 +29,14 @@ impl BinanceSubAccount {
     async fn output0(&self) -> Result<()> {
         let tx = self.data_ports.get_output::<AccountKey>(0)?.clone();
 
-        let account = AccountKey {
-            api_key: self.widget.api_key.clone(),
-            secret_key: self.widget.secret_key.clone(),
-        };
+        let account_key = AccountKey::builder()
+            .api_key(&self.widget.api_key)
+            .secret_key(&self.widget.secret_key)
+            .build();
 
         tokio::spawn(async move {
             while tx.receiver_count() > 0 {
-                tx.send(account)?;
+                tx.send(account_key)?;
                 break;
             }
 
