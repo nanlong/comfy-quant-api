@@ -2,7 +2,7 @@ use bon::Builder;
 
 #[derive(Debug, Clone, Builder)]
 pub struct Ticker {
-    pub timestamp: u64,
+    pub timestamp: i64,
     pub price: f64,
 }
 

@@ -1,13 +1,11 @@
 use crate::{
+    base::{NodeExecutor, NodePorts, Ports, Slot},
     data::{ExchangeInfo, Ticker},
-    traits::{NodeDataPort, NodeExecutor},
-    workflow, DataPorts,
+    workflow,
 };
 use anyhow::Result;
-use binance::websockets::{WebSockets, WebsocketEvent};
 use bon::Builder;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::broadcast;
+use chrono::Utc;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -16,110 +14,75 @@ pub struct Widget {
     quote_currency: String,
 }
 
+#[allow(unused)]
 pub struct BinanceSpotTicker {
     pub(crate) widget: Widget,
-    // outputs:
-    //      0: ExchangeInfo
-    //      1: Ticker
-    pub(crate) data_ports: DataPorts,
+    pub(crate) ports: Ports,
 }
 
 impl BinanceSpotTicker {
     pub fn try_new(widget: Widget) -> Result<Self> {
-        let mut data_ports = DataPorts::new(0, 2);
-        data_ports.add_output(0, broadcast::channel::<ExchangeInfo>(1).0)?;
-        data_ports.add_output(1, broadcast::channel::<Ticker>(1024).0)?;
-
-        Ok(BinanceSpotTicker { widget, data_ports })
-    }
-
-    async fn output0(&self) -> Result<()> {
-        let tx = self.data_ports.get_output::<ExchangeInfo>(0)?.clone();
+        let mut ports = Ports::new();
 
         let exchange_info = ExchangeInfo::builder()
             .name("binance")
             .market("spot")
-            .base_currency(&self.widget.base_currency)
-            .quote_currency(&self.widget.quote_currency)
+            .base_currency(&widget.base_currency)
+            .quote_currency(&widget.quote_currency)
             .build();
 
+        ports.add_output(
+            0,
+            Slot::<ExchangeInfo>::builder().data(exchange_info).build(),
+        )?;
+
+        ports.add_output(1, Slot::<Ticker>::builder().channel_capacity(1024).build())?;
+
+        Ok(BinanceSpotTicker { widget, ports })
+    }
+
+    async fn output1(&self) -> Result<()> {
+        let slot = self.ports.get_output::<Ticker>(1)?;
+
+        // let symbol = format!(
+        //     "{}{}@ticker",
+        //     self.widget.base_currency.to_lowercase(),
+        //     self.widget.quote_currency.to_lowercase()
+        // );
+
+        // todo: 从数据库推送中获取行情
         tokio::spawn(async move {
-            while tx.receiver_count() > 0 {
-                tx.send(exchange_info)?;
-                break;
+            loop {
+                let ticker = Ticker::builder()
+                    .timestamp(Utc::now().timestamp())
+                    .price(0.)
+                    .build();
+
+                slot.send(ticker)?;
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             }
 
+            #[allow(unreachable_code)]
             Ok::<(), anyhow::Error>(())
         });
 
         Ok(())
     }
-
-    async fn output1(&self) -> Result<()> {
-        let tx = self.data_ports.get_output::<Ticker>(1)?.clone();
-        let keep_running = AtomicBool::new(true);
-        let symbol = format!(
-            "{}{}@ticker",
-            self.widget.base_currency.to_lowercase(),
-            self.widget.quote_currency.to_lowercase()
-        );
-
-        tokio::spawn(async move {
-            let mut web_socket = WebSockets::new(|event: WebsocketEvent| {
-                if let WebsocketEvent::DayTicker(ticker_event) = event {
-                    if let Ok(price) = ticker_event.current_close.parse::<f64>() {
-                        let ticker = Ticker {
-                            timestamp: ticker_event.event_time,
-                            price,
-                        };
-
-                        if tx.receiver_count() > 0 {
-                            tx.send(ticker).map_err(|e| {
-                                binance::errors::Error::from(binance::errors::ErrorKind::Msg(
-                                    e.to_string(),
-                                ))
-                            })?;
-                        }
-                    }
-                }
-
-                Ok(())
-            });
-
-            web_socket
-                .connect(&symbol)
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-
-            while keep_running.load(Ordering::Relaxed) {
-                if let Err(e) = web_socket.event_loop(&keep_running) {
-                    return Err(anyhow::anyhow!(e.to_string()));
-                }
-            }
-
-            web_socket
-                .disconnect()
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-
-            Ok(())
-        });
-
-        Ok(())
-    }
 }
 
-impl NodeDataPort for BinanceSpotTicker {
-    fn get_data_port(&self) -> Result<&DataPorts> {
-        Ok(&self.data_ports)
+impl NodePorts for BinanceSpotTicker {
+    fn get_ports(&self) -> Result<&Ports> {
+        Ok(&self.ports)
     }
 
-    fn get_data_port_mut(&mut self) -> Result<&mut DataPorts> {
-        Ok(&mut self.data_ports)
+    fn get_ports_mut(&mut self) -> Result<&mut Ports> {
+        Ok(&mut self.ports)
     }
 }
 
 impl NodeExecutor for BinanceSpotTicker {
     async fn execute(&mut self) -> Result<()> {
-        self.output0().await?;
         self.output1().await?;
         Ok(())
     }

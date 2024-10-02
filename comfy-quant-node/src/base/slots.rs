@@ -7,6 +7,7 @@ pub struct Slots {
     data: Option<Box<AnyMap>>,
 }
 
+#[allow(unused)]
 impl Slots {
     #[inline]
     pub fn new() -> Self {
@@ -50,6 +51,7 @@ impl fmt::Debug for Slots {
     }
 }
 
+#[allow(unused)]
 pub(crate) trait AnyClone: Any {
     fn clone_box(&self) -> Box<dyn AnyClone + Send + Sync>;
     fn as_any(&self) -> &dyn Any;
