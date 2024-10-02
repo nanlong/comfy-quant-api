@@ -1,7 +1,7 @@
 use crate::{
+    base::{NodeExecutor, NodePorts, Ports, Slot},
     data::BacktestConfig,
-    traits::{NodeDataPort, NodeExecutor},
-    workflow, DataPorts,
+    workflow,
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -23,50 +23,41 @@ impl Widget {
 
 pub struct Backtest {
     pub(crate) widget: Widget,
-    pub(crate) data_ports: DataPorts,
+    pub(crate) ports: Ports,
 }
 
 impl Backtest {
     pub fn try_new(widget: Widget) -> Result<Self> {
-        let mut data_ports = DataPorts::new(0, 1);
-        data_ports.add_output(0, broadcast::channel::<BacktestConfig>(1).0)?;
-        Ok(Backtest { widget, data_ports })
-    }
+        let mut ports = Ports::new();
 
-    async fn output0(&self) -> Result<()> {
-        let tx = self.data_ports.get_output::<BacktestConfig>(0)?.clone();
+        let backtest_config = BacktestConfig::builder()
+            .start_time(&widget.start_time.to_string())
+            .end_time(&widget.end_time.to_string())
+            .build()?;
 
-        let backtest = BacktestConfig {
-            start_time: self.widget.start_time.clone(),
-            end_time: self.widget.end_time.clone(),
-        };
+        ports.add_output(
+            0,
+            Slot::<BacktestConfig>::builder()
+                .data(backtest_config)
+                .build(),
+        )?;
 
-        tokio::spawn(async move {
-            while tx.receiver_count() > 0 {
-                tx.send(backtest)?;
-                break;
-            }
-
-            Ok::<(), anyhow::Error>(())
-        });
-
-        Ok(())
+        Ok(Backtest { widget, ports })
     }
 }
 
-impl NodeDataPort for Backtest {
-    fn get_data_port(&self) -> Result<&DataPorts> {
-        Ok(&self.data_ports)
+impl NodePorts for Backtest {
+    fn get_ports(&self) -> Result<&Ports> {
+        Ok(&self.ports)
     }
 
-    fn get_data_port_mut(&mut self) -> Result<&mut DataPorts> {
-        Ok(&mut self.data_ports)
+    fn get_ports_mut(&mut self) -> Result<&mut Ports> {
+        Ok(&mut self.ports)
     }
 }
 
 impl NodeExecutor for Backtest {
     async fn execute(&mut self) -> Result<()> {
-        self.output0().await?;
         Ok(())
     }
 }

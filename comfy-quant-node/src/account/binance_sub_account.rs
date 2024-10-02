@@ -1,11 +1,10 @@
 use crate::{
+    base::{NodeExecutor, NodePorts, Ports, Slot},
     data::AccountKey,
-    traits::{NodeDataPort, NodeExecutor},
-    workflow, DataPorts,
+    workflow,
 };
 use anyhow::Result;
 use bon::Builder;
-use tokio::sync::broadcast;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -16,50 +15,36 @@ pub struct Widget {
 
 pub struct BinanceSubAccount {
     pub(crate) widget: Widget,
-    pub(crate) data_ports: DataPorts,
+    pub(crate) ports: Ports,
 }
 
 impl BinanceSubAccount {
     pub fn try_new(widget: Widget) -> Result<Self> {
-        let mut data_ports = DataPorts::new(0, 1);
-        data_ports.add_output(0, broadcast::channel::<AccountKey>(1).0)?;
-        Ok(BinanceSubAccount { widget, data_ports })
-    }
-
-    async fn output0(&self) -> Result<()> {
-        let tx = self.data_ports.get_output::<AccountKey>(0)?.clone();
+        let mut ports = Ports::new();
 
         let account_key = AccountKey::builder()
-            .api_key(&self.widget.api_key)
-            .secret_key(&self.widget.secret_key)
+            .api_key(&widget.api_key)
+            .secret_key(&widget.secret_key)
             .build();
 
-        tokio::spawn(async move {
-            while tx.receiver_count() > 0 {
-                tx.send(account_key)?;
-                break;
-            }
+        ports.add_output(0, Slot::<AccountKey>::builder().data(account_key).build())?;
 
-            Ok::<(), anyhow::Error>(())
-        });
-
-        Ok(())
+        Ok(BinanceSubAccount { widget, ports })
     }
 }
 
-impl NodeDataPort for BinanceSubAccount {
-    fn get_data_port(&self) -> Result<&DataPorts> {
-        Ok(&self.data_ports)
+impl NodePorts for BinanceSubAccount {
+    fn get_ports(&self) -> Result<&Ports> {
+        Ok(&self.ports)
     }
 
-    fn get_data_port_mut(&mut self) -> Result<&mut DataPorts> {
-        Ok(&mut self.data_ports)
+    fn get_ports_mut(&mut self) -> Result<&mut Ports> {
+        Ok(&mut self.ports)
     }
 }
 
 impl NodeExecutor for BinanceSubAccount {
     async fn execute(&mut self) -> Result<()> {
-        self.output0().await?;
         Ok(())
     }
 }
@@ -106,8 +91,6 @@ mod tests {
 
         assert_eq!(account.widget.api_key, "api_secret");
         assert_eq!(account.widget.secret_key, "secret");
-        assert_eq!(account.data_ports.get_input_count(), 0);
-        assert_eq!(account.data_ports.get_output_count(), 1);
 
         Ok(())
     }
@@ -117,16 +100,14 @@ mod tests {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.binanceSubAccount","params":["api_secret","secret"]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
-        let mut account = BinanceSubAccount::try_from(node)?;
+        let account = BinanceSubAccount::try_from(node)?;
 
-        let tx = account.data_ports.get_output::<AccountKey>(0)?;
-        let mut rx = tx.subscribe();
+        let slot0 = account.ports.get_output::<AccountKey>(0)?;
 
-        account.execute().await?;
+        let account_key = slot0.data().unwrap();
 
-        let account = rx.recv().await?;
-        assert_eq!(account.api_key, "api_secret");
-        assert_eq!(account.secret_key, "secret");
+        assert_eq!(account_key.api_key, "api_secret");
+        assert_eq!(account_key.secret_key, "secret");
 
         Ok(())
     }

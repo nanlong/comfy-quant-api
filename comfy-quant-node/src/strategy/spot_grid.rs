@@ -1,8 +1,8 @@
 /// 网格交易策略
 /// 1. 订单系统
 use crate::{
-    traits::{NodeDataPort, NodeExecutor},
-    workflow, DataPorts,
+    base::{NodeExecutor, NodePorts, Ports},
+    workflow,
 };
 use anyhow::Result;
 use bon::Builder;
@@ -49,23 +49,24 @@ pub struct SpotGrid {
     //      1: accountKey
     //      2: tickerStream
     //      3: backtestConfig
-    pub(crate) data_ports: DataPorts,
+    pub(crate) ports: Ports,
 }
 
 impl SpotGrid {
     pub fn try_new(widget: Widget) -> Result<Self> {
-        let data_ports = DataPorts::new(4, 0);
-        Ok(SpotGrid { widget, data_ports })
+        let ports = Ports::new();
+
+        Ok(SpotGrid { widget, ports })
     }
 }
 
-impl NodeDataPort for SpotGrid {
-    fn get_data_port(&self) -> Result<&DataPorts> {
-        Ok(&self.data_ports)
+impl NodePorts for SpotGrid {
+    fn get_ports(&self) -> Result<&Ports> {
+        Ok(&self.ports)
     }
 
-    fn get_data_port_mut(&mut self) -> Result<&mut DataPorts> {
-        Ok(&mut self.data_ports)
+    fn get_ports_mut(&mut self) -> Result<&mut Ports> {
+        Ok(&mut self.ports)
     }
 }
 
