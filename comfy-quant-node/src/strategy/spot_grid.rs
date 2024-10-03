@@ -1,33 +1,14 @@
 /// 网格交易策略
 /// 1. 订单系统
 use crate::{
-    base::{NodeExecutor, NodePorts, Ports},
+    base::{NodeExecutor, NodePorts, Ports, SpotOrderClient},
+    data::BacktestConfig,
     workflow,
 };
 use anyhow::Result;
 use bon::Builder;
 use std::str::FromStr;
 use tokio::sync::broadcast;
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Mode {
-    // 等差
-    Arithmetic,
-    // 等比
-    Geometric,
-}
-
-impl FromStr for Mode {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "arithmetic" => Ok(Mode::Arithmetic),
-            "geometric" => Ok(Mode::Geometric),
-            _ => Err(anyhow::anyhow!("Invalid mode: {}", s)),
-        }
-    }
-}
 
 #[derive(Builder, Debug, Clone)]
 pub struct Widget {
@@ -50,13 +31,18 @@ pub struct SpotGrid {
     //      2: tickerStream
     //      3: backtestConfig
     pub(crate) ports: Ports,
+    pub(crate) order_client: Option<Box<dyn SpotOrderClient + Send>>,
 }
 
 impl SpotGrid {
     pub fn try_new(widget: Widget) -> Result<Self> {
         let ports = Ports::new();
 
-        Ok(SpotGrid { widget, ports })
+        Ok(SpotGrid {
+            widget,
+            ports,
+            order_client: None,
+        })
     }
 }
 
@@ -70,6 +56,7 @@ impl NodePorts for SpotGrid {
     }
 }
 
+// 节点执行
 impl NodeExecutor for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
         let decimals = 10;
@@ -169,6 +156,25 @@ impl TryFrom<workflow::Node> for SpotGrid {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum Mode {
+    // 等差
+    Arithmetic,
+    // 等比
+    Geometric,
+}
+
+impl FromStr for Mode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "arithmetic" => Ok(Mode::Arithmetic),
+            "geometric" => Ok(Mode::Geometric),
+            _ => Err(anyhow::anyhow!("Invalid mode: {}", s)),
+        }
+    }
+}
 // 计算网格价格
 fn calculate_grids(
     mode: Mode,       // 网格模式
@@ -323,12 +329,4 @@ mod tests {
 
         Ok(())
     }
-
-    // #[test]
-    // fn test_calculate_minimum_investment() -> Result<()> {
-    //     let minimum_investment = calculate_minimum_investment(20.0, 4.0, 10, 4.3, 0.001, 0.01);
-    //     assert_eq!(minimum_investment, 1.0101);
-
-    //     Ok(())
-    // }
 }
