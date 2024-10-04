@@ -29,7 +29,6 @@ pub struct BinanceSpotTicker {
 
 impl BinanceSpotTicker {
     pub fn new() -> Self {
-        // let (sender, _receiver) = broadcast::channel(1024);
         let (sender, _receiver) = broadcast::channel(1024);
 
         Self {
@@ -85,6 +84,12 @@ impl BinanceSpotTicker {
         });
 
         Ok(())
+    }
+}
+
+impl Default for BinanceSpotTicker {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

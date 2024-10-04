@@ -115,7 +115,7 @@ pub async fn get_kline(
 pub async fn listen_for_kline_changes(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query("LISTEN kline_change").execute(pool).await?;
 
-    let mut listener = sqlx::postgres::PgListener::connect_with(&pool).await?;
+    let mut listener = sqlx::postgres::PgListener::connect_with(pool).await?;
 
     while let Ok(notification) = listener.recv().await {
         let payload = notification.payload();

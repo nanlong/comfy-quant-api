@@ -5,3 +5,10 @@ authors = ["Jeff <fei.code@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+comfy-quant-client = { path = "../comfy-quant-client" }
+bon = { workspace = true }
+flume = { workspace = true }
+binance = { workspace = true }
+anyhow = { workspace = true }
+async-stream = { workspace = true }
+futures = { workspace = true }

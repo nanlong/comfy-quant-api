@@ -79,7 +79,7 @@ impl<'a> Futures<'a> {
 
         let balance = balances
             .iter()
-            .find(|b| &b.asset == &asset)
+            .find(|b| b.asset == asset)
             .ok_or_else(|| anyhow!("Asset not found"))?
             .clone();
 
