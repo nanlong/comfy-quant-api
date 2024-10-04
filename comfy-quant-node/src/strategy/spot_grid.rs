@@ -1,7 +1,13 @@
 /// 网格交易策略
 /// 1. 订单系统
 use crate::{
-    base::{NodeExecutor, NodePorts, Ports, SpotOrderClient},
+    base::{
+        traits::{
+            node::{NodeExecutor, NodePorts},
+            spot_order_client::SpotOrderClient,
+        },
+        Ports,
+    },
     data::BacktestConfig,
     workflow,
 };
@@ -31,7 +37,22 @@ pub struct SpotGrid {
     //      2: tickerStream
     //      3: backtestConfig
     pub(crate) ports: Ports,
+    // 要交易的币种信息
+    // pub(crate) pair: Option<Pair>,
+
+    // 网格价格
+    // pub(crate) grids: Vec<f64>,
+
+    // 客户端，执行买入卖出，订单状态查询
     pub(crate) order_client: Option<Box<dyn SpotOrderClient + Send>>,
+    // 账户信息, 总余额、
+    // pub(crate) account: Option<Account>,
+
+    // 持仓信息
+    // pub(crate) position: {base_currency: f64, quote_currency: f64},
+
+    // 订单信息，提交 - 确认，流程完成后删除
+    // pub(crate) orders: Vec<Order>,
 }
 
 impl SpotGrid {

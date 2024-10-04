@@ -13,4 +13,5 @@ comfy-quant-data = { path = "../comfy-quant-data" }
 sqlx = { workspace = true }
 chrono = { workspace = true }
 rust_decimal = { workspace = true }
-flume = "0.11.0"
+flume = { workspace = true }
+bon = { workspace = true }

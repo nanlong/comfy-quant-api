@@ -9,7 +9,10 @@ fn main() -> Result<()> {
     println!("api_key: {}", api_key);
     println!("secret_key: {}", secret_key);
 
-    let client = BinanceClient::new(api_key, secret_key);
+    let client = BinanceClient::builder()
+        .api_key(api_key)
+        .secret_key(secret_key)
+        .build();
     // let account_information = client.spot().get_account()?;
     // println!("{:?}", account_information);
 

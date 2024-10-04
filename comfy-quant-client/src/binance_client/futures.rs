@@ -23,24 +23,15 @@ impl<'a> Futures<'a> {
     }
 
     fn account(&self) -> FuturesAccount {
-        FuturesAccount::new(
-            Some(self.client.api_key.clone()),
-            Some(self.client.secret_key.clone()),
-        )
+        FuturesAccount::new(self.client.api_key.clone(), self.client.secret_key.clone())
     }
 
     fn market(&self) -> FuturesMarket {
-        FuturesMarket::new(
-            Some(self.client.api_key.clone()),
-            Some(self.client.secret_key.clone()),
-        )
+        FuturesMarket::new(self.client.api_key.clone(), self.client.secret_key.clone())
     }
 
     fn general(&self) -> FuturesGeneral {
-        FuturesGeneral::new(
-            Some(self.client.api_key.clone()),
-            Some(self.client.secret_key.clone()),
-        )
+        FuturesGeneral::new(self.client.api_key.clone(), self.client.secret_key.clone())
     }
 
     pub fn ping(&self) -> Result<String> {

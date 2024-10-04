@@ -21,24 +21,15 @@ impl<'a> Spot<'a> {
     }
 
     fn account(&self) -> Account {
-        Account::new(
-            Some(self.client.api_key.clone()),
-            Some(self.client.secret_key.clone()),
-        )
+        Account::new(self.client.api_key.clone(), self.client.secret_key.clone())
     }
 
     fn market(&self) -> Market {
-        Market::new(
-            Some(self.client.api_key.clone()),
-            Some(self.client.secret_key.clone()),
-        )
+        Market::new(self.client.api_key.clone(), self.client.secret_key.clone())
     }
 
     fn general(&self) -> General {
-        General::new(
-            Some(self.client.api_key.clone()),
-            Some(self.client.secret_key.clone()),
-        )
+        General::new(self.client.api_key.clone(), self.client.secret_key.clone())
     }
 
     pub fn ping(&self) -> Result<String> {

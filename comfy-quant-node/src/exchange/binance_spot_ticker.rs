@@ -1,5 +1,8 @@
 use crate::{
-    base::{NodeExecutor, NodePorts, Ports, Slot},
+    base::{
+        traits::node::{NodeExecutor, NodePorts},
+        Ports, Slot,
+    },
     data::{ExchangeInfo, Ticker},
     workflow,
 };

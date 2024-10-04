@@ -411,6 +411,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "binance",
+ "bon",
  "chrono",
  "comfy-quant-data",
  "enum_dispatch",

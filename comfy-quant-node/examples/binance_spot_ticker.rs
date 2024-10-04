@@ -1,6 +1,9 @@
 use anyhow::Result;
 use comfy_quant_node::{
-    base::{NodeConnector, NodeExecutor, NodePorts, Ports},
+    base::{
+        traits::node::{NodeConnector, NodeExecutor, NodePorts},
+        Ports,
+    },
     data::{ExchangeInfo, Ticker},
     exchange::{binance_spot_ticker, BinanceSpotTicker},
 };

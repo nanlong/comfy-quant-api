@@ -1,12 +1,15 @@
 use super::{Futures, Spot};
+use bon::bon;
 
 pub struct BinanceClient {
-    pub(crate) api_key: String,
-    pub(crate) secret_key: String,
+    pub(crate) api_key: Option<String>,
+    pub(crate) secret_key: Option<String>,
 }
 
+#[bon]
 impl BinanceClient {
-    pub fn new(api_key: String, secret_key: String) -> Self {
+    #[builder]
+    pub fn new(api_key: Option<String>, secret_key: Option<String>) -> Self {
         BinanceClient {
             api_key,
             secret_key,
