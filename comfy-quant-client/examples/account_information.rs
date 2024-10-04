@@ -23,7 +23,7 @@ fn main() -> Result<()> {
     // filters LotSize { min_qty: "0.01000000", max_qty: "90000.00000000", step_size: "0.01000000" }
     // filters Notional { notional: None, min_notional: Some("5.00000000"), apply_to_market: None, avg_price_mins: Some(5.0) }
 
-    let account_information = client.futures().get_account()?;
+    // let account_information = client.futures().get_account()?;
     // println!("{:?}", account_information);
     Ok(())
 

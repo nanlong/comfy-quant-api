@@ -16,6 +16,7 @@ pub struct Widget {
     secret_key: String,
 }
 
+#[allow(unused)]
 pub struct BinanceSubAccount {
     pub(crate) widget: Widget,
     pub(crate) ports: Ports,

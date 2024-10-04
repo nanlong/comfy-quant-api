@@ -8,14 +8,13 @@ use crate::{
         },
         Ports,
     },
-    data::BacktestConfig,
     workflow,
 };
 use anyhow::Result;
 use bon::Builder;
 use std::str::FromStr;
-use tokio::sync::broadcast;
 
+#[allow(unused)]
 #[derive(Builder, Debug, Clone)]
 pub struct Widget {
     mode: Mode,                 // 网格模式
@@ -29,6 +28,7 @@ pub struct Widget {
     sell_all_on_stop: bool,     // 是否在止损时卖出所有基准币，默认为true
 }
 
+#[allow(unused)]
 pub struct SpotGrid {
     pub(crate) widget: Widget,
     // inputs:
@@ -78,6 +78,7 @@ impl NodePorts for SpotGrid {
 }
 
 // 节点执行
+#[allow(unused)]
 impl NodeExecutor for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
         let decimals = 10;
@@ -260,6 +261,7 @@ fn calculate_grid_profit(
     }
 }
 
+#[allow(unused)]
 fn calculate_minimum_investment(
     min_qty: f64,              // 最小交易数量
     min_notional: Option<f64>, // 最小名义价值

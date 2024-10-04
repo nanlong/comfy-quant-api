@@ -5,7 +5,7 @@ use comfy_quant_client::binance_client::BinanceClient;
 fn main() -> Result<()> {
     let client = BinanceClient::builder().build();
 
-    let klines = client.spot().get_klines(
+    let KlineSummaries::AllKlineSummaries(klines) = client.spot().get_klines(
         "BTCUSDT",
         "1d",
         10,
@@ -13,15 +13,8 @@ fn main() -> Result<()> {
         Some(1503359999999),
     )?;
 
-    match klines {
-        KlineSummaries::AllKlineSummaries(klines) => {
-            println!("klines count: {:?}", klines.len());
-
-            for kline in klines {
-                println!("{:?}", kline);
-            }
-        }
-        _ => {}
+    for kline in klines {
+        println!("{:?}", kline);
     }
 
     Ok(())

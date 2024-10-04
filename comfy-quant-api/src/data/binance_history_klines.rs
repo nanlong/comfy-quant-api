@@ -4,7 +4,13 @@ use binance::model::{KlineSummaries, KlineSummary};
 use comfy_quant_client::BinanceClient;
 use futures::Stream;
 
-struct BinanceHistoryKlines {
+#[allow(unused)]
+pub enum Market {
+    Spot,
+    Futures,
+}
+
+pub struct BinanceHistoryKlines {
     client: BinanceClient,
 }
 
@@ -18,6 +24,7 @@ impl BinanceHistoryKlines {
     // 获取K线流
     pub fn klines_stream<'a>(
         &'a self,
+        market: Market,    // 市场
         symbol: &'a str,   // 交易对
         interval: &'a str, // 时间间隔
         start_time: u64,   // 开始时间
@@ -28,13 +35,22 @@ impl BinanceHistoryKlines {
             let groups = calc_time_range_group(interval, start_time, end_time, limit);
 
             for (start_time, end_time) in groups {
-                let KlineSummaries::AllKlineSummaries(klines) = self.client.spot().get_klines(
-                    symbol,
-                    interval,
-                    limit as u16,
-                    start_time,
-                    end_time,
-                )?;
+                let KlineSummaries::AllKlineSummaries(klines) = match market {
+                    Market::Spot => self.client.spot().get_klines(
+                        symbol,
+                        interval,
+                        limit as u16,
+                        start_time,
+                        end_time,
+                    )?,
+                    Market::Futures => self.client.futures().get_klines(
+                        symbol,
+                        interval,
+                        limit as u16,
+                        start_time,
+                        end_time,
+                    )?,
+                };
 
                 for kline in klines {
                     yield kline;

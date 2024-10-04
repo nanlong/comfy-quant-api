@@ -8,7 +8,6 @@ use crate::{
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use tokio::sync::broadcast;
 
 pub struct Widget {
     start_time: DateTime<Utc>,
@@ -24,6 +23,7 @@ impl Widget {
     }
 }
 
+#[allow(unused)]
 pub struct Backtest {
     pub(crate) widget: Widget,
     pub(crate) ports: Ports,

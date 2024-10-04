@@ -10,6 +10,7 @@ pub struct MockSpotClient {
     pub(crate) order_history: Vec<Order>,
 }
 
+#[allow(unused)]
 impl MockSpotClient {
     pub fn new() -> Self {
         MockSpotClient {
