@@ -123,6 +123,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "async-lock"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff6e472cdea888a4bd64f342f09b3f50e1886d32afe8df3d663c01140b811b18"
+dependencies = [
+ "event-listener",
+ "event-listener-strategy",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -405,13 +416,7 @@ checksum = "d3fd119d74b830634cea2a0f58bbd0d54540518a14397557951e79340abc28c0"
 name = "comfy-quant-api"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "async-stream",
- "binance",
- "bon",
  "comfy-quant-client",
- "flume",
- "futures",
 ]
 
 [[package]]
@@ -419,12 +424,15 @@ name = "comfy-quant-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-lock",
+ "async-stream",
  "binance",
  "bon",
  "chrono",
  "comfy-quant-data",
  "enum_dispatch",
  "flume",
+ "futures",
  "rust_decimal",
  "sqlx",
  "tokio",
@@ -683,6 +691,16 @@ checksum = "6032be9bd27023a771701cc49f9f053c751055f71efb2e0ae5c15809093675ba"
 dependencies = [
  "concurrent-queue",
  "parking",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "event-listener-strategy"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f214dc438f977e6d4e3500aaa277f5ad94ca83fbbd9b1a15713ce2344ccc5a1"
+dependencies = [
+ "event-listener",
  "pin-project-lite",
 ]
 

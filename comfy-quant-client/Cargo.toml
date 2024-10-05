@@ -15,3 +15,6 @@ chrono = { workspace = true }
 rust_decimal = { workspace = true }
 flume = { workspace = true }
 bon = { workspace = true }
+async-stream = { workspace = true }
+futures = { workspace = true }
+async-lock = { workspace = true }

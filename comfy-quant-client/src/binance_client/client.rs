@@ -1,6 +1,7 @@
 use super::{Futures, Spot};
 use bon::bon;
 
+#[derive(Debug, Clone)]
 pub struct BinanceClient {
     pub(crate) api_key: Option<String>,
     pub(crate) secret_key: Option<String>,
