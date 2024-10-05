@@ -14,4 +14,4 @@ CREATE TABLE IF NOT EXISTS klines (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS IDX_exchange_symbol_interval_open_time ON klines (exchange, symbol, interval, open_time);
+CREATE UNIQUE INDEX IF NOT EXISTS IDX_exchange_symbol_interval_open_time_unique ON klines (exchange, symbol, interval, open_time);

@@ -27,21 +27,21 @@ impl FromStr for Market {
 }
 
 #[derive(Debug)]
-pub struct BinanceHistoryKlines {
+pub struct BinanceKline {
     client: BinanceClient,
 }
 
-impl Default for BinanceHistoryKlines {
+impl Default for BinanceKline {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[allow(unused)]
-impl BinanceHistoryKlines {
+impl BinanceKline {
     pub fn new() -> Self {
         let client = BinanceClient::builder().build();
-        BinanceHistoryKlines { client }
+        BinanceKline { client }
     }
 
     // 获取K线流
@@ -62,6 +62,9 @@ impl BinanceHistoryKlines {
         let semaphore = Arc::new(async_lock::Semaphore::new(1));
         let time_range_groups = calc_time_range_group(&interval, start_time, end_time, KLINE_LIMIT);
 
+        // 使用 tokio::spawn 会有问题，所以使用 tokio::task::spawn_blocking
+        // 报错信息: Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context.
+        // 原因: reqwest 的 runtime 在异步上下文中被释放了
         tokio::task::spawn_blocking(move || {
             let result = (move || {
                 let market = market.parse::<Market>()?;

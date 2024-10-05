@@ -6,3 +6,12 @@ edition = "2021"
 
 [dependencies]
 comfy-quant-client = { path = "../comfy-quant-client" }
+comfy-quant-data = { path = "../comfy-quant-data" }
+anyhow = { workspace = true }
+bon = { workspace = true }
+flume = { workspace = true }
+tokio = { workspace = true }
+async-lock = { workspace = true }
+futures = { workspace = true }
+sqlx = { workspace = true }
+rust_decimal = { workspace = true }

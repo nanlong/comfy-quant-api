@@ -1,8 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
-use sqlx::postgres::PgPool;
-use sqlx::FromRow;
+use sqlx::{postgres::PgPool, FromRow};
 
 #[derive(Debug, Default, FromRow)]
 pub struct Kline {
@@ -64,13 +63,32 @@ pub async fn update(pool: &PgPool, kline: &Kline) -> Result<Kline> {
 }
 
 pub async fn insert_or_update(pool: &PgPool, kline: &Kline) -> Result<Kline> {
-    let kline = if kline.id > 0 {
-        update(pool, kline).await?
-    } else {
-        insert(pool, kline).await?
-    };
-
-    println!("Kline: {:?}", kline);
+    let kline = sqlx::query_as!(
+        Kline,
+        r#"
+        INSERT INTO klines (exchange, symbol, interval, open_time, open_price, high_price, low_price, close_price, volume, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        ON CONFLICT (exchange, symbol, interval, open_time)
+        DO UPDATE SET
+            open_price = EXCLUDED.open_price,
+            high_price = EXCLUDED.high_price,
+            low_price = EXCLUDED.low_price,
+            close_price = EXCLUDED.close_price,
+            volume = EXCLUDED.volume,
+            updated_at = NOW()
+        RETURNING *
+        "#,
+        kline.exchange,
+        kline.symbol,
+        kline.interval,
+        kline.open_time,
+        kline.open_price,
+        kline.high_price,
+        kline.low_price,
+        kline.close_price,
+        kline.volume,
+    ).fetch_one(pool)
+    .await?;
 
     Ok(kline)
 }
@@ -199,6 +217,59 @@ mod tests {
         assert_eq!(kline_updated.low_price, "20000".parse::<Decimal>()?);
         assert_eq!(kline_updated.close_price, "20000".parse::<Decimal>()?);
         assert_eq!(kline_updated.volume, "20000".parse::<Decimal>()?);
+
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn test_insert_or_update_kline(pool: PgPool) -> anyhow::Result<()> {
+        let kline = Kline {
+            exchange: "binance".to_string(),
+            symbol: "BTCUSDT".to_string(),
+            interval: "1m".to_string(),
+            open_time: 1721817600,
+            open_price: "10000".parse::<Decimal>()?,
+            high_price: "10000".parse::<Decimal>()?,
+            low_price: "10000".parse::<Decimal>()?,
+            close_price: "10000".parse::<Decimal>()?,
+            volume: "10000".parse::<Decimal>()?,
+            ..Default::default()
+        };
+
+        let kline = insert_or_update(&pool, &kline).await?;
+
+        assert_eq!(kline.id, 1);
+        assert_eq!(kline.exchange, "binance");
+        assert_eq!(kline.symbol, "BTCUSDT");
+        assert_eq!(kline.interval, "1m");
+        assert_eq!(kline.open_time, 1721817600);
+        assert_eq!(kline.open_price, "10000".parse::<Decimal>()?);
+        assert_eq!(kline.high_price, "10000".parse::<Decimal>()?);
+        assert_eq!(kline.low_price, "10000".parse::<Decimal>()?);
+        assert_eq!(kline.close_price, "10000".parse::<Decimal>()?);
+        assert_eq!(kline.volume, "10000".parse::<Decimal>()?);
+
+        let kline2 = Kline {
+            exchange: "binance".to_string(),
+            symbol: "BTCUSDT".to_string(),
+            interval: "1m".to_string(),
+            open_time: 1721817600,
+            open_price: "20000".parse::<Decimal>()?,
+            high_price: "20000".parse::<Decimal>()?,
+            low_price: "20000".parse::<Decimal>()?,
+            close_price: "20000".parse::<Decimal>()?,
+            volume: "20000".parse::<Decimal>()?,
+            ..Default::default()
+        };
+
+        let kline2 = insert_or_update(&pool, &kline2).await?;
+
+        assert_eq!(kline2.id, 1);
+        assert_eq!(kline2.open_price, "20000".parse::<Decimal>()?);
+        assert_eq!(kline2.high_price, "20000".parse::<Decimal>()?);
+        assert_eq!(kline2.low_price, "20000".parse::<Decimal>()?);
+        assert_eq!(kline2.close_price, "20000".parse::<Decimal>()?);
+        assert_eq!(kline2.volume, "20000".parse::<Decimal>()?);
 
         Ok(())
     }

@@ -1,7 +1,7 @@
 mod behavior;
 pub mod binance_client;
 mod binance_spot_client;
-pub mod history_klines;
+pub mod kline;
 pub mod subscription;
 
 use behavior::ClientBehavior;

@@ -1,11 +1,9 @@
-use comfy_quant_client::history_klines::BinanceHistoryKlines;
+use comfy_quant_client::kline::BinanceKline;
 use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = BinanceHistoryKlines::new();
-
-    dbg!(&client);
+    let client = BinanceKline::new();
 
     let mut klines_stream = client.klines_stream("spot", "BTCUSDT", "12h", 1502928000, 1503705600);
 
