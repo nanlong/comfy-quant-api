@@ -10,13 +10,14 @@ async fn main() -> anyhow::Result<()> {
             .unwrap(),
     );
 
+    // 2017-08-17 08:00:00 - 2017-08-26 08:00:00
     let task = BinanceKlinesTask::builder()
         .db_pool(db_pool)
-        .market("binance")
+        .market("spot")
         .symbol("BTCUSDT")
-        .interval("1d")
-        .start_time(1502928000)
-        .end_time(1503705600)
+        .interval("30m")
+        .start_time_second(1704081600)
+        .end_time_second(1706673599)
         .build();
 
     let status_rx = task.run().await?;

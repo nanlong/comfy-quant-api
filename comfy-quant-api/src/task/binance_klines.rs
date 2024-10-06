@@ -1,7 +1,7 @@
 use super::{status::TaskStatus, traits::Task};
 use anyhow::Result;
 use bon::{bon, Builder};
-use comfy_quant_client::kline::BinanceKline;
+use comfy_quant_client::kline::{calc_time_range_kline_count, BinanceKline};
 use comfy_quant_data::kline;
 use flume::Receiver;
 use futures::StreamExt;
@@ -15,8 +15,8 @@ struct TaskParams {
     market: String,   // 市场
     symbol: String,   // 交易对
     interval: String, // 时间间隔
-    start_time: u64,  // 开始时间
-    end_time: u64,    // 结束时间
+    start_time: i64,  // 开始时间
+    end_time: i64,    // 结束时间
 }
 
 pub struct BinanceKlinesTask {
@@ -32,15 +32,15 @@ impl BinanceKlinesTask {
         market: impl Into<String>,
         symbol: impl Into<String>,
         interval: impl Into<String>,
-        start_time: u64,
-        end_time: u64,
+        start_time_second: i64,
+        end_time_second: i64,
     ) -> Self {
         let params = TaskParams::builder()
             .market(market)
             .symbol(symbol)
             .interval(interval)
-            .start_time(start_time)
-            .end_time(end_time)
+            .start_time(start_time_second)
+            .end_time(end_time_second)
             .build();
 
         Self { db_pool, params }
@@ -48,7 +48,29 @@ impl BinanceKlinesTask {
 }
 
 impl Task for BinanceKlinesTask {
+    async fn check_data_complete(&self) -> Result<bool> {
+        let store_kline_count = kline::time_range_klines_count(
+            &self.db_pool,
+            "binance",
+            &self.params.market,
+            &self.params.symbol,
+            &self.params.interval,
+            self.params.start_time * 1000,
+            self.params.end_time * 1000,
+        )
+        .await?;
+
+        let kline_count_expect = calc_time_range_kline_count(
+            &self.params.interval,
+            self.params.start_time,
+            self.params.end_time,
+        );
+
+        Ok(store_kline_count == kline_count_expect)
+    }
+
     async fn run(self) -> Result<Receiver<TaskStatus>> {
+        let is_data_complete = self.check_data_complete().await?;
         let BinanceKlinesTask { params, db_pool } = self;
         let client = Arc::new(BinanceKline::new());
         let (tx, rx) = flume::bounded::<TaskStatus>(1);
@@ -56,6 +78,11 @@ impl Task for BinanceKlinesTask {
         tokio::spawn(async move {
             let result = async {
                 tx.send_async(TaskStatus::Running).await?;
+
+                if is_data_complete {
+                    tx.send_async(TaskStatus::Finished).await?;
+                    return Ok::<(), anyhow::Error>(());
+                }
 
                 let mut klines_stream = client.klines_stream(
                     &params.market,
@@ -70,6 +97,7 @@ impl Task for BinanceKlinesTask {
                         Ok(kline_summary) => {
                             let kline_data = kline::Kline {
                                 exchange: "binance".to_string(),
+                                market: params.market.clone(),
                                 symbol: params.symbol.clone(),
                                 interval: params.interval.clone(),
                                 open_time: kline_summary.open_time,

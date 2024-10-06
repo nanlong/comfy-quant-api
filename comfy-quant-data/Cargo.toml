@@ -9,3 +9,4 @@ chrono = { workspace = true, features = ["serde"] }
 rust_decimal = { workspace = true, features = ["db-postgres"] }
 sqlx = { workspace = true }
 binance = { workspace = true }
+futures = { workspace = true }

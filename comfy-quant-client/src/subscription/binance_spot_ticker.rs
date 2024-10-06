@@ -124,6 +124,7 @@ impl Subscription for BinanceSpotTicker {
 }
 
 static EXCHANGE: &str = "binance";
+static MARKET: &str = "spot";
 
 #[derive(Debug, Clone)]
 pub struct TickerWrapper(pub DayTickerEvent);
@@ -156,7 +157,9 @@ impl TickerWrapper {
         let start_time = calc_interval_start(open_time as i64, interval_unit, interval_count)?;
 
         let kline =
-            match kline::get_kline(pool, EXCHANGE, &symbol, interval, start_time as i64).await? {
+            match kline::get_kline(pool, EXCHANGE, MARKET, &symbol, interval, start_time as i64)
+                .await?
+            {
                 Some(kline) => Kline {
                     high_price: price.max(kline.high_price),
                     low_price: price.min(kline.low_price),
@@ -166,6 +169,7 @@ impl TickerWrapper {
                 },
                 None => Kline {
                     exchange: EXCHANGE.to_string(),
+                    market: MARKET.to_string(),
                     symbol,
                     interval: interval.to_string(),
                     open_time: start_time as i64,
