@@ -3,3 +3,4 @@
 /env
 .env
 .sqlx
+/comfy-quant-api/config/local.toml

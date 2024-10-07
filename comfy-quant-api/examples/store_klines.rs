@@ -15,9 +15,9 @@ async fn main() -> anyhow::Result<()> {
         .db_pool(db_pool)
         .market("spot")
         .symbol("BTCUSDT")
-        .interval("30m")
+        .interval("1s")
         .start_time_second(1704081600)
-        .end_time_second(1706673599)
+        .end_time_second(1704168000)
         .build();
 
     let status_rx = task.run().await?;

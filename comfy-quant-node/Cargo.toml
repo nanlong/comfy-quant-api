@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+comfy-quant-api = { path = "../comfy-quant-api" }
 anyhow = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
