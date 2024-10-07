@@ -1,31 +1,30 @@
 // 计算时间范围内的K线数量
 pub fn calc_time_range_kline_count(
     interval: &str,
-    start_time_second: i64,
-    end_time_second: i64,
+    start_timestamp: i64,
+    end_timestamp: i64,
 ) -> usize {
     let seconds = interval_to_seconds(interval);
-    ((end_time_second - start_time_second) / seconds + 1) as usize
+    ((end_timestamp - start_timestamp) / seconds + 1) as usize
 }
 
 // 计算时间范围内的K线分组
 pub fn calc_time_range_group(
     interval: &str,
-    start_time_second: i64,
-    end_time_second: i64,
+    start_timestamp: i64,
+    end_timestamp: i64,
     limit: u16,
 ) -> Vec<(i64, i64)> {
     let mut result = Vec::new();
-    let mut start_time = start_time_second;
+    let mut start_time = start_timestamp;
     let interval_seconds = interval_to_seconds(interval);
-    let kline_count =
-        calc_time_range_kline_count(interval, start_time_second, end_time_second) as i64;
+    let kline_count = calc_time_range_kline_count(interval, start_timestamp, end_timestamp) as i64;
 
     for _i in 0..=(kline_count / limit as i64) {
         let end_time = start_time + interval_seconds * limit as i64;
 
-        if end_time > end_time_second {
-            result.push((start_time * 1000, end_time_second * 1000));
+        if end_time > end_timestamp {
+            result.push((start_time * 1000, end_timestamp * 1000));
             break;
         } else {
             result.push((start_time * 1000, end_time * 1000 - 1));

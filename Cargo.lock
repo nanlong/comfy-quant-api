@@ -433,6 +433,7 @@ dependencies = [
  "comfy-quant-client",
  "comfy-quant-data",
  "config",
+ "dotenvy",
  "flume",
  "futures",
  "once_cell",

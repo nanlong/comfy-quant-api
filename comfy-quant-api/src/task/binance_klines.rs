@@ -12,11 +12,11 @@ use std::sync::Arc;
 #[derive(Builder, Clone)]
 #[builder(on(String, into))]
 struct TaskParams {
-    market: String,   // 市场
-    symbol: String,   // 交易对
-    interval: String, // 时间间隔
-    start_time: i64,  // 开始时间
-    end_time: i64,    // 结束时间
+    market: String,       // 市场
+    symbol: String,       // 交易对
+    interval: String,     // 时间间隔
+    start_timestamp: i64, // 开始时间
+    end_timestamp: i64,   // 结束时间
 }
 
 pub struct BinanceKlinesTask {
@@ -32,15 +32,15 @@ impl BinanceKlinesTask {
         market: impl Into<String>,
         symbol: impl Into<String>,
         interval: impl Into<String>,
-        start_time_second: i64,
-        end_time_second: i64,
+        start_timestamp: i64,
+        end_timestamp: i64,
     ) -> Self {
         let params = TaskParams::builder()
             .market(market)
             .symbol(symbol)
             .interval(interval)
-            .start_time(start_time_second)
-            .end_time(end_time_second)
+            .start_timestamp(start_timestamp)
+            .end_timestamp(end_timestamp)
             .build();
 
         Self { db_pool, params }
@@ -55,15 +55,15 @@ impl Task for BinanceKlinesTask {
             &self.params.market,
             &self.params.symbol,
             &self.params.interval,
-            self.params.start_time * 1000,
-            self.params.end_time * 1000,
+            self.params.start_timestamp * 1000,
+            self.params.end_timestamp * 1000,
         )
         .await?;
 
         let kline_count_expect = calc_time_range_kline_count(
             &self.params.interval,
-            self.params.start_time,
-            self.params.end_time,
+            self.params.start_timestamp,
+            self.params.end_timestamp,
         );
 
         Ok(store_kline_count == kline_count_expect)
@@ -88,8 +88,8 @@ impl Task for BinanceKlinesTask {
                     &params.market,
                     &params.symbol,
                     &params.interval,
-                    params.start_time,
-                    params.end_time,
+                    params.start_timestamp,
+                    params.end_timestamp,
                 );
 
                 while let Some(kline_summary) = klines_stream.next().await {

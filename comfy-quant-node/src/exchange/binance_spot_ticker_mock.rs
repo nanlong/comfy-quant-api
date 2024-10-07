@@ -9,7 +9,7 @@ use crate::{
 use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
-use comfy_quant_api::task::executor::run_binance_spot_klines_task;
+use comfy_quant_api::task::executor::run_binance_klines_task;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -58,7 +58,7 @@ impl BinanceSpotTickerMock {
         let end_timestamp = self.widget.end_datetime.timestamp();
 
         let receiver =
-            run_binance_spot_klines_task(symbol, "1s", start_timestamp, end_timestamp).await?;
+            run_binance_klines_task("spot", symbol, "1s", start_timestamp, end_timestamp).await?;
 
         // todo: 从数据库推送中获取行情
         tokio::spawn(async move {

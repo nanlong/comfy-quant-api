@@ -5,13 +5,14 @@ use std::env;
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
 pub struct Setting {
-    debug: bool,
-    database: Database,
+    pub(crate) debug: bool,
+    pub(crate) database: Database,
 }
 
 impl Setting {
     pub fn try_new() -> Result<Self, ConfigError> {
         let run_mode = env::var("RUN_MODE").unwrap_or("dev".to_string());
+        let database_url = dotenvy::var("DATABASE_URL").ok();
 
         let config = Config::builder()
             // Start off by merging in the "default" configuration file
@@ -26,6 +27,8 @@ impl Setting {
             // Add in settings from the environment (with a prefix of APP)
             // Eg.. `APP_DEBUG=1 ./target/app` would set the `debug` key
             .add_source(Environment::with_prefix("app"))
+            // You may also programmatically change settings
+            .set_override_option("database.url", database_url)?
             .build()?;
 
         config.try_deserialize()
@@ -34,6 +37,6 @@ impl Setting {
 
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
-struct Database {
-    url: String,
+pub struct Database {
+    pub(crate) url: String,
 }

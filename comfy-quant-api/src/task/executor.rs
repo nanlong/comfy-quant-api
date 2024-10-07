@@ -1,21 +1,27 @@
-use crate::task::TaskStatus;
+use super::Task;
+use crate::{
+    app_context::APP_CONTEXT,
+    task::{BinanceKlinesTask, TaskStatus},
+};
 use anyhow::Result;
 use flume::Receiver;
+use std::sync::Arc;
 
-#[allow(unused)]
-pub async fn run_binance_spot_klines_task(
+pub async fn run_binance_klines_task(
+    market: impl Into<String>,
     symbol: impl Into<String>,
     interval: impl Into<String>,
-    start_time_second: i64,
-    end_time_second: i64,
+    start_timestamp: i64,
+    end_timestamp: i64,
 ) -> Result<Receiver<TaskStatus>> {
-    // let task = BinanceKlinesTask::builder()
-    //     .market("spot")
-    //     .symbol(symbol)
-    //     .interval(interval)
-    //     .start_time_second(start_time_second)
-    //     .end_time_second(end_time_second)
-    //     .build();
+    let task = BinanceKlinesTask::builder()
+        .db_pool(Arc::clone(&APP_CONTEXT.db))
+        .market(market)
+        .symbol(symbol)
+        .interval(interval)
+        .start_timestamp(start_timestamp)
+        .end_timestamp(end_timestamp)
+        .build();
 
-    todo!()
+    task.run().await
 }
