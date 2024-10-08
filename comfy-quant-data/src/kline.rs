@@ -142,20 +142,20 @@ pub fn time_range_klines_stream<'a>(
     market: &'a str,
     symbol: &'a str,
     interval: &'a str,
-    start_time: i64,
-    end_time: i64,
+    start_timestamp_millis: i64,
+    end_timestamp_millis: i64,
 ) -> impl Stream<Item = Result<Kline, sqlx::Error>> + 'a {
     sqlx::query_as!(
         Kline,
         r#"
-        SELECT * FROM klines WHERE exchange = $1 AND market = $2 AND symbol = $3 AND interval = $4 AND open_time >= $5 AND open_time <= $6
+        SELECT * FROM klines WHERE exchange = $1 AND market = $2 AND symbol = $3 AND interval = $4 AND open_time >= $5 AND open_time <= $6 ORDER BY open_time ASC
         "#,
         exchange,
         market,
         symbol,
         interval,
-        start_time,
-        end_time,
+        start_timestamp_millis,
+        end_timestamp_millis,
     )
     .fetch(pool)
 }
@@ -166,8 +166,8 @@ pub async fn time_range_klines_count(
     market: &str,
     symbol: &str,
     interval: &str,
-    start_time: i64,
-    end_time: i64,
+    start_timestamp_millis: i64,
+    end_timestamp_millis: i64,
 ) -> Result<usize> {
     let count = sqlx::query_scalar!(
         r#"
@@ -177,8 +177,8 @@ pub async fn time_range_klines_count(
         market,
         symbol,
         interval,
-        start_time,
-        end_time,
+        start_timestamp_millis,
+        end_timestamp_millis,
     )
     .fetch_one(pool)
     .await?;

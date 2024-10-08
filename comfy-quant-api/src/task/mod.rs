@@ -1,5 +1,4 @@
 mod binance_klines;
-pub mod executor;
 mod status;
 mod traits;
 

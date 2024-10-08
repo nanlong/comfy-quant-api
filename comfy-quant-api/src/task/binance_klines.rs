@@ -9,7 +9,7 @@ use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-#[derive(Builder, Clone)]
+#[derive(Builder, Clone, Debug)]
 #[builder(on(String, into))]
 struct TaskParams {
     market: String,       // 市场
@@ -20,7 +20,7 @@ struct TaskParams {
 }
 
 pub struct BinanceKlinesTask {
-    db_pool: Arc<PgPool>,
+    db: Arc<PgPool>,
     params: TaskParams,
 }
 
@@ -28,7 +28,7 @@ pub struct BinanceKlinesTask {
 impl BinanceKlinesTask {
     #[builder]
     pub fn new(
-        db_pool: Arc<PgPool>,
+        db: Arc<PgPool>,
         market: impl Into<String>,
         symbol: impl Into<String>,
         interval: impl Into<String>,
@@ -43,14 +43,14 @@ impl BinanceKlinesTask {
             .end_timestamp(end_timestamp)
             .build();
 
-        Self { db_pool, params }
+        Self { db, params }
     }
 }
 
 impl Task for BinanceKlinesTask {
     async fn check_data_complete(&self) -> Result<bool> {
         let store_kline_count = kline::time_range_klines_count(
-            &self.db_pool,
+            &self.db,
             "binance",
             &self.params.market,
             &self.params.symbol,
@@ -71,7 +71,7 @@ impl Task for BinanceKlinesTask {
 
     async fn run(self) -> Result<Receiver<TaskStatus>> {
         let is_data_complete = self.check_data_complete().await?;
-        let BinanceKlinesTask { params, db_pool } = self;
+        let BinanceKlinesTask { params, db } = self;
         let client = Arc::new(BinanceKline::new());
         let (tx, rx) = flume::bounded::<TaskStatus>(1);
 
@@ -109,7 +109,7 @@ impl Task for BinanceKlinesTask {
                                 ..Default::default()
                             };
 
-                            let result = kline::insert_or_update(&db_pool, &kline_data).await;
+                            let result = kline::insert_or_update(&db, &kline_data).await;
 
                             if let Err(e) = result {
                                 tx.send_async(TaskStatus::Failed(e.to_string())).await?;

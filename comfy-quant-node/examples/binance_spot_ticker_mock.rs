@@ -1,11 +1,12 @@
 use anyhow::Result;
+use chrono::Utc;
 use comfy_quant_node::{
     base::{
         traits::node::{NodeConnector, NodeExecutor, NodePorts},
         Ports,
     },
     data::{ExchangeInfo, Ticker},
-    exchange::{binance_spot_ticker, BinanceSpotTicker},
+    exchange::{binance_spot_ticker_mock, BinanceSpotTickerMock},
 };
 use std::time::Duration;
 use tokio::time::sleep;
@@ -56,11 +57,16 @@ impl NodeExecutor for DebugNode {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let widget = binance_spot_ticker::Widget::builder()
+    tracing_subscriber::fmt::init();
+    tracing::info!("start");
+
+    let widget = binance_spot_ticker_mock::Widget::builder()
         .base_currency("BTC")
         .quote_currency("USDT")
+        .start_datetime(Utc::now() - Duration::from_secs(60 * 60))
+        .end_datetime(Utc::now())
         .build();
-    let mut node1 = BinanceSpotTicker::try_new(widget)?;
+    let mut node1 = BinanceSpotTickerMock::try_new(widget)?;
     let mut node2 = DebugNode::new();
 
     node1.connection::<ExchangeInfo>(&mut node2, 0, 0).await?;

@@ -1,5 +1,5 @@
 #[allow(unused)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TaskStatus {
     Initializing,
     Running,

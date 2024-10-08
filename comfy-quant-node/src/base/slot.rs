@@ -1,12 +1,12 @@
 use anyhow::Result;
 use bon::bon;
+use flume::{Receiver, Sender};
 use std::fmt;
-use tokio::sync::broadcast::{self, Receiver, Sender};
 
 #[derive(Clone, Debug)]
 pub struct Slot<T> {
     data: Option<T>,
-    tx: Option<Sender<T>>,
+    channel: Option<(Sender<T>, Receiver<T>)>,
 }
 
 #[bon]
@@ -17,12 +17,12 @@ where
 {
     #[builder]
     pub fn new(data: Option<T>, channel_capacity: Option<usize>) -> Self {
-        let tx = channel_capacity.and_then(|capacity| {
-            let (tx, _) = broadcast::channel::<T>(capacity);
-            Some(tx)
+        let channel = channel_capacity.and_then(|capacity| {
+            let (tx, rx) = flume::bounded::<T>(capacity);
+            Some((tx, rx))
         });
 
-        Self { data, tx }
+        Self { data, channel }
     }
 
     // 访问数据
@@ -31,21 +31,24 @@ where
     }
 
     // 发送数据
-    pub fn send(&self, data: T) -> Result<usize> {
-        self.tx
+    pub async fn send(&self, data: T) -> Result<()> {
+        self.channel
             .as_ref()
             .ok_or(anyhow::anyhow!("No channel to send to"))?
-            .send(data)
+            .0
+            .send_async(data)
+            .await
             .map_err(|e| anyhow::anyhow!(e))
     }
 
     // 订阅数据
     pub fn subscribe(&self) -> Result<Receiver<T>> {
         let rx = self
-            .tx
+            .channel
             .as_ref()
             .ok_or(anyhow::anyhow!("No channel to subscribe to"))?
-            .subscribe();
+            .1
+            .clone();
 
         Ok(rx)
     }
@@ -59,9 +62,9 @@ mod tests {
     async fn test_slot_builder() -> Result<()> {
         let slot = Slot::<usize>::builder().channel_capacity(10).build();
         assert_eq!(slot.data(), None);
-        let mut tx = slot.subscribe()?;
-        slot.send(10)?;
-        let data = tx.recv().await?;
+        let rx = slot.subscribe()?;
+        slot.send(10).await?;
+        let data = rx.recv_async().await?;
         assert_eq!(data, 10);
 
         let slot = Slot::<usize>::builder().data(10).build();
@@ -73,9 +76,9 @@ mod tests {
             .channel_capacity(10)
             .build();
         assert_eq!(slot.data(), Some(&10));
-        let mut tx = slot.subscribe()?;
-        slot.send(8)?;
-        let data = tx.recv().await?;
+        let rx = slot.subscribe()?;
+        slot.send(8).await?;
+        let data = rx.recv_async().await?;
         assert_eq!(data, 8);
 
         Ok(())

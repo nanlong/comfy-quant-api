@@ -61,7 +61,7 @@ impl BinanceSpotTicker {
                     .price(0.)
                     .build();
 
-                slot.send(ticker)?;
+                slot.send(ticker).await?;
 
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             }

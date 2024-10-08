@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 comfy-quant-api = { path = "../comfy-quant-api" }
+comfy-quant-data = { path = "../comfy-quant-data" }
 anyhow = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
@@ -16,3 +17,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 bon = { workspace = true }
+async-lock = { workspace = true }
+tracing = { workspace = true }
+sqlx = { workspace = true }
+flume = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

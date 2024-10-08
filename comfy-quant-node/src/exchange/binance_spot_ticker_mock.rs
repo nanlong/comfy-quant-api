@@ -7,9 +7,20 @@ use crate::{
     workflow,
 };
 use anyhow::Result;
+use async_lock::Barrier;
 use bon::Builder;
 use chrono::{DateTime, Utc};
-use comfy_quant_api::task::executor::run_binance_klines_task;
+use comfy_quant_api::{
+    app_context::APP_CONTEXT,
+    task::{BinanceKlinesTask, Task, TaskStatus},
+};
+use comfy_quant_data::kline;
+use futures::StreamExt;
+use std::sync::Arc;
+
+const EXCHANGE: &str = "binance";
+const MARKET: &str = "spot";
+const INTERVAL: &str = "1s";
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -31,8 +42,8 @@ impl BinanceSpotTickerMock {
         let mut ports = Ports::new();
 
         let exchange_info = ExchangeInfo::builder()
-            .name("binance")
-            .market("spot")
+            .name(EXCHANGE)
+            .market(MARKET)
             .base_currency(&widget.base_currency)
             .quote_currency(&widget.quote_currency)
             .build();
@@ -54,26 +65,72 @@ impl BinanceSpotTickerMock {
             self.widget.base_currency, self.widget.quote_currency
         )
         .to_uppercase();
+        let symbol_cloned = symbol.clone();
         let start_timestamp = self.widget.start_datetime.timestamp();
         let end_timestamp = self.widget.end_datetime.timestamp();
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier1 = Arc::clone(&barrier);
+        let barrier2 = Arc::clone(&barrier);
 
-        let receiver =
-            run_binance_klines_task("spot", symbol, "1s", start_timestamp, end_timestamp).await?;
-
-        // todo: 从数据库推送中获取行情
         tokio::spawn(async move {
-            loop {
-                let ticker = Ticker::builder()
-                    .timestamp(Utc::now().timestamp())
-                    .price(0.)
+            // 等待数据同步完成，如果出错，重试3次
+            'retry: for i in 0..3 {
+                let task = BinanceKlinesTask::builder()
+                    .db(Arc::clone(&APP_CONTEXT.db))
+                    .market(MARKET)
+                    .symbol(&symbol)
+                    .interval(INTERVAL)
+                    .start_timestamp(start_timestamp)
+                    .end_timestamp(end_timestamp)
                     .build();
 
-                slot1.send(ticker)?;
+                let receiver = task.run().await?;
 
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                while let Ok(status) = receiver.recv_async().await {
+                    match status {
+                        TaskStatus::Running => {
+                            tracing::info!("Binance klines task running");
+                        }
+                        TaskStatus::Finished => {
+                            tracing::info!("Binance klines task finished");
+                            break 'retry;
+                        }
+                        TaskStatus::Failed(err) => {
+                            tracing::error!("{} Binance klines task failed: {}", i + 1, err);
+                            continue 'retry;
+                        }
+                        _ => {}
+                    }
+                }
             }
 
-            #[allow(unreachable_code)]
+            barrier1.wait().await;
+
+            Ok::<(), anyhow::Error>(())
+        });
+
+        tokio::spawn(async move {
+            barrier2.wait().await;
+
+            let mut klines_stream = kline::time_range_klines_stream(
+                &APP_CONTEXT.db,
+                EXCHANGE,
+                MARKET,
+                &symbol_cloned,
+                INTERVAL,
+                start_timestamp * 1000,
+                end_timestamp * 1000,
+            );
+
+            while let Some(Ok(kline)) = klines_stream.next().await {
+                let ticker = Ticker::builder()
+                    .timestamp(kline.open_time / 1000)
+                    .price(kline.close_price.to_string().parse::<f64>()?)
+                    .build();
+
+                slot1.send(ticker).await?;
+            }
+
             Ok::<(), anyhow::Error>(())
         });
 
