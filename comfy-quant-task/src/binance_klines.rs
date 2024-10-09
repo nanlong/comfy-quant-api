@@ -2,7 +2,7 @@ use super::{status::TaskStatus, traits::Task};
 use anyhow::Result;
 use bon::{bon, Builder};
 use comfy_quant_database::kline;
-use comfy_quant_exchange::kline::{calc_time_range_kline_count, BinanceKline};
+use comfy_quant_exchange::kline_stream::{calc_time_range_kline_count, BinanceKline};
 use flume::Receiver;
 use futures::StreamExt;
 use rust_decimal::Decimal;

@@ -1,7 +1,7 @@
-use anyhow::Result;
 use bon::Builder;
 
-#[derive(Builder)]
+#[derive(Builder, Debug)]
+#[allow(unused)]
 pub struct AccountInformation {
     pub maker_commission: f32,
     pub taker_commission: f32,
@@ -15,8 +15,8 @@ pub struct Balance {
     pub locked: String, // 锁定余额
 }
 
-#[allow(unused)]
 #[derive(Clone)]
+#[allow(unused)]
 pub enum OrderStatus {
     New,             // 新订单
     PartiallyFilled, // 部分成交
@@ -27,6 +27,7 @@ pub enum OrderStatus {
 }
 
 #[derive(Clone)]
+#[allow(unused)]
 pub enum OrderType {
     Market,
     Limit,
@@ -38,9 +39,9 @@ pub enum OrderSide {
     Sell,
 }
 
-#[allow(unused)]
 #[derive(Builder, Clone)]
 #[builder(on(String, into))]
+#[allow(unused)]
 pub struct Order {
     pub symbol: String,            // 交易对
     pub order_id: String,          // 订单ID
@@ -55,25 +56,26 @@ pub struct Order {
 }
 
 // 现货交易客户端
-pub trait SpotOrderClient {
-    // 获取账户信息，手续费
-    fn get_account(&self) -> Result<AccountInformation>;
+// #[enum_dispatch(SpotClientEnum)]
+// pub trait SpotClient {
+//     // 获取账户信息，手续费
+//     fn get_account(&self) -> Result<AccountInformation>;
 
-    // 获取账户余额
-    fn get_balance(&self, asset: &str) -> Result<Balance>;
+//     // 获取账户余额
+//     fn get_balance(&self, asset: &str) -> Result<Balance>;
 
-    // 获取订单信息
-    fn get_order(&self, order_id: &str) -> Result<Order>;
+//     // 获取订单信息
+//     fn get_order(&self, order_id: &str) -> Result<Order>;
 
-    // 市价买单
-    fn market_buy(&self, symbol: &str, qty: f64) -> Result<Order>;
+//     // 市价买单
+//     fn market_buy(&self, symbol: &str, qty: f64) -> Result<Order>;
 
-    // 市价卖单
-    fn market_sell(&self, symbol: &str, qty: f64) -> Result<Order>;
+//     // 市价卖单
+//     fn market_sell(&self, symbol: &str, qty: f64) -> Result<Order>;
 
-    // 限价买单
-    fn limit_buy(&self, symbol: &str, qty: f64, price: f64) -> Result<Order>;
+//     // 限价买单
+//     fn limit_buy(&self, symbol: &str, qty: f64, price: f64) -> Result<Order>;
 
-    // 限价卖单
-    fn limit_sell(&self, symbol: &str, qty: f64, price: f64) -> Result<Order>;
-}
+//     // 限价卖单
+//     fn limit_sell(&self, symbol: &str, qty: f64, price: f64) -> Result<Order>;
+// }

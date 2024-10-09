@@ -59,8 +59,6 @@ impl BinanceSpotTicker {
             });
 
             'reconnect: loop {
-                eprintln!("reconnect");
-
                 if let Err(_e) = web_socket.connect(&agg_trade) {
                     sleep(Duration::from_secs(1));
                     continue 'reconnect;

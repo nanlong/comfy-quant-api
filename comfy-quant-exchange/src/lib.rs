@@ -1,15 +1,5 @@
-mod behavior;
-pub mod binance_client;
-mod binance_spot_client;
-pub mod kline;
-// pub mod subscription;
+mod account_client;
+mod exchange;
+pub mod kline_stream;
 
-use behavior::ClientBehavior;
-pub use binance_client::BinanceClient;
-pub use binance_spot_client::BinanceSpotClient;
-use enum_dispatch::enum_dispatch;
-
-#[enum_dispatch]
-pub enum Client {
-    BinanceSpotClient(BinanceSpotClient),
-}
+pub use exchange::binance::BinanceClient;

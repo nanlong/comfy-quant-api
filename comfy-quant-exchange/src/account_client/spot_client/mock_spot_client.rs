@@ -1,5 +1,6 @@
-use crate::base::traits::spot_order_client::{
-    AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType, SpotOrderClient,
+use super::{
+    base::{AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType},
+    SpotClient,
 };
 use anyhow::Result;
 use std::{cell::Cell, collections::HashMap};
@@ -98,15 +99,15 @@ impl MockSpotClient {
     }
 }
 
-impl SpotOrderClient for MockSpotClient {
-    fn get_account(&self) -> Result<AccountInformation> {
+impl SpotClient for MockSpotClient {
+    async fn get_account(&self) -> Result<AccountInformation> {
         Ok(AccountInformation::builder()
             .maker_commission(0.001)
             .taker_commission(0.001)
             .build())
     }
 
-    fn get_balance(&self, asset: &str) -> Result<Balance> {
+    async fn get_balance(&self, asset: &str) -> Result<Balance> {
         match self.assets.get(asset) {
             Some(balance) => Ok(balance.clone()),
             None => Ok(Balance::builder()
@@ -117,7 +118,7 @@ impl SpotOrderClient for MockSpotClient {
         }
     }
 
-    fn get_order(&self, order_id: &str) -> Result<Order> {
+    async fn get_order(&self, order_id: &str) -> Result<Order> {
         let order = self
             .order_history
             .iter()
@@ -128,15 +129,15 @@ impl SpotOrderClient for MockSpotClient {
         Ok(order)
     }
 
-    fn market_buy(&self, _symbol: &str, _qty: f64) -> Result<Order> {
+    async fn market_buy(&self, _symbol: &str, _qty: f64) -> Result<Order> {
         unimplemented!()
     }
 
-    fn market_sell(&self, _symbol: &str, _qty: f64) -> Result<Order> {
+    async fn market_sell(&self, _symbol: &str, _qty: f64) -> Result<Order> {
         unimplemented!()
     }
 
-    fn limit_buy(&self, symbol: &str, qty: f64, price: f64) -> Result<Order> {
+    async fn limit_buy(&self, symbol: &str, qty: f64, price: f64) -> Result<Order> {
         self.order_id.set(self.order_id.get() + 1);
 
         let order = Order::builder()
@@ -155,7 +156,7 @@ impl SpotOrderClient for MockSpotClient {
         Ok(order)
     }
 
-    fn limit_sell(&self, symbol: &str, qty: f64, price: f64) -> Result<Order> {
+    async fn limit_sell(&self, symbol: &str, qty: f64, price: f64) -> Result<Order> {
         self.order_id.set(self.order_id.get() + 1);
 
         let order = Order::builder()

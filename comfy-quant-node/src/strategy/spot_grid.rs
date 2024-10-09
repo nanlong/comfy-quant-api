@@ -1,9 +1,6 @@
 use crate::{
     base::{
-        traits::{
-            node::{NodeExecutor, NodePorts},
-            spot_order_client::SpotOrderClient,
-        },
+        traits::node::{NodeExecutor, NodePorts},
         Ports,
     },
     workflow,
@@ -41,7 +38,7 @@ pub struct SpotGrid {
     // pub(crate) grids: Vec<f64>,
 
     // 客户端，执行买入卖出，订单状态查询
-    pub(crate) order_client: Option<Box<dyn SpotOrderClient + Send>>,
+    // pub(crate) order_client: Option<Box<dyn SpotOrderClient + Send>>,
     // 账户信息, 总余额、
     // pub(crate) account: Option<Account>,
 
@@ -59,7 +56,7 @@ impl SpotGrid {
         Ok(SpotGrid {
             widget,
             ports,
-            order_client: None,
+            // order_client: None,
         })
     }
 }

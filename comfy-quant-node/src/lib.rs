@@ -1,6 +1,5 @@
 pub mod account;
 pub mod base;
-pub mod client;
 pub mod data;
 pub mod exchange;
 pub mod manager;
