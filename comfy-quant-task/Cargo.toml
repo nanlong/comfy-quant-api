@@ -1,0 +1,15 @@
+[package]
+name = "comfy-quant-task"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+comfy-quant-exchange = { path = "../comfy-quant-exchange" }
+comfy-quant-database = { path = "../comfy-quant-database" }
+anyhow = { workspace = true }
+flume = { workspace = true }
+bon = { workspace = true }
+futures = { workspace = true }
+rust_decimal = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }

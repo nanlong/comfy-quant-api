@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 comfy-quant-config = { path = "../comfy-quant-config" }
 comfy-quant-database = { path = "../comfy-quant-database" }
+comfy-quant-task = { path = "../comfy-quant-task" }
 anyhow = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
