@@ -1,5 +1,5 @@
 [package]
-name = "comfy-quant-client"
+name = "comfy-quant-exchange"
 version = "0.1.0"
 edition = "2021"
 

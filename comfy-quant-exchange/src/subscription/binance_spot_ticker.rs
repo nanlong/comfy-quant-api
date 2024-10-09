@@ -4,7 +4,7 @@ use binance::{
     model::DayTickerEvent,
     websockets::{WebSockets, WebsocketEvent},
 };
-use comfy_quant_data::{
+use comfy_quant_database::{
     kline::{self, Kline},
     utils::{calc_interval_start, IntervalUnit},
 };

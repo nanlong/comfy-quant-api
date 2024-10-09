@@ -1,10 +1,10 @@
 [package]
-name = "comfy-quant-data"
+name = "comfy-quant-database"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-comfy-quant-client = { path = "../comfy-quant-client" }
+comfy-quant-exchange = { path = "../comfy-quant-exchange" }
 anyhow = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 rust_decimal = { workspace = true, features = ["db-postgres"] }

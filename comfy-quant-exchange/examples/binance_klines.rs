@@ -1,4 +1,4 @@
-use comfy_quant_client::kline::BinanceKline;
+use comfy_quant_exchange::kline::BinanceKline;
 use futures::StreamExt;
 
 #[tokio::main]

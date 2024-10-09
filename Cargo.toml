@@ -1,8 +1,9 @@
 [workspace]
 members = [
     "comfy-quant-api",
-    "comfy-quant-client", "comfy-quant-config",
-    "comfy-quant-data",
+    "comfy-quant-exchange",
+    "comfy-quant-config",
+    "comfy-quant-database",
     "comfy-quant-node",
 ]
 # Only check / build main crates by default (check all with `--workspace`)

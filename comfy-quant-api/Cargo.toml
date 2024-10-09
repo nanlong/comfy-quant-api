@@ -5,8 +5,8 @@ authors = ["Jeff <fei.code@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-comfy-quant-client = { path = "../comfy-quant-client" }
-comfy-quant-data = { path = "../comfy-quant-data" }
+comfy-quant-exchange = { path = "../comfy-quant-exchange" }
+comfy-quant-database = { path = "../comfy-quant-database" }
 # comfy-quant-node = { path = "../comfy-quant-node" }
 anyhow = { workspace = true }
 bon = { workspace = true }

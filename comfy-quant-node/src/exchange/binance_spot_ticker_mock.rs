@@ -11,7 +11,7 @@ use async_lock::Barrier;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_config::app_context::APP_CONTEXT;
-use comfy_quant_data::{
+use comfy_quant_database::{
     kline,
     task::{BinanceKlinesTask, Task, TaskStatus},
 };

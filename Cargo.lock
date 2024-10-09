@@ -431,8 +431,8 @@ dependencies = [
  "async-lock",
  "bon",
  "chrono",
- "comfy-quant-client",
- "comfy-quant-data",
+ "comfy-quant-database",
+ "comfy-quant-exchange",
  "flume",
  "futures",
  "rust_decimal",
@@ -444,7 +444,36 @@ dependencies = [
 ]
 
 [[package]]
-name = "comfy-quant-client"
+name = "comfy-quant-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "config",
+ "dotenvy",
+ "once_cell",
+ "serde",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
+name = "comfy-quant-database"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "binance",
+ "bon",
+ "chrono",
+ "comfy-quant-exchange",
+ "flume",
+ "futures",
+ "rust_decimal",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
+name = "comfy-quant-exchange"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -463,35 +492,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "comfy-quant-config"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "config",
- "dotenvy",
- "once_cell",
- "serde",
- "sqlx",
- "tokio",
-]
-
-[[package]]
-name = "comfy-quant-data"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "binance",
- "bon",
- "chrono",
- "comfy-quant-client",
- "flume",
- "futures",
- "rust_decimal",
- "sqlx",
- "tokio",
-]
-
-[[package]]
 name = "comfy-quant-node"
 version = "0.1.0"
 dependencies = [
@@ -502,7 +502,7 @@ dependencies = [
  "bon",
  "chrono",
  "comfy-quant-config",
- "comfy-quant-data",
+ "comfy-quant-database",
  "flume",
  "futures",
  "futures-util",

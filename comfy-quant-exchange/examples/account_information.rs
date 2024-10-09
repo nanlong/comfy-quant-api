@@ -1,5 +1,5 @@
 use anyhow::Result;
-use comfy_quant_client::BinanceClient;
+use comfy_quant_exchange::BinanceClient;
 use std::env;
 
 fn main() -> Result<()> {
