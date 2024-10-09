@@ -3,7 +3,7 @@ use crate::{
         traits::node::{NodeExecutor, NodePorts},
         Ports, Slot,
     },
-    data::{ExchangeInfo, Ticker},
+    data::{ExchangeInfo, Tick},
     workflow,
 };
 use anyhow::Result;
@@ -39,13 +39,13 @@ impl BinanceSpotTicker {
             Slot::<ExchangeInfo>::builder().data(exchange_info).build(),
         )?;
 
-        ports.add_output(1, Slot::<Ticker>::builder().channel_capacity(1024).build())?;
+        ports.add_output(1, Slot::<Tick>::builder().channel_capacity(1024).build())?;
 
         Ok(BinanceSpotTicker { widget, ports })
     }
 
     async fn output1(&self) -> Result<()> {
-        let slot = self.ports.get_output::<Ticker>(1)?;
+        let slot = self.ports.get_output::<Tick>(1)?;
 
         // let symbol = format!(
         //     "{}{}@ticker",
@@ -56,12 +56,12 @@ impl BinanceSpotTicker {
         // todo: 从数据库推送中获取行情
         tokio::spawn(async move {
             loop {
-                let ticker = Ticker::builder()
+                let tick = Tick::builder()
                     .timestamp(Utc::now().timestamp())
                     .price(0.)
                     .build();
 
-                slot.send(ticker).await?;
+                slot.send(tick).await?;
 
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             }

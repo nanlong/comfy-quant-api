@@ -4,7 +4,7 @@ use comfy_quant_node::{
         traits::node::{NodeConnector, NodeExecutor, NodePorts},
         Ports,
     },
-    data::{ExchangeInfo, Ticker},
+    data::{ExchangeInfo, Tick},
     exchange::{binance_spot_ticker, BinanceSpotTicker},
 };
 use std::time::Duration;
@@ -37,7 +37,7 @@ impl NodeExecutor for DebugNode {
         let exchange_info = slot.data();
         dbg!(&exchange_info);
 
-        let slot = self.ports.get_input::<Ticker>(1)?;
+        let slot = self.ports.get_input::<Tick>(1)?;
 
         tokio::spawn(async move {
             let rx = slot.subscribe()?;
@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
     let mut node2 = DebugNode::new();
 
     node1.connection::<ExchangeInfo>(&mut node2, 0, 0).await?;
-    node1.connection::<Ticker>(&mut node2, 1, 1).await?;
+    node1.connection::<Tick>(&mut node2, 1, 1).await?;
 
     println!("node2.execute()");
     node2.execute().await?;

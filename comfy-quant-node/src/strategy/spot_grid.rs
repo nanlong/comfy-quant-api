@@ -1,5 +1,3 @@
-/// 网格交易策略
-/// 1. 订单系统
 use crate::{
     base::{
         traits::{
@@ -34,8 +32,7 @@ pub struct SpotGrid {
     // inputs:
     //      0: exchangeInfo
     //      1: accountKey
-    //      2: tickerStream
-    //      3: backtestConfig
+    //      2: tickStream
     pub(crate) ports: Ports,
     // 要交易的币种信息
     // pub(crate) pair: Option<Pair>,
@@ -228,6 +225,7 @@ enum GridProfitRate {
 }
 
 // 计算网格的每格利润率
+// 参考资料：https://www.binance.com/zh-CN/support/faq/币安现货网格交易的参数说明-688ff6ff08734848915de76a07b953dd
 fn calculate_grid_profit(
     mode: Mode,            // 网格模式
     lower_price: f64,      // 网格下界
@@ -235,7 +233,6 @@ fn calculate_grid_profit(
     taker_commission: f64, // 手续费
     grids: u64,            // 网格数量
 ) -> GridProfitRate {
-    // https://www.binance.com/zh-CN/support/faq/%E5%B8%81%E5%AE%89%E7%8E%B0%E8%B4%A7%E7%BD%91%E6%A0%BC%E4%BA%A4%E6%98%93%E7%9A%84%E5%8F%82%E6%95%B0%E8%AF%B4%E6%98%8E-688ff6ff08734848915de76a07b953dd
     match mode {
         Mode::Arithmetic => {
             let step = (upper_price - lower_price) / grids as f64;

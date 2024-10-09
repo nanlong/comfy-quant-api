@@ -3,7 +3,7 @@ use crate::{
         traits::node::{NodeExecutor, NodePorts},
         Ports, Slot,
     },
-    data::{ExchangeInfo, Ticker},
+    data::{ExchangeInfo, Tick},
     workflow,
 };
 use anyhow::Result;
@@ -51,13 +51,13 @@ impl BinanceSpotTickerMock {
             Slot::<ExchangeInfo>::builder().data(exchange_info).build(),
         )?;
 
-        ports.add_output(1, Slot::<Ticker>::builder().channel_capacity(1024).build())?;
+        ports.add_output(1, Slot::<Tick>::builder().channel_capacity(1024).build())?;
 
         Ok(BinanceSpotTickerMock { widget, ports })
     }
 
     async fn output1(&self) -> Result<()> {
-        let slot1 = self.ports.get_output::<Ticker>(1)?;
+        let slot1 = self.ports.get_output::<Tick>(1)?;
         let symbol = format!(
             "{}{}",
             self.widget.base_currency, self.widget.quote_currency
@@ -121,7 +121,7 @@ impl BinanceSpotTickerMock {
             );
 
             while let Some(Ok(kline)) = klines_stream.next().await {
-                let ticker = Ticker::builder()
+                let ticker = Tick::builder()
                     .timestamp(kline.open_time / 1000)
                     .price(kline.close_price.to_string().parse::<f64>()?)
                     .build();
