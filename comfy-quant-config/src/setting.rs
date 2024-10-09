@@ -18,7 +18,7 @@ impl Setting {
         // 从 .env 文件中获取数据库连接字符串
         let database_url = dotenvy::var("DATABASE_URL").ok();
         // 配置文件目录
-        let config_dir = Path::new(&app_dir).join("../config");
+        let config_dir = Path::new(&app_dir).join("config");
 
         let config = Config::builder()
             // Start off by merging in the "default" configuration file

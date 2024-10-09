@@ -9,7 +9,6 @@ binance = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
-comfy-quant-data = { path = "../comfy-quant-data" }
 sqlx = { workspace = true }
 chrono = { workspace = true }
 rust_decimal = { workspace = true }

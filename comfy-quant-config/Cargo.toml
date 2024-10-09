@@ -1,0 +1,13 @@
+[package]
+name = "comfy-quant-config"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+sqlx = { workspace = true }
+anyhow = { workspace = true }
+once_cell = { version = "1.20" }
+config = { version = "0.14" }
+dotenvy = { version = "0.15.7" }
+serde = { workspace = true }

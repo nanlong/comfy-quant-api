@@ -2,7 +2,7 @@ mod behavior;
 pub mod binance_client;
 mod binance_spot_client;
 pub mod kline;
-pub mod subscription;
+// pub mod subscription;
 
 use behavior::ClientBehavior;
 pub use binance_client::BinanceClient;

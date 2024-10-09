@@ -10,11 +10,11 @@ use anyhow::Result;
 use async_lock::Barrier;
 use bon::Builder;
 use chrono::{DateTime, Utc};
-use comfy_quant_api::{
-    app_context::APP_CONTEXT,
+use comfy_quant_config::app_context::APP_CONTEXT;
+use comfy_quant_data::{
+    kline,
     task::{BinanceKlinesTask, Task, TaskStatus},
 };
-use comfy_quant_data::kline;
 use futures::StreamExt;
 use std::sync::Arc;
 

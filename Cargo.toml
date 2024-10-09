@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "comfy-quant-api",
-    "comfy-quant-client",
+    "comfy-quant-client", "comfy-quant-config",
     "comfy-quant-data",
     "comfy-quant-node",
 ]

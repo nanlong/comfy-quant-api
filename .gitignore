@@ -3,5 +3,5 @@
 /env
 .env
 .sqlx
-/config/prod.toml
-/config/local.toml
+/comfy-quant-config/config/prod.toml
+/comfy-quant-config/config/local.toml

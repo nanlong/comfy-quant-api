@@ -1,8 +1,8 @@
 use super::{status::TaskStatus, traits::Task};
+use crate::kline;
 use anyhow::Result;
 use bon::{bon, Builder};
 use comfy_quant_client::kline::{calc_time_range_kline_count, BinanceKline};
-use comfy_quant_data::kline;
 use flume::Receiver;
 use futures::StreamExt;
 use rust_decimal::Decimal;

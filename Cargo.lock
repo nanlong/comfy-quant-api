@@ -433,11 +433,8 @@ dependencies = [
  "chrono",
  "comfy-quant-client",
  "comfy-quant-data",
- "config",
- "dotenvy",
  "flume",
  "futures",
- "once_cell",
  "rust_decimal",
  "serde",
  "sqlx",
@@ -456,7 +453,6 @@ dependencies = [
  "binance",
  "bon",
  "chrono",
- "comfy-quant-data",
  "enum_dispatch",
  "flume",
  "futures",
@@ -467,15 +463,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "comfy-quant-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "config",
+ "dotenvy",
+ "once_cell",
+ "serde",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
 name = "comfy-quant-data"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "binance",
+ "bon",
  "chrono",
+ "comfy-quant-client",
+ "flume",
  "futures",
  "rust_decimal",
  "sqlx",
+ "tokio",
 ]
 
 [[package]]
@@ -488,7 +501,7 @@ dependencies = [
  "binance",
  "bon",
  "chrono",
- "comfy-quant-api",
+ "comfy-quant-config",
  "comfy-quant-data",
  "flume",
  "futures",
