@@ -72,13 +72,13 @@ mod tests {
         let slot = Arc::new(Slot::<usize>::builder().data(5).build());
         ports.add_input(0, slot).unwrap();
         let slot = ports.get_input::<usize>(0).unwrap();
-        assert_eq!(slot.data(), Some(&5));
+        assert_eq!(**slot, 5);
 
         // Add output
         let slot = Slot::<usize>::builder().data(10).build();
         ports.add_output(0, slot).unwrap();
         let slot = ports.get_output::<usize>(0).unwrap();
-        assert_eq!(slot.data(), Some(&10));
+        assert_eq!(**slot, 10);
 
         // Check ref count
         assert_eq!(Arc::strong_count(&slot), 2);

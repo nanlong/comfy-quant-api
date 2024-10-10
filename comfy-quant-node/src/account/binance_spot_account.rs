@@ -1,15 +1,15 @@
 use crate::{
     base::{
         traits::node::{NodeExecutor, NodePorts},
-        Ports, Slot,
+        Ports,
     },
     workflow,
 };
 use anyhow::Result;
 use bon::Builder;
-use comfy_quant_exchange::client::SpotClient;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+// use comfy_quant_exchange::client::SpotClient;
+// use std::sync::Arc;
+// use tokio::sync::Mutex;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -22,17 +22,19 @@ pub struct Widget {
 #[allow(unused)]
 pub struct BinanceSpotAccount {
     pub(crate) widget: Widget,
+    // outputs:
+    //      0: SpotClient
     pub(crate) ports: Ports,
 }
 
 impl BinanceSpotAccount {
     pub fn try_new(widget: Widget) -> Result<Self> {
-        let mut ports = Ports::new();
+        let ports = Ports::new();
 
         // todo: 创建SpotClient
-        let output_slot0 = Slot::<Arc<Mutex<SpotClient>>>::builder().build();
+        // let output_slot0 = Slot::<Arc<Mutex<SpotClient>>>::builder().build();
 
-        ports.add_output(0, output_slot0)?;
+        // ports.add_output(0, output_slot0)?;
 
         Ok(BinanceSpotAccount { widget, ports })
     }
@@ -102,23 +104,23 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_binance_account_execute() -> anyhow::Result<()> {
-        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.binanceSubAccount","params":["api_secret","secret"]}}"#;
+    // #[tokio::test]
+    // async fn test_binance_account_execute() -> anyhow::Result<()> {
+    //     let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.binanceSubAccount","params":["api_secret","secret"]}}"#;
 
-        let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = BinanceSpotAccount::try_from(node)?;
+    //     let node: workflow::Node = serde_json::from_str(json_str)?;
+    //     let account = BinanceSpotAccount::try_from(node)?;
 
-        let _slot0 = account.ports.get_output::<Arc<Mutex<SpotClient>>>(0)?;
+    //     // let _slot0 = account.ports.get_output::<Arc<Mutex<SpotClient>>>(0)?;
 
-        // let client = slot0.data().unwrap();
+    //     // let client = slot0.data().unwrap();
 
-        // assert_eq!(client_information.client_type, "binance_client");
-        // assert_eq!(
-        //     client_information.data,
-        //     Some(json!({"api_key": "api_secret", "secret_key": "secret", "market": "spot"}))
-        // );
+    //     // assert_eq!(client_information.client_type, "binance_client");
+    //     // assert_eq!(
+    //     //     client_information.data,
+    //     //     Some(json!({"api_key": "api_secret", "secret_key": "secret", "market": "spot"}))
+    //     // );
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }

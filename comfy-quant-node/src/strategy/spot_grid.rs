@@ -27,9 +27,9 @@ pub struct Widget {
 pub struct SpotGrid {
     pub(crate) widget: Widget,
     // inputs:
-    //      0: exchangeInfo
-    //      1: accountKey
-    //      2: tickStream
+    //      0: SpotPairInfo
+    //      1: SpotClient
+    //      2: TickStream
     pub(crate) ports: Ports,
     // 要交易的币种信息
     // pub(crate) pair: Option<Pair>,

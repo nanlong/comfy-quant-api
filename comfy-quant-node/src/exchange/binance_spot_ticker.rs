@@ -3,12 +3,11 @@ use crate::{
         traits::node::{NodeExecutor, NodePorts},
         Ports, Slot,
     },
-    data::{ExchangeInfo, Tick},
+    data::SpotPairInfo,
     workflow,
 };
 use anyhow::Result;
 use bon::Builder;
-use chrono::Utc;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -20,6 +19,9 @@ pub struct Widget {
 #[allow(unused)]
 pub struct BinanceSpotTicker {
     pub(crate) widget: Widget,
+    // outputs:
+    //      0: SpotPairInfo
+    //      1: TickStream
     pub(crate) ports: Ports,
 }
 
@@ -27,24 +29,22 @@ impl BinanceSpotTicker {
     pub fn try_new(widget: Widget) -> Result<Self> {
         let mut ports = Ports::new();
 
-        let exchange_info = ExchangeInfo::builder()
-            .name("binance")
-            .market("spot")
+        let pair_info = SpotPairInfo::builder()
             .base_currency(&widget.base_currency)
             .quote_currency(&widget.quote_currency)
             .build();
 
-        let output_slot0 = Slot::<ExchangeInfo>::builder().data(exchange_info).build();
-        let output_slot1 = Slot::<Tick>::builder().channel_capacity(1024).build();
+        let output_slot0 = Slot::<SpotPairInfo>::builder().data(pair_info).build();
+        // let output_slot1 = Slot::<Tick>::builder().channel_capacity(1024).build();
 
         ports.add_output(0, output_slot0)?;
-        ports.add_output(1, output_slot1)?;
+        // ports.add_output(1, output_slot1)?;
 
         Ok(BinanceSpotTicker { widget, ports })
     }
 
     async fn output1(&self) -> Result<()> {
-        let slot = self.ports.get_output::<Tick>(1)?;
+        // let slot = self.ports.get_output::<Tick>(1)?;
 
         // let symbol = format!(
         //     "{}{}@ticker",
@@ -53,21 +53,21 @@ impl BinanceSpotTicker {
         // );
 
         // todo: 从数据库推送中获取行情
-        tokio::spawn(async move {
-            loop {
-                let tick = Tick::builder()
-                    .timestamp(Utc::now().timestamp())
-                    .price(0.)
-                    .build();
+        // tokio::spawn(async move {
+        //     loop {
+        //         let tick = Tick::builder()
+        //             .timestamp(Utc::now().timestamp())
+        //             .price(0.)
+        //             .build();
 
-                slot.send(tick).await?;
+        //         slot.send(tick).await?;
 
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            }
+        //         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        //     }
 
-            #[allow(unreachable_code)]
-            Ok::<(), anyhow::Error>(())
-        });
+        //     #[allow(unreachable_code)]
+        //     Ok::<(), anyhow::Error>(())
+        // });
 
         Ok(())
     }

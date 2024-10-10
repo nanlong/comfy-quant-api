@@ -4,10 +4,11 @@ use comfy_quant_node::{
         traits::node::{NodeConnector, NodeExecutor, NodePorts},
         Ports,
     },
-    data::{ExchangeInfo, Tick},
+    data::{SpotPairInfo, Tick, TickStream},
     exchange::{binance_spot_ticker, BinanceSpotTicker},
 };
-use std::time::Duration;
+use futures::StreamExt;
+use std::{sync::Arc, time::Duration};
 use tokio::time::sleep;
 
 struct DebugNode {
@@ -33,17 +34,17 @@ impl NodePorts for DebugNode {
 
 impl NodeExecutor for DebugNode {
     async fn execute(&mut self) -> Result<()> {
-        let slot = self.ports.get_input::<ExchangeInfo>(0)?;
-        let exchange_info = slot.data();
-        dbg!(&exchange_info);
+        let slot = self.ports.get_input::<SpotPairInfo>(0)?;
+        let pair_info = slot.data();
+        dbg!(&pair_info);
 
-        let slot = self.ports.get_input::<Tick>(1)?;
+        let mut slot = self.ports.get_input::<TickStream>(1)?;
 
         tokio::spawn(async move {
-            let rx = slot.subscribe()?;
+            let tick_stream = Arc::make_mut(&mut slot);
 
-            while let Ok(res) = rx.recv_async().await {
-                dbg!(&res);
+            while let Some(tick) = tick_stream.next().await {
+                dbg!(&tick);
             }
 
             #[allow(unreachable_code)]
@@ -63,7 +64,7 @@ async fn main() -> Result<()> {
     let mut node1 = BinanceSpotTicker::try_new(widget)?;
     let mut node2 = DebugNode::new();
 
-    node1.connection::<ExchangeInfo>(&mut node2, 0, 0).await?;
+    node1.connection::<SpotPairInfo>(&mut node2, 0, 0).await?;
     node1.connection::<Tick>(&mut node2, 1, 1).await?;
 
     println!("node2.execute()");

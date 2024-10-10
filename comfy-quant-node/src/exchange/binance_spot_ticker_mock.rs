@@ -3,7 +3,7 @@ use crate::{
         traits::node::{NodeExecutor, NodePorts},
         Ports, Slot,
     },
-    data::{ExchangeInfo, Tick},
+    data::{SpotPairInfo, Tick, TickStream},
     workflow,
 };
 use anyhow::Result;
@@ -31,6 +31,9 @@ pub struct Widget {
 
 pub struct BinanceSpotTickerMock {
     pub(crate) widget: Widget,
+    // outputs:
+    //      0: SpotPairInfo
+    //      1: TickStream
     pub(crate) ports: Ports,
 }
 
@@ -38,15 +41,15 @@ impl BinanceSpotTickerMock {
     pub fn try_new(widget: Widget) -> Result<Self> {
         let mut ports = Ports::new();
 
-        let exchange_info = ExchangeInfo::builder()
-            .name(EXCHANGE)
-            .market(MARKET)
+        let pair_info = SpotPairInfo::builder()
             .base_currency(&widget.base_currency)
             .quote_currency(&widget.quote_currency)
             .build();
 
-        let output_slot0 = Slot::<ExchangeInfo>::builder().data(exchange_info).build();
-        let output_slot1 = Slot::<Tick>::builder().channel_capacity(1024).build();
+        let tick_stream = TickStream::new();
+
+        let output_slot0 = Slot::<SpotPairInfo>::builder().data(pair_info).build();
+        let output_slot1 = Slot::<TickStream>::builder().data(tick_stream).build();
 
         ports.add_output(0, output_slot0)?;
         ports.add_output(1, output_slot1)?;
@@ -55,7 +58,7 @@ impl BinanceSpotTickerMock {
     }
 
     async fn output1(&self) -> Result<()> {
-        let slot1 = self.ports.get_output::<Tick>(1)?;
+        let slot1 = self.ports.get_output::<TickStream>(1)?;
         let symbol = format!(
             "{}{}",
             self.widget.base_currency, self.widget.quote_currency
@@ -123,6 +126,8 @@ impl BinanceSpotTickerMock {
                     .timestamp(kline.open_time / 1000)
                     .price(kline.close_price.to_string().parse::<f64>()?)
                     .build();
+
+                // dbg!(&ticker);
 
                 slot1.send(ticker).await?;
             }

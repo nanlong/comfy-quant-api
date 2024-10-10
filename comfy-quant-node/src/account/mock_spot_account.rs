@@ -22,6 +22,8 @@ pub struct Widget {
 #[allow(unused)]
 pub struct MockSpotAccount {
     pub(crate) widget: Widget,
+    // outputs:
+    //      0: SpotClient
     pub(crate) ports: Ports,
 }
 
@@ -130,7 +132,7 @@ mod tests {
 
         let slot0 = account.ports.get_output::<Arc<Mutex<SpotClient>>>(0)?;
 
-        let client = slot0.data().unwrap();
+        let client = slot0.data();
         let client_guard = client.lock().await;
 
         let balance = client_guard.get_balance("BTC").await?;
