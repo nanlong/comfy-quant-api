@@ -34,12 +34,11 @@ impl BinanceSpotTicker {
             .quote_currency(&widget.quote_currency)
             .build();
 
-        ports.add_output(
-            0,
-            Slot::<ExchangeInfo>::builder().data(exchange_info).build(),
-        )?;
+        let output_slot0 = Slot::<ExchangeInfo>::builder().data(exchange_info).build();
+        let output_slot1 = Slot::<Tick>::builder().channel_capacity(1024).build();
 
-        ports.add_output(1, Slot::<Tick>::builder().channel_capacity(1024).build())?;
+        ports.add_output(0, output_slot0)?;
+        ports.add_output(1, output_slot1)?;
 
         Ok(BinanceSpotTicker { widget, ports })
     }

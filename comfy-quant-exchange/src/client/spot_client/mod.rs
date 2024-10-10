@@ -4,10 +4,11 @@ mod mock_spot_client;
 use anyhow::Result;
 use base::{AccountInformation, Balance, Order};
 use enum_dispatch::enum_dispatch;
-use mock_spot_client::MockSpotClient;
+pub use mock_spot_client::MockSpotClient;
 
 #[enum_dispatch]
-pub trait SpotClient {
+#[allow(async_fn_in_trait)]
+pub trait SpotExchangeClient {
     // 获取账户信息，手续费
     async fn get_account(&self) -> Result<AccountInformation>;
 
@@ -30,8 +31,9 @@ pub trait SpotClient {
     async fn limit_sell(&self, symbol: &str, qty: f64, price: f64) -> Result<Order>;
 }
 
-#[enum_dispatch(SpotClient)]
-pub enum SpotClientEnum {
+#[derive(Debug)]
+#[enum_dispatch(SpotExchangeClient)]
+pub enum SpotClient {
     MockSpotClient(MockSpotClient),
 }
 
@@ -41,7 +43,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_spot_client_enum() -> Result<()> {
-        let client: SpotClientEnum = MockSpotClient::new().into();
+        let client: SpotClient = MockSpotClient::builder()
+            .assets(vec![("BTC".to_string(), 1.), ("USDT".to_string(), 1000.)])
+            .build()
+            .into();
         let account = client.get_account().await?;
         assert_eq!(account.maker_commission, 0.001);
         assert_eq!(account.taker_commission, 0.001);

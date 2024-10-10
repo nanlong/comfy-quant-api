@@ -7,7 +7,6 @@ pub struct Ports {
     outputs: Slots,
 }
 
-#[allow(unused)]
 impl Ports {
     pub fn new() -> Self {
         Self {

@@ -10,7 +10,6 @@ pub struct Slot<T> {
 }
 
 #[bon]
-#[allow(unused)]
 impl<T> Slot<T>
 where
     T: Clone + fmt::Debug + Send + Sync + 'static,

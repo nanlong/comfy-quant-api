@@ -1,30 +1,43 @@
 use super::{
     base::{AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType},
-    SpotClient,
+    SpotExchangeClient,
 };
 use anyhow::Result;
+use bon::bon;
 use std::{cell::Cell, collections::HashMap};
 
+#[derive(Debug)]
 pub struct MockSpotClient {
-    pub(crate) assets: HashMap<String, Balance>,
-    pub(crate) order_id: Cell<u64>,
-    pub(crate) order_history: Vec<Order>,
+    assets: HashMap<String, Balance>,
+    commissions: Option<f64>,
+    order_id: Cell<u64>,
+    order_history: Vec<Order>,
 }
 
+#[bon]
 #[allow(unused)]
 impl MockSpotClient {
-    pub fn new() -> Self {
+    #[builder]
+    pub fn new(assets: Vec<(String, f64)>, commissions: Option<f64>) -> Self {
+        let assets = assets
+            .into_iter()
+            .map(|(asset, amount)| {
+                let balance = Balance::builder()
+                    .asset(asset.clone())
+                    .free(amount.to_string())
+                    .locked("0")
+                    .build();
+
+                (asset, balance)
+            })
+            .collect();
+
         MockSpotClient {
-            assets: HashMap::default(),
+            assets,
+            commissions,
             order_id: Cell::new(0),
             order_history: Vec::new(),
         }
-    }
-
-    pub fn init_assets(&mut self, assets: Vec<Balance>) {
-        assets.into_iter().for_each(|asset| {
-            self.assets.insert(asset.asset.clone(), asset);
-        });
     }
 
     fn add_asset(&mut self, asset: &str, amount: f64) -> Result<()> {
@@ -99,11 +112,11 @@ impl MockSpotClient {
     }
 }
 
-impl SpotClient for MockSpotClient {
+impl SpotExchangeClient for MockSpotClient {
     async fn get_account(&self) -> Result<AccountInformation> {
         Ok(AccountInformation::builder()
-            .maker_commission(0.001)
-            .taker_commission(0.001)
+            .maker_commission(self.commissions.unwrap_or(0.001) as f32)
+            .taker_commission(self.commissions.unwrap_or(0.001) as f32)
             .build())
     }
 

@@ -1,5 +1,5 @@
 use super::utils::calc_time_range_group;
-use crate::BinanceClient;
+use crate::exchange::binance::BinanceClient;
 use anyhow::Result;
 use async_stream::stream;
 use binance::model::{KlineSummaries, KlineSummary};
@@ -8,7 +8,6 @@ use std::{str::FromStr, sync::Arc};
 
 const KLINE_LIMIT: u16 = 1000;
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub enum Market {
     Spot,
@@ -38,7 +37,6 @@ impl Default for BinanceKline {
     }
 }
 
-#[allow(unused)]
 impl BinanceKline {
     pub fn new() -> Self {
         let client = BinanceClient::builder().build();

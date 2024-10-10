@@ -1,4 +1,4 @@
-use super::{status::TaskStatus, traits::Task};
+use super::{status::TaskStatus, traits::TaskExecutor};
 use anyhow::Result;
 use bon::{bon, Builder};
 use comfy_quant_database::kline;
@@ -47,7 +47,7 @@ impl BinanceKlinesTask {
     }
 }
 
-impl Task for BinanceKlinesTask {
+impl TaskExecutor for BinanceKlinesTask {
     async fn check_data_complete(&self) -> Result<bool> {
         let store_kline_count = kline::time_range_klines_count(
             &self.db,
@@ -69,7 +69,7 @@ impl Task for BinanceKlinesTask {
         Ok(store_kline_count == kline_count_expect)
     }
 
-    async fn run(self) -> Result<Receiver<TaskStatus>> {
+    async fn execute(self) -> Result<Receiver<TaskStatus>> {
         let is_data_complete = self.check_data_complete().await?;
         let BinanceKlinesTask { params, db } = self;
         let client = Arc::new(BinanceKline::new());

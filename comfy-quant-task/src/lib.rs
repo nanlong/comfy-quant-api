@@ -4,4 +4,4 @@ mod traits;
 
 pub use binance_klines::BinanceKlinesTask;
 pub use status::TaskStatus;
-pub use traits::Task;
+pub use traits::TaskExecutor;

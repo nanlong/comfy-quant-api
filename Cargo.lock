@@ -503,6 +503,7 @@ dependencies = [
  "chrono",
  "comfy-quant-config",
  "comfy-quant-database",
+ "comfy-quant-exchange",
  "comfy-quant-task",
  "flume",
  "futures",

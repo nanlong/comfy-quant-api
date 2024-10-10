@@ -1,7 +1,5 @@
-mod binance_account;
-mod client_information;
-mod mock_account;
+mod binance_spot_account;
+mod mock_spot_account;
 
-pub use binance_account::BinanceAccount;
-pub use client_information::ClientInformation;
-pub use mock_account::MockAccount;
+pub use binance_spot_account::BinanceSpotAccount;
+pub use mock_spot_account::MockSpotAccount;

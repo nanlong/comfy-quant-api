@@ -7,14 +7,14 @@ use crate::{
     workflow,
 };
 use anyhow::Result;
-use async_lock::Barrier;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_config::app_context::APP_CONTEXT;
 use comfy_quant_database::kline;
-use comfy_quant_task::{BinanceKlinesTask, Task, TaskStatus};
+use comfy_quant_task::{BinanceKlinesTask, TaskExecutor, TaskStatus};
 use futures::StreamExt;
 use std::sync::Arc;
+use tokio::sync::Barrier;
 
 const EXCHANGE: &str = "binance";
 const MARKET: &str = "spot";
@@ -29,7 +29,6 @@ pub struct Widget {
     end_datetime: DateTime<Utc>,
 }
 
-#[allow(unused)]
 pub struct BinanceSpotTickerMock {
     pub(crate) widget: Widget,
     pub(crate) ports: Ports,
@@ -46,12 +45,11 @@ impl BinanceSpotTickerMock {
             .quote_currency(&widget.quote_currency)
             .build();
 
-        ports.add_output(
-            0,
-            Slot::<ExchangeInfo>::builder().data(exchange_info).build(),
-        )?;
+        let output_slot0 = Slot::<ExchangeInfo>::builder().data(exchange_info).build();
+        let output_slot1 = Slot::<Tick>::builder().channel_capacity(1024).build();
 
-        ports.add_output(1, Slot::<Tick>::builder().channel_capacity(1024).build())?;
+        ports.add_output(0, output_slot0)?;
+        ports.add_output(1, output_slot1)?;
 
         Ok(BinanceSpotTickerMock { widget, ports })
     }
@@ -82,7 +80,7 @@ impl BinanceSpotTickerMock {
                     .end_timestamp(end_timestamp)
                     .build();
 
-                let receiver = task.run().await?;
+                let receiver = task.execute().await?;
 
                 while let Ok(status) = receiver.recv_async().await {
                     match status {
