@@ -1,12 +1,6 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
-
 use anyhow::Result;
 use bon::Builder;
 use flume::{Receiver, Sender};
-use futures::Stream;
 
 #[derive(Debug, Clone, Builder, PartialEq)]
 pub struct Tick {
@@ -21,41 +15,27 @@ pub struct TickStream {
 
 impl TickStream {
     pub fn new() -> Self {
-        let (sender, receiver) = flume::unbounded();
-        Self {
-            channel: (sender, receiver),
-        }
+        let channel = flume::unbounded();
+        TickStream { channel }
     }
 
     pub async fn send(&self, tick: Tick) -> Result<()> {
-        let (tx, _rx) = &self.channel;
-        tx.send_async(tick).await?;
+        self.channel.0.send_async(tick).await?;
         Ok(())
     }
-}
 
-impl Stream for TickStream {
-    type Item = Tick;
-
-    fn poll_next(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let (_tx, rx) = &self.channel;
-
-        match rx.recv() {
-            Ok(tick) => Poll::Ready(Some(tick)),
-            Err(_) => Poll::Ready(None),
-        }
+    pub fn subscribe(&self) -> Receiver<Tick> {
+        self.channel.1.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use futures::StreamExt;
-
     use super::*;
 
     #[tokio::test]
     async fn test_tick_stream() -> Result<()> {
-        let mut tick_stream = TickStream::new();
+        let tick_stream = TickStream::new();
         let tick = Tick {
             timestamp: 1,
             price: 100.0,
@@ -63,7 +43,9 @@ mod tests {
 
         tick_stream.send(tick.clone()).await?;
 
-        let tick2 = tick_stream.next().await.unwrap();
+        let rx = tick_stream.subscribe();
+
+        let tick2 = rx.recv_async().await?;
         assert_eq!(tick, tick2);
 
         Ok(())

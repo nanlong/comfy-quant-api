@@ -8,8 +8,7 @@ use comfy_quant_node::{
     data::{SpotPairInfo, TickStream},
     exchange::{binance_spot_ticker_mock, BinanceSpotTickerMock},
 };
-use futures::StreamExt;
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use tokio::time::sleep;
 
 struct DebugNode {
@@ -36,15 +35,15 @@ impl NodePorts for DebugNode {
 impl NodeExecutor for DebugNode {
     async fn execute(&mut self) -> Result<()> {
         let slot = self.ports.get_input::<SpotPairInfo>(0)?;
-        let pair_info = slot.data();
+        let pair_info = slot.inner();
         dbg!(&pair_info);
 
-        let mut slot = self.ports.get_input::<TickStream>(1)?;
+        let slot = self.ports.get_input::<TickStream>(1)?;
 
         tokio::spawn(async move {
-            let tick_stream = Arc::make_mut(&mut slot);
+            let rx = slot.subscribe();
 
-            while let Some(tick) = tick_stream.next().await {
+            while let Ok(tick) = rx.recv_async().await {
                 dbg!(&tick);
             }
 

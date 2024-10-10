@@ -31,12 +31,8 @@ where
         Slot(data)
     }
 
-    pub fn data(&self) -> &T {
+    pub fn inner(&self) -> &T {
         &self.0
-    }
-
-    pub fn data_mut(&mut self) -> &mut T {
-        &mut self.0
     }
 }
 
@@ -47,7 +43,7 @@ mod tests {
     #[tokio::test]
     async fn test_slot_builder() -> anyhow::Result<()> {
         let slot = Slot::<usize>::builder().data(10).build();
-        assert_eq!(slot.data(), &10);
+        assert_eq!(slot.inner(), &10);
         Ok(())
     }
 }
