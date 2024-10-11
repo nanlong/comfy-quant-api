@@ -35,6 +35,10 @@ pub struct BinanceSpotTickerMock {
     //      0: SpotPairInfo
     //      1: TickStream
     pub(crate) ports: Ports,
+
+    barrier: Arc<Barrier>,
+    shutdown_tx: flume::Sender<()>,
+    shutdown_rx: flume::Receiver<()>,
 }
 
 impl BinanceSpotTickerMock {
@@ -54,7 +58,16 @@ impl BinanceSpotTickerMock {
         ports.add_output(0, output_slot0)?;
         ports.add_output(1, output_slot1)?;
 
-        Ok(BinanceSpotTickerMock { widget, ports })
+        let barrier = Arc::new(Barrier::new(2));
+        let (shutdown_tx, shutdown_rx) = flume::bounded(1);
+
+        Ok(BinanceSpotTickerMock {
+            widget,
+            ports,
+            barrier,
+            shutdown_tx,
+            shutdown_rx,
+        })
     }
 
     async fn output1(&self) -> Result<()> {
@@ -67,72 +80,86 @@ impl BinanceSpotTickerMock {
         let symbol_cloned = symbol.clone();
         let start_timestamp = self.widget.start_datetime.timestamp();
         let end_timestamp = self.widget.end_datetime.timestamp();
-        let barrier = Arc::new(Barrier::new(2));
-        let barrier1 = Arc::clone(&barrier);
-        let barrier2 = Arc::clone(&barrier);
+
+        let task1_barrier = Arc::clone(&self.barrier);
+        let task2_barrier = Arc::clone(&self.barrier);
+        let task1_shutdown_rx = self.shutdown_rx.clone();
+        let task2_shutdown_rx = self.shutdown_rx.clone();
 
         tokio::spawn(async move {
-            // 等待数据同步完成，如果出错，重试3次
-            'retry: for i in 0..3 {
-                let task = BinanceKlinesTask::builder()
-                    .db(Arc::clone(&APP_CONTEXT.db))
-                    .market(MARKET)
-                    .symbol(&symbol)
-                    .interval(INTERVAL)
-                    .start_timestamp(start_timestamp)
-                    .end_timestamp(end_timestamp)
-                    .build();
+            tokio::select! {
+                _ = async {
+                    // 等待数据同步完成，如果出错，重试3次
+                    'retry: for i in 0..3 {
+                        let task = BinanceKlinesTask::builder()
+                            .db(Arc::clone(&APP_CONTEXT.db))
+                            .market(MARKET)
+                            .symbol(&symbol)
+                            .interval(INTERVAL)
+                            .start_timestamp(start_timestamp)
+                            .end_timestamp(end_timestamp)
+                            .build();
 
-                let receiver = task.execute().await?;
+                        let receiver = task.execute().await?;
 
-                while let Ok(status) = receiver.recv_async().await {
-                    match status {
-                        TaskStatus::Running => {
-                            tracing::info!("Binance klines task running");
+                        while let Ok(status) = receiver.recv_async().await {
+                            match status {
+                                TaskStatus::Running => {
+                                    tracing::info!("Binance klines task running");
+                                }
+                                TaskStatus::Finished => {
+                                    tracing::info!("Binance klines task finished");
+                                    break 'retry;
+                                }
+                                TaskStatus::Failed(err) => {
+                                    tracing::error!("{} Binance klines task failed: {}", i + 1, err);
+                                    continue 'retry;
+                                }
+                                _ => {}
+                            }
                         }
-                        TaskStatus::Finished => {
-                            tracing::info!("Binance klines task finished");
-                            break 'retry;
-                        }
-                        TaskStatus::Failed(err) => {
-                            tracing::error!("{} Binance klines task failed: {}", i + 1, err);
-                            continue 'retry;
-                        }
-                        _ => {}
                     }
+
+                    task1_barrier.wait().await;
+
+                    Ok::<(), anyhow::Error>(())
+                } => {}
+                _ = task1_shutdown_rx.recv_async() => {
+                    tracing::info!("BinanceSpotTickerMock task1 shutdown");
                 }
             }
-
-            barrier1.wait().await;
-
-            Ok::<(), anyhow::Error>(())
         });
 
         tokio::spawn(async move {
-            barrier2.wait().await;
+            tokio::select! {
+                _ = async {
+                    task2_barrier.wait().await;
 
-            let mut klines_stream = kline::time_range_klines_stream(
-                &APP_CONTEXT.db,
-                EXCHANGE,
-                MARKET,
-                &symbol_cloned,
-                INTERVAL,
-                start_timestamp * 1000,
-                end_timestamp * 1000,
-            );
+                    let mut klines_stream = kline::time_range_klines_stream(
+                        &APP_CONTEXT.db,
+                        EXCHANGE,
+                        MARKET,
+                        &symbol_cloned,
+                        INTERVAL,
+                        start_timestamp * 1000,
+                        end_timestamp * 1000,
+                    );
 
-            while let Some(Ok(kline)) = klines_stream.next().await {
-                let ticker = Tick::builder()
-                    .timestamp(kline.open_time / 1000)
-                    .price(kline.close_price.to_string().parse::<f64>()?)
-                    .build();
+                    while let Some(Ok(kline)) = klines_stream.next().await {
+                        let ticker = Tick::builder()
+                            .timestamp(kline.open_time / 1000)
+                            .price(kline.close_price.to_string().parse::<f64>()?)
+                            .build();
 
-                // dbg!(&ticker);
+                        slot1.send(ticker).await?;
+                    }
 
-                slot1.send(ticker).await?;
+                    Ok::<(), anyhow::Error>(())
+                } => {}
+                _ = task2_shutdown_rx.recv_async() => {
+                    tracing::info!("BinanceSpotTickerMock task2 shutdown");
+                }
             }
-
-            Ok::<(), anyhow::Error>(())
         });
 
         Ok(())
@@ -153,6 +180,12 @@ impl NodeExecutor for BinanceSpotTickerMock {
     async fn execute(&mut self) -> Result<()> {
         self.output1().await?;
         Ok(())
+    }
+}
+
+impl Drop for BinanceSpotTickerMock {
+    fn drop(&mut self) {
+        let _ = self.shutdown_tx.send(());
     }
 }
 

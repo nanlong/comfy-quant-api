@@ -9,5 +9,5 @@ pub trait TaskExecutor {
     async fn check_data_complete(&self) -> Result<bool>;
 
     // 执行任务
-    async fn execute(self) -> Result<Receiver<TaskStatus>>;
+    async fn execute(&self) -> Result<Receiver<TaskStatus>>;
 }

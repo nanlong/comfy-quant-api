@@ -93,6 +93,9 @@ async fn main() -> Result<()> {
     println!("node1.execute()");
     node1.execute().await?;
 
+    drop(node1);
+    drop(node2);
+
     // println!("finished");
     sleep(Duration::from_secs(10000)).await;
 

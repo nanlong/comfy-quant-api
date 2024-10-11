@@ -5,6 +5,7 @@ use async_stream::stream;
 use binance::model::{KlineSummaries, KlineSummary};
 use futures::Stream;
 use std::{str::FromStr, sync::Arc};
+use tokio::sync::watch;
 
 const KLINE_LIMIT: u16 = 1000;
 
@@ -29,6 +30,8 @@ impl FromStr for Market {
 #[derive(Debug)]
 pub struct BinanceKline {
     client: BinanceClient,
+
+    shutdown_tx: watch::Sender<bool>,
 }
 
 impl Default for BinanceKline {
@@ -40,7 +43,12 @@ impl Default for BinanceKline {
 impl BinanceKline {
     pub fn new() -> Self {
         let client = BinanceClient::builder().build();
-        BinanceKline { client }
+        let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+
+        BinanceKline {
+            client,
+            shutdown_tx,
+        }
     }
 
     // 获取K线流
@@ -60,6 +68,8 @@ impl BinanceKline {
         let (error_tx, error_rx) = flume::bounded(1);
         let semaphore = Arc::new(async_lock::Semaphore::new(1));
         let time_range_groups = calc_time_range_group(&interval, start_time, end_time, KLINE_LIMIT);
+        let task_shutdown_rx = self.shutdown_tx.subscribe();
+        let stream_shutdown_rx = self.shutdown_tx.subscribe();
 
         // 使用 tokio::spawn 会有问题，所以使用 tokio::task::spawn_blocking
         // 报错信息: Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context.
@@ -69,6 +79,10 @@ impl BinanceKline {
                 let market = market.parse::<Market>()?;
 
                 for (start_time, end_time) in time_range_groups {
+                    if *task_shutdown_rx.borrow() {
+                        return Ok(());
+                    }
+
                     let KlineSummaries::AllKlineSummaries(klines) = match market {
                         Market::Spot => client.spot().get_klines(
                             &symbol,
@@ -87,6 +101,10 @@ impl BinanceKline {
                     };
 
                     for kline in klines {
+                        if *task_shutdown_rx.borrow() {
+                            return Ok(());
+                        }
+
                         let guard = semaphore.acquire_arc_blocking();
                         tx.send((kline, guard))?;
                     }
@@ -104,6 +122,10 @@ impl BinanceKline {
 
         let kline_stream = stream! {
             loop {
+                if *stream_shutdown_rx.borrow() {
+                    break;
+                }
+
                 tokio::select! {
                     Ok((kline, _guard)) = rx.recv_async() => {
                         yield Ok(kline);
@@ -118,5 +140,11 @@ impl BinanceKline {
         };
 
         Box::pin(kline_stream)
+    }
+}
+
+impl Drop for BinanceKline {
+    fn drop(&mut self) {
+        let _ = self.shutdown_tx.send(true);
     }
 }

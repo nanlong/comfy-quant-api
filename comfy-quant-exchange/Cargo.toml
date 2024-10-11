@@ -17,3 +17,7 @@ bon = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
 async-lock = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
