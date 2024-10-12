@@ -1,6 +1,6 @@
 use crate::{
     account::MockSpotAccount,
-    base::traits::node::{NodeConnector, NodeExecutor, NodePorts},
+    base::traits::{NodeConnector, NodeExecutor, NodePorts},
     exchange::BinanceSpotTickerMock,
     strategy::SpotGrid,
     workflow,

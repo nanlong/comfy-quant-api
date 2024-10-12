@@ -1,6 +1,6 @@
 use crate::{
     base::{
-        traits::node::{NodeExecutor, NodePorts},
+        traits::{NodeExecutor, NodePorts},
         Ports, Slot,
     },
     workflow,

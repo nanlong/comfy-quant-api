@@ -1,7 +1,7 @@
 use anyhow::Result;
 use comfy_quant_node::{
     base::{
-        traits::node::{NodeConnector, NodeExecutor, NodePorts},
+        traits::{NodeConnector, NodeExecutor, NodePorts},
         Ports,
     },
     data::{SpotPairInfo, Tick, TickStream},
