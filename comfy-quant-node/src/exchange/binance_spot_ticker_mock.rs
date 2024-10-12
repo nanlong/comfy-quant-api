@@ -4,6 +4,7 @@ use crate::{
         Ports, Slot,
     },
     data::{SpotPairInfo, Tick, TickStream},
+    utils::add_utc_offset,
     workflow,
 };
 use anyhow::Result;
@@ -23,14 +24,15 @@ const INTERVAL: &str = "1s";
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub struct Widget {
-    base_currency: String,
-    quote_currency: String,
-    start_datetime: DateTime<Utc>,
-    end_datetime: DateTime<Utc>,
+    pub base_currency: String,
+    pub quote_currency: String,
+    pub start_datetime: DateTime<Utc>,
+    pub end_datetime: DateTime<Utc>,
 }
 
+#[derive(Debug)]
 pub struct BinanceSpotTickerMock {
-    pub(crate) widget: Widget,
+    pub widget: Widget,
     // outputs:
     //      0: SpotPairInfo
     //      1: TickStream
@@ -80,7 +82,6 @@ impl BinanceSpotTickerMock {
         let symbol_cloned = symbol.clone();
         let start_timestamp = self.widget.start_datetime.timestamp();
         let end_timestamp = self.widget.end_datetime.timestamp();
-
         let task1_barrier = Arc::clone(&self.barrier);
         let task2_barrier = Arc::clone(&self.barrier);
         let task1_shutdown_rx = self.shutdown_rx.clone();
@@ -215,19 +216,16 @@ impl TryFrom<workflow::Node> for BinanceSpotTickerMock {
             "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid quote_currency"
         ))?;
 
-        let start_datetime = start_datetime
-            .as_str()
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid start_datetime"
-            ))?
-            .parse::<DateTime<Utc>>()?;
+        let start_datetime = start_datetime.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid start_datetime"
+        ))?;
 
-        let end_datetime = end_datetime
-            .as_str()
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid end_datetime"
-            ))?
-            .parse::<DateTime<Utc>>()?;
+        let end_datetime = end_datetime.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid end_datetime"
+        ))?;
+
+        let start_datetime = add_utc_offset(start_datetime)?;
+        let end_datetime = add_utc_offset(end_datetime)?;
 
         let widget = Widget::builder()
             .base_currency(base_currency)

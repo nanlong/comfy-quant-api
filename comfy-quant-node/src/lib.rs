@@ -3,5 +3,7 @@ pub mod base;
 pub mod data;
 pub mod exchange;
 pub mod manager;
+pub mod node_kind;
 pub mod strategy;
+pub mod utils;
 pub mod workflow;

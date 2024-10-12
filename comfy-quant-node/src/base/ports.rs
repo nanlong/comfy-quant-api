@@ -2,6 +2,7 @@ use super::{slot::Slot, slots::Slots};
 use anyhow::Result;
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct Ports {
     inputs: Slots,
     outputs: Slots,

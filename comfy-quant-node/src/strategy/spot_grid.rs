@@ -23,6 +23,7 @@ pub struct Widget {
     sell_all_on_stop: bool,     // 是否在止损时卖出所有基准币，默认为true
 }
 
+#[derive(Debug)]
 #[allow(unused)]
 pub struct SpotGrid {
     pub(crate) widget: Widget,

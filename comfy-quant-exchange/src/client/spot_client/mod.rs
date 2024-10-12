@@ -33,7 +33,7 @@ pub trait SpotExchangeClient {
 
 #[derive(Debug)]
 #[enum_dispatch(SpotExchangeClient)]
-pub enum SpotClient {
+pub enum SpotClientKind {
     MockSpotClient(MockSpotClient),
 }
 
@@ -43,7 +43,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_spot_client_enum() -> Result<()> {
-        let client: SpotClient = MockSpotClient::builder()
+        let client: SpotClientKind = MockSpotClient::builder()
             .assets(vec![("BTC".to_string(), 1.), ("USDT".to_string(), 1000.)])
             .build()
             .into();

@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Result;
 use bon::Builder;
-use comfy_quant_exchange::client::{MockSpotClient, SpotClient};
+use comfy_quant_exchange::client::{MockSpotClient, SpotClientKind};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -19,6 +19,7 @@ pub struct Widget {
 }
 
 // 模拟账户，用于交易系统回测时使用
+#[derive(Debug)]
 #[allow(unused)]
 pub struct MockSpotAccount {
     pub(crate) widget: Widget,
@@ -36,7 +37,7 @@ impl MockSpotAccount {
             .commissions(widget.commissions)
             .build();
 
-        let output_slot0 = Slot::<Arc<Mutex<SpotClient>>>::builder()
+        let output_slot0 = Slot::<Arc<Mutex<SpotClientKind>>>::builder()
             .data(Arc::new(Mutex::new(client.into())))
             .build();
 
@@ -70,9 +71,13 @@ impl TryFrom<workflow::Node> for MockSpotAccount {
             anyhow::bail!("Try from workflow::Node to MockSpotAccount failed: Invalid prop_type");
         }
 
-        let [assets, commissions] = node.properties.params.as_slice() else {
+        let [commissions, assets] = node.properties.params.as_slice() else {
             anyhow::bail!("Try from workflow::Node to MockSpotAccount failed: Invalid params");
         };
+
+        let commissions = commissions.as_f64().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to MockSpotAccount failed: Invalid commissions"
+        ))?;
 
         let assets = assets
             .as_array()
@@ -87,10 +92,6 @@ impl TryFrom<workflow::Node> for MockSpotAccount {
                 Some((asset_name, asset_balance))
             })
             .collect::<Vec<(String, f64)>>();
-
-        let commissions = commissions.as_f64().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to MockSpotAccount failed: Invalid commissions"
-        ))? / 100.0;
 
         let widget = Widget::builder()
             .assets(assets)
@@ -109,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_try_from_node_to_mock_account() -> anyhow::Result<()> {
-        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.mockSpotAccount","params":[[["BTC", 10], ["USDT", 10000]], 0.1]}}"#;
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.mockSpotAccount","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = MockSpotAccount::try_from(node)?;
@@ -125,12 +126,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_account_execute() -> anyhow::Result<()> {
-        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.mockSpotAccount","params":[[["BTC", 10.0], ["USDT", 10000.0]], 0.1]}}"#;
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.mockSpotAccount","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = MockSpotAccount::try_from(node)?;
 
-        let slot0 = account.ports.get_output::<Arc<Mutex<SpotClient>>>(0)?;
+        let slot0 = account.ports.get_output::<Arc<Mutex<SpotClientKind>>>(0)?;
 
         let client = slot0.inner();
         let client_guard = client.lock().await;

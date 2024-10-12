@@ -507,6 +507,7 @@ dependencies = [
  "comfy-quant-database",
  "comfy-quant-exchange",
  "comfy-quant-task",
+ "enum_dispatch",
  "flume",
  "futures",
  "futures-util",
