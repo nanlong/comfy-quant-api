@@ -1,7 +1,5 @@
-use super::{
-    base::{AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType},
-    SpotExchangeClient,
-};
+use super::base::{AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType};
+use crate::client::spot_client_kind::SpotExchangeClient;
 use anyhow::Result;
 use bon::bon;
 use std::{collections::HashMap, sync::Arc};

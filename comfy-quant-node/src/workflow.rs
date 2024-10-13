@@ -4,68 +4,25 @@ use crate::{
     node_kind::NodeKind,
 };
 use anyhow::Result;
-use comfy_quant_exchange::client::SpotClientKind;
+use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, collections::HashMap};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Link {
-    pub link_id: u32,
-    pub origin_id: u32,
-    pub origin_slot: usize,
-    pub target_id: u32,
-    pub target_slot: usize,
-    pub link_type: String,
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Workflow {
-    // last_node_id: u32,
-    // last_link_id: u32,
-    pub nodes: Vec<Node>,
-    pub links: Vec<Link>,
-    // groups: Vec<String>,
-    // config: HashMap<String, String>,
-    // extra: HashMap<String, String>,
-    // version: f32,
+    last_node_id: u32,
+    last_link_id: u32,
+    nodes: Vec<Node>,
+    links: Vec<Link>,
+    groups: Vec<String>,
+    config: HashMap<String, String>,
+    extra: HashMap<String, String>,
+    version: f32,
+    #[serde(skip)]
+    deserialized_nodes: HashMap<u32, RefCell<NodeKind>>,
 }
 
 impl Workflow {
-    pub async fn execute(&self) -> Result<()> {
-        let mut deserialized_nodes = HashMap::new();
-
-        // 反序列化节点
-        for node in &self.nodes {
-            let node_kind = NodeKind::try_from((*node).clone())?;
-            deserialized_nodes.insert(node.id, RefCell::new(node_kind));
-        }
-
-        // 建立连接
-        for link in &self.links {
-            let origin_node = deserialized_nodes
-                .get(&link.origin_id)
-                .ok_or_else(|| anyhow::anyhow!("Origin node not found: {}", link.origin_id))?;
-
-            let target_node = deserialized_nodes
-                .get(&link.target_id)
-                .ok_or_else(|| anyhow::anyhow!("Target node not found: {}", link.target_id))?;
-
-            self.make_connection(&origin_node, &target_node, &link)?;
-        }
-
-        // 执行节点
-        for node in self.sorted_nodes().iter().rev() {
-            deserialized_nodes
-                .get(&node.id)
-                .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node.id))?
-                .borrow_mut()
-                .execute()
-                .await?;
-        }
-
-        Ok(())
-    }
-
     // 按照 order 排序
     fn sorted_nodes(&self) -> Vec<&Node> {
         let mut nodes_vec = self.nodes.iter().collect::<Vec<_>>();
@@ -100,19 +57,75 @@ impl Workflow {
     }
 }
 
+#[allow(async_fn_in_trait)]
+pub trait WorkflowExecutor {
+    async fn execute(&mut self) -> Result<()>;
+}
+
+impl WorkflowExecutor for Workflow {
+    async fn execute(&mut self) -> Result<()> {
+        // let mut deserialized_nodes = HashMap::new();
+
+        // 反序列化节点
+        for node in self.nodes.clone() {
+            let node_id = node.id;
+            let node_kind = NodeKind::try_from(node)?;
+            self.deserialized_nodes
+                .insert(node_id, RefCell::new(node_kind));
+        }
+
+        // 建立连接
+        for link in &self.links {
+            let origin_node = self
+                .deserialized_nodes
+                .get(&link.origin_id)
+                .ok_or_else(|| anyhow::anyhow!("Origin node not found: {}", link.origin_id))?;
+
+            let target_node = self
+                .deserialized_nodes
+                .get(&link.target_id)
+                .ok_or_else(|| anyhow::anyhow!("Target node not found: {}", link.target_id))?;
+
+            self.make_connection(&origin_node, &target_node, &link)?;
+        }
+
+        // 执行节点
+        for node in self.sorted_nodes().iter().rev() {
+            self.deserialized_nodes
+                .get(&node.id)
+                .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node.id))?
+                .borrow_mut()
+                .execute()
+                .await?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Link {
+    link_id: u32,
+    origin_id: u32,
+    origin_slot: usize,
+    target_id: u32,
+    target_slot: usize,
+    link_type: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
-    pub id: u32,
+    id: u32,
     #[serde(rename = "type")]
-    pub node_type: String,
-    pub pos: [u32; 2],
-    // pub size: HashMap<String, u32>,
-    // pub flags: HashMap<String, String>,
-    pub order: u32,
-    pub mode: u32,
-    pub inputs: Option<Vec<Input>>,
-    pub outputs: Option<Vec<Output>>,
-    pub properties: Properties,
+    node_type: String,
+    pos: [u32; 2],
+    // size: HashMap<String, u32>,
+    // flags: HashMap<String, String>,
+    order: u32,
+    mode: u32,
+    inputs: Option<Vec<Input>>,
+    outputs: Option<Vec<Output>>,
+    pub(crate) properties: Properties,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -135,8 +148,8 @@ pub struct Output {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Properties {
     #[serde(rename = "type", default)]
-    pub prop_type: String,
-    pub params: Vec<serde_json::Value>,
+    pub(crate) prop_type: String,
+    pub(crate) params: Vec<serde_json::Value>,
 }
 
 #[cfg(test)]

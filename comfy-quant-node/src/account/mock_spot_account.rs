@@ -7,7 +7,9 @@ use crate::{
 };
 use anyhow::Result;
 use bon::Builder;
-use comfy_quant_exchange::client::{MockSpotClient, SpotClientKind};
+use comfy_quant_exchange::client::{
+    spot_client::mock_spot_client::MockSpotClient, spot_client_kind::SpotClientKind,
+};
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub struct Widget {
@@ -101,9 +103,8 @@ impl TryFrom<workflow::Node> for MockSpotAccount {
 
 #[cfg(test)]
 mod tests {
-    use comfy_quant_exchange::client::SpotExchangeClient;
-
     use super::*;
+    use comfy_quant_exchange::client::spot_client_kind::SpotExchangeClient;
 
     #[test]
     fn test_try_from_node_to_mock_account() -> anyhow::Result<()> {

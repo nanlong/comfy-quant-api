@@ -3,10 +3,12 @@ use crate::{
         traits::{NodeExecutor, NodePorts},
         Ports,
     },
+    data::{SpotPairInfo, TickStream},
     workflow,
 };
 use anyhow::Result;
 use bon::Builder;
+use comfy_quant_exchange::client::spot_client_kind::{SpotClientKind, SpotExchangeClient};
 use std::str::FromStr;
 
 #[allow(unused)]
@@ -76,6 +78,18 @@ impl NodePorts for SpotGrid {
 #[allow(unused)]
 impl NodeExecutor for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
+        let slot0 = self.ports.get_input::<SpotPairInfo>(0)?;
+        let slot1 = self.ports.get_input::<SpotClientKind>(1)?;
+        let slot2 = self.ports.get_input::<TickStream>(2)?;
+
+        let pair_info = slot0.inner();
+        let client = slot1.inner();
+
+        dbg!(&pair_info);
+        dbg!(&client);
+
+        dbg!(client.get_account().await?);
+
         let decimals = 10;
         let maker_commission = 0.001;
         let taker_commission = 0.001;
@@ -97,6 +111,19 @@ impl NodeExecutor for SpotGrid {
             taker_commission,
             self.widget.grids,
         );
+
+        // tokio::spawn(async move {
+        //     let rx = slot.subscribe();
+
+        //     while let Ok(tick) = rx.recv_async().await {
+        //         dbg!(&tick);
+        //     }
+
+        //     println!("tick_stream.next().await is done");
+
+        //     #[allow(unreachable_code)]
+        //     Ok::<(), anyhow::Error>(())
+        // });
 
         Ok(())
     }
