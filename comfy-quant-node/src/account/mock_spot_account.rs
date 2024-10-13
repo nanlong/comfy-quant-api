@@ -8,9 +8,6 @@ use crate::{
 use anyhow::Result;
 use bon::Builder;
 use comfy_quant_exchange::client::{MockSpotClient, SpotClientKind};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub struct Widget {
@@ -37,8 +34,8 @@ impl MockSpotAccount {
             .commissions(widget.commissions)
             .build();
 
-        let output_slot0 = Slot::<Arc<Mutex<SpotClientKind>>>::builder()
-            .data(Arc::new(Mutex::new(client.into())))
+        let output_slot0 = Slot::<SpotClientKind>::builder()
+            .data(client.into())
             .build();
 
         ports.add_output(0, output_slot0)?;
@@ -131,18 +128,17 @@ mod tests {
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = MockSpotAccount::try_from(node)?;
 
-        let slot0 = account.ports.get_output::<Arc<Mutex<SpotClientKind>>>(0)?;
+        let slot0 = account.ports.get_output::<SpotClientKind>(0)?;
 
         let client = slot0.inner();
-        let client_guard = client.lock().await;
 
-        let balance = client_guard.get_balance("BTC").await?;
+        let balance = client.get_balance("BTC").await?;
         assert_eq!(balance.free, "10");
 
-        let balance = client_guard.get_balance("USDT").await?;
+        let balance = client.get_balance("USDT").await?;
         assert_eq!(balance.free, "10000");
 
-        let account_information = client_guard.get_account().await?;
+        let account_information = client.get_account().await?;
         assert_eq!(account_information.maker_commission, 0.001);
         assert_eq!(account_information.taker_commission, 0.001);
 

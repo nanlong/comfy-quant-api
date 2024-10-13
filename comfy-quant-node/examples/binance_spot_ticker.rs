@@ -63,8 +63,8 @@ async fn main() -> Result<()> {
     let mut node1 = BinanceSpotTicker::try_new(widget)?;
     let mut node2 = DebugNode::new();
 
-    node1.connection::<SpotPairInfo>(&mut node2, 0, 0).await?;
-    node1.connection::<Tick>(&mut node2, 1, 1).await?;
+    node1.connection::<SpotPairInfo>(&mut node2, 0, 0)?;
+    node1.connection::<Tick>(&mut node2, 1, 1)?;
 
     println!("node2.execute()");
     node2.execute().await?;

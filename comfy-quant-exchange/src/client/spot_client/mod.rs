@@ -31,7 +31,7 @@ pub trait SpotExchangeClient {
     async fn limit_sell(&self, symbol: &str, qty: f64, price: f64) -> Result<Order>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[enum_dispatch(SpotExchangeClient)]
 pub enum SpotClientKind {
     MockSpotClient(MockSpotClient),

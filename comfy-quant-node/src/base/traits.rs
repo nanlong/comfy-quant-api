@@ -21,7 +21,7 @@ pub trait NodePorts {
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
 pub trait NodeConnector {
-    async fn connection<U>(
+    fn connection<U>(
         &self,                      // 当前节点
         target: &mut dyn NodePorts, // 目标节点
         origin_slot: usize,         // 当前节点输出槽位
@@ -36,7 +36,7 @@ impl<T> NodeConnector for T
 where
     T: NodePorts + Send + Sync + 'static,
 {
-    async fn connection<U>(
+    fn connection<U>(
         &self,                      // 当前节点
         target: &mut dyn NodePorts, // 目标节点
         origin_slot: usize,         // 当前节点输出槽位

@@ -1,12 +1,20 @@
+use crate::{
+    base::traits::{NodeConnector, NodeExecutor},
+    data::{SpotPairInfo, TickStream},
+    node_kind::NodeKind,
+};
+use anyhow::Result;
+use comfy_quant_exchange::client::SpotClientKind;
 use serde::{Deserialize, Serialize};
+use std::{cell::RefCell, collections::HashMap};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Link {
     pub link_id: u32,
     pub origin_id: u32,
-    pub origin_slot: u32,
+    pub origin_slot: usize,
     pub target_id: u32,
-    pub target_slot: u32,
+    pub target_slot: usize,
     pub link_type: String,
 }
 
@@ -22,7 +30,77 @@ pub struct Workflow {
     // version: f32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+impl Workflow {
+    pub async fn execute(&self) -> Result<()> {
+        let mut deserialized_nodes = HashMap::new();
+
+        // 反序列化节点
+        for node in &self.nodes {
+            let node_kind = NodeKind::try_from((*node).clone())?;
+            deserialized_nodes.insert(node.id, RefCell::new(node_kind));
+        }
+
+        // 建立连接
+        for link in &self.links {
+            let origin_node = deserialized_nodes
+                .get(&link.origin_id)
+                .ok_or_else(|| anyhow::anyhow!("Origin node not found: {}", link.origin_id))?;
+
+            let target_node = deserialized_nodes
+                .get(&link.target_id)
+                .ok_or_else(|| anyhow::anyhow!("Target node not found: {}", link.target_id))?;
+
+            self.make_connection(&origin_node, &target_node, &link)?;
+        }
+
+        // 执行节点
+        for node in self.sorted_nodes().iter().rev() {
+            deserialized_nodes
+                .get(&node.id)
+                .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node.id))?
+                .borrow_mut()
+                .execute()
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    // 按照 order 排序
+    fn sorted_nodes(&self) -> Vec<&Node> {
+        let mut nodes_vec = self.nodes.iter().collect::<Vec<_>>();
+        nodes_vec.sort_by_key(|node| node.order);
+        nodes_vec
+    }
+
+    // 建立连接
+    fn make_connection(
+        &self,
+        origin_node: &RefCell<NodeKind>,
+        target_node: &RefCell<NodeKind>,
+        link: &Link,
+    ) -> Result<()> {
+        let origin = origin_node.borrow();
+        let target = &mut *target_node.borrow_mut();
+
+        match link.link_type.as_str() {
+            "SpotPairInfo" => {
+                origin.connection::<SpotPairInfo>(target, link.origin_slot, link.target_slot)?
+            }
+            "TickStream" => {
+                origin.connection::<TickStream>(target, link.origin_slot, link.target_slot)?
+            }
+            "SpotClient" => {
+                origin.connection::<SpotClientKind>(target, link.origin_slot, link.target_slot)?
+            }
+            _ => anyhow::bail!("Invalid link type: {}", link.link_type),
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
     pub id: u32,
     #[serde(rename = "type")]
@@ -37,7 +115,7 @@ pub struct Node {
     pub properties: Properties,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Input {
     name: String,
     #[serde(rename = "type")]
@@ -45,7 +123,7 @@ pub struct Input {
     link: Option<u32>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Output {
     name: String,
     #[serde(rename = "type")]
@@ -54,7 +132,7 @@ pub struct Output {
     slot_index: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Properties {
     #[serde(rename = "type", default)]
     pub prop_type: String,

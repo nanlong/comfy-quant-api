@@ -1,6 +1,9 @@
 use crate::{
     account::MockSpotAccount,
-    base::traits::{NodeConnector, NodeExecutor, NodePorts},
+    base::{
+        traits::{NodeExecutor, NodePorts},
+        Ports,
+    },
     exchange::BinanceSpotTickerMock,
     strategy::SpotGrid,
     workflow,
@@ -9,7 +12,7 @@ use anyhow::Result;
 use enum_dispatch::enum_dispatch;
 
 #[derive(Debug)]
-#[enum_dispatch(NodeConnector, NodeExecutor)]
+#[enum_dispatch(NodePorts, NodeExecutor)]
 pub enum NodeKind {
     BinanceSpotTickerMock(BinanceSpotTickerMock),
     MockSpotAccount(MockSpotAccount),
