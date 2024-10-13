@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Executable, PortAccessor, Ports},
+    node_core::{Executable, Port, PortAccessor},
     node_io::{SpotPairInfo, TickStream},
     workflow,
 };
@@ -10,7 +10,7 @@ use std::str::FromStr;
 
 #[allow(unused)]
 #[derive(Builder, Debug, Clone)]
-pub struct Widget {
+pub(crate) struct Widget {
     mode: Mode,                 // 网格模式
     lower_price: f64,           // 网格下界
     upper_price: f64,           // 网格上界
@@ -24,13 +24,13 @@ pub struct Widget {
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct SpotGrid {
+pub(crate) struct SpotGrid {
     pub(crate) widget: Widget,
     // inputs:
     //      0: SpotPairInfo
     //      1: SpotClient
     //      2: TickStream
-    pub(crate) ports: Ports,
+    pub(crate) port: Port,
     // 要交易的币种信息
     // pub(crate) pair: Option<Pair>,
 
@@ -48,20 +48,20 @@ pub struct SpotGrid {
 }
 
 impl SpotGrid {
-    pub fn try_new(widget: Widget) -> Result<Self> {
-        let ports = Ports::new();
+    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
+        let port = Port::new();
 
-        Ok(SpotGrid { widget, ports })
+        Ok(SpotGrid { widget, port })
     }
 }
 
 impl PortAccessor for SpotGrid {
-    fn get_ports(&self) -> Result<&Ports> {
-        Ok(&self.ports)
+    fn get_port(&self) -> Result<&Port> {
+        Ok(&self.port)
     }
 
-    fn get_ports_mut(&mut self) -> Result<&mut Ports> {
-        Ok(&mut self.ports)
+    fn get_port_mut(&mut self) -> Result<&mut Port> {
+        Ok(&mut self.port)
     }
 }
 
@@ -69,9 +69,9 @@ impl PortAccessor for SpotGrid {
 #[allow(unused)]
 impl Executable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
-        let slot0 = self.ports.get_input::<SpotPairInfo>(0)?;
-        let slot1 = self.ports.get_input::<SpotClientKind>(1)?;
-        let slot2 = self.ports.get_input::<TickStream>(2)?;
+        let slot0 = self.port.get_input::<SpotPairInfo>(0)?;
+        let slot1 = self.port.get_input::<SpotClientKind>(1)?;
+        let slot2 = self.port.get_input::<TickStream>(2)?;
 
         let pair_info = slot0.inner();
         let client = slot1.inner();
@@ -203,7 +203,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Mode {
+pub(crate) enum Mode {
     // 等差
     Arithmetic,
     // 等比

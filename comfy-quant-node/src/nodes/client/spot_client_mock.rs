@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Executable, PortAccessor, Ports, Slot},
+    node_core::{Executable, Port, PortAccessor, Slot},
     workflow,
 };
 use anyhow::Result;
@@ -10,7 +10,7 @@ use comfy_quant_exchange::client::{
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
-pub struct Widget {
+pub(crate) struct Widget {
     assets: Vec<(String, f64)>, // 币种，余额
     commissions: f64,           // 手续费
 }
@@ -18,16 +18,16 @@ pub struct Widget {
 // 模拟账户，用于交易系统回测时使用
 #[derive(Debug)]
 #[allow(unused)]
-pub struct SpotClientMock {
+pub(crate) struct SpotClientMock {
     pub(crate) widget: Widget,
     // outputs:
     //      0: SpotClient
-    pub(crate) ports: Ports,
+    pub(crate) port: Port,
 }
 
 impl SpotClientMock {
-    pub fn try_new(widget: Widget) -> Result<Self> {
-        let mut ports = Ports::new();
+    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
+        let mut port = Port::new();
 
         let client = MockSpotClient::builder()
             .assets(widget.assets.clone())
@@ -38,19 +38,19 @@ impl SpotClientMock {
             .data(client.into())
             .build();
 
-        ports.add_output(0, output_slot0)?;
+        port.add_output(0, output_slot0)?;
 
-        Ok(SpotClientMock { widget, ports })
+        Ok(SpotClientMock { widget, port })
     }
 }
 
 impl PortAccessor for SpotClientMock {
-    fn get_ports(&self) -> Result<&Ports> {
-        Ok(&self.ports)
+    fn get_port(&self) -> Result<&Port> {
+        Ok(&self.port)
     }
 
-    fn get_ports_mut(&mut self) -> Result<&mut Ports> {
-        Ok(&mut self.ports)
+    fn get_port_mut(&mut self) -> Result<&mut Port> {
+        Ok(&mut self.port)
     }
 }
 
@@ -127,7 +127,7 @@ mod tests {
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = SpotClientMock::try_from(node)?;
 
-        let slot0 = account.ports.get_output::<SpotClientKind>(0)?;
+        let slot0 = account.port.get_output::<SpotClientKind>(0)?;
 
         let client = slot0.inner();
 

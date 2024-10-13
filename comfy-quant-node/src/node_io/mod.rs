@@ -1,5 +1,5 @@
 mod spot_pair_info;
 mod tick_stream;
 
-pub use spot_pair_info::SpotPairInfo;
-pub use tick_stream::{Tick, TickStream};
+pub(crate) use spot_pair_info::SpotPairInfo;
+pub(crate) use tick_stream::{Tick, TickStream};

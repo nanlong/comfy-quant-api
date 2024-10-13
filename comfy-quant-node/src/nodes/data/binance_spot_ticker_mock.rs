@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Executable, PortAccessor, Ports, Slot},
+    node_core::{Executable, Port, PortAccessor, Slot},
     node_io::{SpotPairInfo, Tick, TickStream},
     utils::add_utc_offset,
     workflow,
@@ -23,20 +23,20 @@ const INTERVAL: &str = "1s";
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
-pub struct Widget {
-    pub base_currency: String,
-    pub quote_currency: String,
-    pub start_datetime: DateTime<Utc>,
-    pub end_datetime: DateTime<Utc>,
+pub(crate) struct Widget {
+    pub(crate) base_currency: String,
+    pub(crate) quote_currency: String,
+    pub(crate) start_datetime: DateTime<Utc>,
+    pub(crate) end_datetime: DateTime<Utc>,
 }
 
 #[derive(Debug)]
-pub struct BinanceSpotTickerMock {
-    pub widget: Widget,
+pub(crate) struct BinanceSpotTickerMock {
+    pub(crate) widget: Widget,
     // outputs:
     //      0: SpotPairInfo
     //      1: TickStream
-    pub(crate) ports: Ports,
+    pub(crate) port: Port,
 
     barrier: Arc<Barrier>,
     shutdown_tx: flume::Sender<()>,
@@ -44,8 +44,8 @@ pub struct BinanceSpotTickerMock {
 }
 
 impl BinanceSpotTickerMock {
-    pub fn try_new(widget: Widget) -> Result<Self> {
-        let mut ports = Ports::new();
+    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
+        let mut port = Port::new();
 
         let pair_info = SpotPairInfo::builder()
             .base_currency(&widget.base_currency)
@@ -57,15 +57,15 @@ impl BinanceSpotTickerMock {
         let output_slot0 = Slot::<SpotPairInfo>::builder().data(pair_info).build();
         let output_slot1 = Slot::<TickStream>::builder().data(tick_stream).build();
 
-        ports.add_output(0, output_slot0)?;
-        ports.add_output(1, output_slot1)?;
+        port.add_output(0, output_slot0)?;
+        port.add_output(1, output_slot1)?;
 
         let barrier = Arc::new(Barrier::new(2));
         let (shutdown_tx, shutdown_rx) = flume::bounded(1);
 
         Ok(BinanceSpotTickerMock {
             widget,
-            ports,
+            port,
             barrier,
             shutdown_tx,
             shutdown_rx,
@@ -73,7 +73,7 @@ impl BinanceSpotTickerMock {
     }
 
     async fn output1(&self) -> Result<()> {
-        let slot1 = self.ports.get_output::<TickStream>(1)?;
+        let slot1 = self.port.get_output::<TickStream>(1)?;
         let symbol = format!(
             "{}{}",
             self.widget.base_currency, self.widget.quote_currency
@@ -168,12 +168,12 @@ impl BinanceSpotTickerMock {
 }
 
 impl PortAccessor for BinanceSpotTickerMock {
-    fn get_ports(&self) -> Result<&Ports> {
-        Ok(&self.ports)
+    fn get_port(&self) -> Result<&Port> {
+        Ok(&self.port)
     }
 
-    fn get_ports_mut(&mut self) -> Result<&mut Ports> {
-        Ok(&mut self.ports)
+    fn get_port_mut(&mut self) -> Result<&mut Port> {
+        Ok(&mut self.port)
     }
 }
 

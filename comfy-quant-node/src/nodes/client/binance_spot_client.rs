@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Executable, PortAccessor, Ports},
+    node_core::{Executable, Port, PortAccessor},
     workflow,
 };
 use anyhow::Result;
@@ -11,39 +11,39 @@ use bon::Builder;
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 #[allow(unused)]
-pub struct Widget {
+pub(crate) struct Widget {
     api_key: String,
     secret_key: String,
 }
 
 #[allow(unused)]
-pub struct BinanceSpotClient {
+pub(crate) struct BinanceSpotClient {
     pub(crate) widget: Widget,
     // outputs:
     //      0: SpotClient
-    pub(crate) ports: Ports,
+    pub(crate) port: Port,
 }
 
 impl BinanceSpotClient {
-    pub fn try_new(widget: Widget) -> Result<Self> {
-        let ports = Ports::new();
+    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
+        let port = Port::new();
 
         // todo: 创建SpotClient
         // let output_slot0 = Slot::<Arc<Mutex<SpotClient>>>::builder().build();
 
-        // ports.add_output(0, output_slot0)?;
+        // port.add_output(0, output_slot0)?;
 
-        Ok(BinanceSpotClient { widget, ports })
+        Ok(BinanceSpotClient { widget, port })
     }
 }
 
 impl PortAccessor for BinanceSpotClient {
-    fn get_ports(&self) -> Result<&Ports> {
-        Ok(&self.ports)
+    fn get_port(&self) -> Result<&Port> {
+        Ok(&self.port)
     }
 
-    fn get_ports_mut(&mut self) -> Result<&mut Ports> {
-        Ok(&mut self.ports)
+    fn get_port_mut(&mut self) -> Result<&mut Port> {
+        Ok(&mut self.port)
     }
 }
 
@@ -106,7 +106,7 @@ mod tests {
     //     let node: workflow::Node = serde_json::from_str(json_str)?;
     //     let account = BinanceSpotClient::try_from(node)?;
 
-    //     // let _slot0 = account.ports.get_output::<Arc<Mutex<SpotClient>>>(0)?;
+    //     // let _slot0 = account.port.get_output::<Arc<Mutex<SpotClient>>>(0)?;
 
     //     // let client = slot0.data().unwrap();
 

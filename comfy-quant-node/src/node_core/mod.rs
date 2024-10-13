@@ -1,9 +1,8 @@
-mod ports;
+mod port;
 mod slot;
 mod slots;
 mod traits;
 
-pub use ports::Ports;
-pub use slot::Slot;
-pub use slots::Slots;
+pub(crate) use port::Port;
+pub(crate) use slot::Slot;
 pub use traits::{Connectable, Executable, PortAccessor};

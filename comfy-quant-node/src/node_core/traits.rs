@@ -1,4 +1,4 @@
-use crate::node_core::Ports;
+use crate::node_core::Port;
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
 
@@ -12,9 +12,9 @@ pub trait Executable {
 // 节点插槽
 #[enum_dispatch]
 pub trait PortAccessor {
-    fn get_ports(&self) -> Result<&Ports>;
+    fn get_port(&self) -> Result<&Port>;
 
-    fn get_ports_mut(&mut self) -> Result<&mut Ports>;
+    fn get_port_mut(&mut self) -> Result<&mut Port>;
 }
 
 // 节点连接
@@ -44,9 +44,9 @@ where
     where
         U: Clone + Send + Sync + 'static,
     {
-        let origin = self.get_ports()?;
+        let origin = self.get_port()?;
         let slot = origin.get_output::<U>(origin_slot)?;
-        target.get_ports_mut()?.add_input(target_slot, slot)?;
+        target.get_port_mut()?.add_input(target_slot, slot)?;
 
         Ok(())
     }

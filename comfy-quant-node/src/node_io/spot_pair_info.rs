@@ -2,9 +2,9 @@ use bon::Builder;
 
 #[derive(Debug, Clone, Builder)]
 #[builder(on(String, into))]
-pub struct SpotPairInfo {
-    pub base_currency: String,
-    pub quote_currency: String,
+pub(crate) struct SpotPairInfo {
+    pub(crate) base_currency: String,
+    pub(crate) quote_currency: String,
 }
 
 #[cfg(test)]

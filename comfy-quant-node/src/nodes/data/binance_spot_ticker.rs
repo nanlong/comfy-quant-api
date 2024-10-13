@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Executable, PortAccessor, Ports, Slot},
+    node_core::{Executable, Port, PortAccessor, Slot},
     node_io::SpotPairInfo,
     workflow,
 };
@@ -8,23 +8,23 @@ use bon::Builder;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
-pub struct Widget {
+pub(crate) struct Widget {
     base_currency: String,
     quote_currency: String,
 }
 
 #[allow(unused)]
-pub struct BinanceSpotTicker {
+pub(crate) struct BinanceSpotTicker {
     pub(crate) widget: Widget,
     // outputs:
     //      0: SpotPairInfo
     //      1: TickStream
-    pub(crate) ports: Ports,
+    pub(crate) port: Port,
 }
 
 impl BinanceSpotTicker {
-    pub fn try_new(widget: Widget) -> Result<Self> {
-        let mut ports = Ports::new();
+    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
+        let mut port = Port::new();
 
         let pair_info = SpotPairInfo::builder()
             .base_currency(&widget.base_currency)
@@ -34,14 +34,14 @@ impl BinanceSpotTicker {
         let output_slot0 = Slot::<SpotPairInfo>::builder().data(pair_info).build();
         // let output_slot1 = Slot::<Tick>::builder().channel_capacity(1024).build();
 
-        ports.add_output(0, output_slot0)?;
-        // ports.add_output(1, output_slot1)?;
+        port.add_output(0, output_slot0)?;
+        // port.add_output(1, output_slot1)?;
 
-        Ok(BinanceSpotTicker { widget, ports })
+        Ok(BinanceSpotTicker { widget, port })
     }
 
     async fn output1(&self) -> Result<()> {
-        // let slot = self.ports.get_output::<Tick>(1)?;
+        // let slot = self.port.get_output::<Tick>(1)?;
 
         // let symbol = format!(
         //     "{}{}@ticker",
@@ -71,12 +71,12 @@ impl BinanceSpotTicker {
 }
 
 impl PortAccessor for BinanceSpotTicker {
-    fn get_ports(&self) -> Result<&Ports> {
-        Ok(&self.ports)
+    fn get_port(&self) -> Result<&Port> {
+        Ok(&self.port)
     }
 
-    fn get_ports_mut(&mut self) -> Result<&mut Ports> {
-        Ok(&mut self.ports)
+    fn get_port_mut(&mut self) -> Result<&mut Port> {
+        Ok(&mut self.port)
     }
 }
 

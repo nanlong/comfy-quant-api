@@ -3,28 +3,28 @@ use bon::Builder;
 use flume::{Receiver, Sender};
 
 #[derive(Debug, Clone, Builder, PartialEq)]
-pub struct Tick {
-    pub timestamp: i64,
-    pub price: f64,
+pub(crate) struct Tick {
+    pub(crate) timestamp: i64,
+    pub(crate) price: f64,
 }
 
 #[derive(Debug, Clone, Builder)]
-pub struct TickStream {
+pub(crate) struct TickStream {
     pub(crate) channel: (Sender<Tick>, Receiver<Tick>),
 }
 
 impl TickStream {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let channel = flume::unbounded();
         TickStream { channel }
     }
 
-    pub async fn send(&self, tick: Tick) -> Result<()> {
+    pub(crate) async fn send(&self, tick: Tick) -> Result<()> {
         self.channel.0.send_async(tick).await?;
         Ok(())
     }
 
-    pub fn subscribe(&self) -> Receiver<Tick> {
+    pub(crate) fn subscribe(&self) -> Receiver<Tick> {
         self.channel.1.clone()
     }
 }

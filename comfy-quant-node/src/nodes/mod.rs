@@ -1,4 +1,4 @@
-pub mod client;
-pub mod data;
-pub mod node_kind;
-pub mod strategy;
+pub(crate) mod client;
+pub(crate) mod data;
+pub(crate) mod node_kind;
+pub(crate) mod strategy;

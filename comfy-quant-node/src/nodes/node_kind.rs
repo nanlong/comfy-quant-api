@@ -1,6 +1,6 @@
 use super::client::SpotClientMock;
 use crate::{
-    node_core::{Executable, PortAccessor, Ports},
+    node_core::{Executable, Port, PortAccessor},
     nodes::{data::BinanceSpotTickerMock, strategy::SpotGrid},
     workflow,
 };

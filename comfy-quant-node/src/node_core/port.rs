@@ -3,12 +3,12 @@ use anyhow::Result;
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub struct Ports {
+pub struct Port {
     inputs: Slots,
     outputs: Slots,
 }
 
-impl Ports {
+impl Port {
     pub fn new() -> Self {
         Self {
             inputs: Slots::new(),
@@ -66,19 +66,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ports_add_output() {
-        let mut ports = Ports::new();
+    fn test_port_add_output() {
+        let mut port = Port::new();
 
         // Add input
         let slot = Arc::new(Slot::<usize>::builder().data(5).build());
-        ports.add_input(0, slot).unwrap();
-        let slot = ports.get_input::<usize>(0).unwrap();
+        port.add_input(0, slot).unwrap();
+        let slot = port.get_input::<usize>(0).unwrap();
         assert_eq!(**slot, 5);
 
         // Add output
         let slot = Slot::<usize>::builder().data(10).build();
-        ports.add_output(0, slot).unwrap();
-        let slot = ports.get_output::<usize>(0).unwrap();
+        port.add_output(0, slot).unwrap();
+        let slot = port.get_output::<usize>(0).unwrap();
         assert_eq!(**slot, 10);
 
         // Check ref count
