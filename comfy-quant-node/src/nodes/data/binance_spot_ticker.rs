@@ -1,9 +1,9 @@
 use crate::{
-    base::{
+    node_core::{
         traits::{NodeExecutor, NodePorts},
         Ports, Slot,
     },
-    data::SpotPairInfo,
+    node_io::SpotPairInfo,
     workflow,
 };
 use anyhow::Result;

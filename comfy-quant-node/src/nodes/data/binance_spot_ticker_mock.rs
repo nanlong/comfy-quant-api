@@ -1,9 +1,9 @@
 use crate::{
-    base::{
+    node_core::{
         traits::{NodeExecutor, NodePorts},
         Ports, Slot,
     },
-    data::{SpotPairInfo, Tick, TickStream},
+    node_io::{SpotPairInfo, Tick, TickStream},
     utils::add_utc_offset,
     workflow,
 };
@@ -12,7 +12,10 @@ use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_config::app_context::APP_CONTEXT;
 use comfy_quant_database::kline;
-use comfy_quant_task::{BinanceKlinesTask, TaskExecutor, TaskStatus};
+use comfy_quant_task::{
+    task_core::{status::TaskStatus, traits::TaskExecutor},
+    tasks::binance_klines::BinanceKlinesTask,
+};
 use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::Barrier;

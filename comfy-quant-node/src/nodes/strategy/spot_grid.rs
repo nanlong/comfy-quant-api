@@ -1,9 +1,9 @@
 use crate::{
-    base::{
+    node_core::{
         traits::{NodeExecutor, NodePorts},
         Ports,
     },
-    data::{SpotPairInfo, TickStream},
+    node_io::{SpotPairInfo, TickStream},
     workflow,
 };
 use anyhow::Result;
@@ -40,8 +40,6 @@ pub struct SpotGrid {
     // 网格价格
     // pub(crate) grids: Vec<f64>,
 
-    // 客户端，执行买入卖出，订单状态查询
-    // pub(crate) order_client: Option<Box<dyn SpotOrderClient + Send>>,
     // 账户信息, 总余额、
     // pub(crate) account: Option<Account>,
 
@@ -56,11 +54,7 @@ impl SpotGrid {
     pub fn try_new(widget: Widget) -> Result<Self> {
         let ports = Ports::new();
 
-        Ok(SpotGrid {
-            widget,
-            ports,
-            // order_client: None,
-        })
+        Ok(SpotGrid { widget, ports })
     }
 }
 
@@ -84,6 +78,17 @@ impl NodeExecutor for SpotGrid {
 
         let pair_info = slot0.inner();
         let client = slot1.inner();
+
+        tokio::spawn(async move {
+            let rx = slot2.subscribe();
+
+            while let Ok(tick) = rx.recv_async().await {
+                dbg!(&tick);
+            }
+
+            #[allow(unreachable_code)]
+            Ok::<(), anyhow::Error>(())
+        });
 
         dbg!(&pair_info);
         dbg!(&client);

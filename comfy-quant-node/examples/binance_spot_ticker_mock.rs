@@ -1,12 +1,12 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use comfy_quant_node::{
-    base::{
+    node_core::{
         traits::{NodeConnector, NodeExecutor, NodePorts},
         Ports,
     },
-    data::{SpotPairInfo, TickStream},
-    exchange::{binance_spot_ticker_mock, BinanceSpotTickerMock},
+    node_io::{SpotPairInfo, TickStream},
+    nodes::data::{binance_spot_ticker_mock, BinanceSpotTickerMock},
 };
 use std::time::Duration;
 use tokio::time::sleep;

@@ -1,21 +1,21 @@
 use crate::{
-    account::MockSpotAccount,
-    base::{
+    node_core::{
         traits::{NodeExecutor, NodePorts},
         Ports,
     },
-    exchange::BinanceSpotTickerMock,
-    strategy::SpotGrid,
+    nodes::{data::BinanceSpotTickerMock, strategy::SpotGrid},
     workflow,
 };
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
 
+use super::client::spot_client_mock::SpotClientMock;
+
 #[derive(Debug)]
 #[enum_dispatch(NodePorts, NodeExecutor)]
 pub enum NodeKind {
     BinanceSpotTickerMock(BinanceSpotTickerMock),
-    MockSpotAccount(MockSpotAccount),
+    SpotClientMock(SpotClientMock),
     SpotGrid(SpotGrid),
 }
 
@@ -27,10 +27,8 @@ impl TryFrom<workflow::Node> for NodeKind {
             "data.BinanceSpotTickerMock" => Ok(Self::BinanceSpotTickerMock(
                 BinanceSpotTickerMock::try_from(node)?,
             )),
-            "account.mockSpotAccount" => {
-                Ok(Self::MockSpotAccount(MockSpotAccount::try_from(node)?))
-            }
-            "strategy.spotGrid" => Ok(Self::SpotGrid(SpotGrid::try_from(node)?)),
+            "client.SpotClientMock" => Ok(Self::SpotClientMock(SpotClientMock::try_from(node)?)),
+            "strategy.SpotGrid" => Ok(Self::SpotGrid(SpotGrid::try_from(node)?)),
             _ => anyhow::bail!("Invalid node type"),
         }
     }

@@ -1,7 +1,7 @@
 use crate::{
-    base::traits::{NodeConnector, NodeExecutor},
-    data::{SpotPairInfo, TickStream},
-    node_kind::NodeKind,
+    node_core::traits::{NodeConnector, NodeExecutor},
+    node_io::{SpotPairInfo, TickStream},
+    nodes::node_kind::NodeKind,
 };
 use anyhow::Result;
 use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;

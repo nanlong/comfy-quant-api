@@ -1,11 +1,11 @@
 use anyhow::Result;
 use comfy_quant_node::{
-    base::{
+    node_core::{
         traits::{NodeConnector, NodeExecutor, NodePorts},
         Ports,
     },
-    data::{SpotPairInfo, Tick, TickStream},
-    exchange::{binance_spot_ticker, BinanceSpotTicker},
+    node_io::{SpotPairInfo, Tick, TickStream},
+    nodes::data::{binance_spot_ticker, BinanceSpotTicker},
 };
 use std::time::Duration;
 use tokio::time::sleep;

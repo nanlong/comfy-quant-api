@@ -1,5 +1,5 @@
 use crate::{
-    base::{
+    node_core::{
         traits::{NodeExecutor, NodePorts},
         Ports, Slot,
     },
@@ -20,14 +20,14 @@ pub struct Widget {
 // 模拟账户，用于交易系统回测时使用
 #[derive(Debug)]
 #[allow(unused)]
-pub struct MockSpotAccount {
+pub struct SpotClientMock {
     pub(crate) widget: Widget,
     // outputs:
     //      0: SpotClient
     pub(crate) ports: Ports,
 }
 
-impl MockSpotAccount {
+impl SpotClientMock {
     pub fn try_new(widget: Widget) -> Result<Self> {
         let mut ports = Ports::new();
 
@@ -42,11 +42,11 @@ impl MockSpotAccount {
 
         ports.add_output(0, output_slot0)?;
 
-        Ok(MockSpotAccount { widget, ports })
+        Ok(SpotClientMock { widget, ports })
     }
 }
 
-impl NodePorts for MockSpotAccount {
+impl NodePorts for SpotClientMock {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }
@@ -56,32 +56,32 @@ impl NodePorts for MockSpotAccount {
     }
 }
 
-impl NodeExecutor for MockSpotAccount {
+impl NodeExecutor for SpotClientMock {
     async fn execute(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
-impl TryFrom<workflow::Node> for MockSpotAccount {
+impl TryFrom<workflow::Node> for SpotClientMock {
     type Error = anyhow::Error;
 
     fn try_from(node: workflow::Node) -> Result<Self> {
         if node.properties.prop_type != "account.mockSpotAccount" {
-            anyhow::bail!("Try from workflow::Node to MockSpotAccount failed: Invalid prop_type");
+            anyhow::bail!("Try from workflow::Node to SpotClientMock failed: Invalid prop_type");
         }
 
         let [commissions, assets] = node.properties.params.as_slice() else {
-            anyhow::bail!("Try from workflow::Node to MockSpotAccount failed: Invalid params");
+            anyhow::bail!("Try from workflow::Node to SpotClientMock failed: Invalid params");
         };
 
         let commissions = commissions.as_f64().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to MockSpotAccount failed: Invalid commissions"
+            "Try from workflow::Node to SpotClientMock failed: Invalid commissions"
         ))?;
 
         let assets = assets
             .as_array()
             .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to MockSpotAccount failed: Invalid assets"
+                "Try from workflow::Node to SpotClientMock failed: Invalid assets"
             ))?
             .into_iter()
             .filter_map(|asset| {
@@ -97,7 +97,7 @@ impl TryFrom<workflow::Node> for MockSpotAccount {
             .commissions(commissions)
             .build();
 
-        MockSpotAccount::try_new(widget)
+        SpotClientMock::try_new(widget)
     }
 }
 
@@ -111,7 +111,7 @@ mod tests {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.mockSpotAccount","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = MockSpotAccount::try_from(node)?;
+        let account = SpotClientMock::try_from(node)?;
 
         assert_eq!(
             account.widget.assets,
@@ -127,7 +127,7 @@ mod tests {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.mockSpotAccount","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = MockSpotAccount::try_from(node)?;
+        let account = SpotClientMock::try_from(node)?;
 
         let slot0 = account.ports.get_output::<SpotClientKind>(0)?;
 

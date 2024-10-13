@@ -1,4 +1,3 @@
-use super::{status::TaskStatus, traits::TaskExecutor};
 use anyhow::Result;
 use bon::{bon, Builder};
 use comfy_quant_database::kline;
@@ -8,6 +7,8 @@ use futures::StreamExt;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
+
+use crate::task_core::{status::TaskStatus, traits::TaskExecutor};
 
 #[derive(Builder, Clone, Debug)]
 #[builder(on(String, into))]
