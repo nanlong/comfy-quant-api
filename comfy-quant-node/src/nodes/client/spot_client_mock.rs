@@ -1,8 +1,5 @@
 use crate::{
-    node_core::{
-        traits::{NodeExecutor, NodePorts},
-        Ports, Slot,
-    },
+    node_core::{Executable, PortManager, Ports, Slot},
     workflow,
 };
 use anyhow::Result;
@@ -10,6 +7,7 @@ use bon::Builder;
 use comfy_quant_exchange::client::{
     spot_client::mock_spot_client::MockSpotClient, spot_client_kind::SpotClientKind,
 };
+
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub struct Widget {
@@ -46,7 +44,7 @@ impl SpotClientMock {
     }
 }
 
-impl NodePorts for SpotClientMock {
+impl PortManager for SpotClientMock {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }
@@ -56,7 +54,7 @@ impl NodePorts for SpotClientMock {
     }
 }
 
-impl NodeExecutor for SpotClientMock {
+impl Executable for SpotClientMock {
     async fn execute(&mut self) -> Result<()> {
         Ok(())
     }
@@ -66,7 +64,7 @@ impl TryFrom<workflow::Node> for SpotClientMock {
     type Error = anyhow::Error;
 
     fn try_from(node: workflow::Node) -> Result<Self> {
-        if node.properties.prop_type != "account.mockSpotAccount" {
+        if node.properties.prop_type != "client.SpotClientMock" {
             anyhow::bail!("Try from workflow::Node to SpotClientMock failed: Invalid prop_type");
         }
 
@@ -108,7 +106,7 @@ mod tests {
 
     #[test]
     fn test_try_from_node_to_mock_account() -> anyhow::Result<()> {
-        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.mockSpotAccount","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.SpotClientMock","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = SpotClientMock::try_from(node)?;
@@ -124,7 +122,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_account_execute() -> anyhow::Result<()> {
-        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.mockSpotAccount","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.SpotClientMock","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = SpotClientMock::try_from(node)?;

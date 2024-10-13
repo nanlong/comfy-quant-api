@@ -1,5 +1,5 @@
 use crate::{
-    node_core::traits::{NodeConnector, NodeExecutor},
+    node_core::{Connectable, Executable},
     node_io::{SpotPairInfo, TickStream},
     nodes::node_kind::NodeKind,
 };
@@ -57,15 +57,8 @@ impl Workflow {
     }
 }
 
-#[allow(async_fn_in_trait)]
-pub trait WorkflowExecutor {
-    async fn execute(&mut self) -> Result<()>;
-}
-
-impl WorkflowExecutor for Workflow {
+impl Executable for Workflow {
     async fn execute(&mut self) -> Result<()> {
-        // let mut deserialized_nodes = HashMap::new();
-
         // 反序列化节点
         for node in self.nodes.clone() {
             let node_id = node.id;

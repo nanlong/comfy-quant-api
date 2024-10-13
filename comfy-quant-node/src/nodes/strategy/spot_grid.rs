@@ -1,8 +1,5 @@
 use crate::{
-    node_core::{
-        traits::{NodeExecutor, NodePorts},
-        Ports,
-    },
+    node_core::{Executable, PortManager, Ports},
     node_io::{SpotPairInfo, TickStream},
     workflow,
 };
@@ -58,7 +55,7 @@ impl SpotGrid {
     }
 }
 
-impl NodePorts for SpotGrid {
+impl PortManager for SpotGrid {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }
@@ -70,7 +67,7 @@ impl NodePorts for SpotGrid {
 
 // 节点执行
 #[allow(unused)]
-impl NodeExecutor for SpotGrid {
+impl Executable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
         let slot0 = self.ports.get_input::<SpotPairInfo>(0)?;
         let slot1 = self.ports.get_input::<SpotClientKind>(1)?;
@@ -138,7 +135,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
     type Error = anyhow::Error;
 
     fn try_from(node: workflow::Node) -> Result<Self> {
-        if node.properties.prop_type != "strategy.spotGrid" {
+        if node.properties.prop_type != "strategy.SpotGrid" {
             anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid prop_type");
         }
 
@@ -217,11 +214,13 @@ impl FromStr for Mode {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "arithmetic" => Ok(Mode::Arithmetic),
-            "geometric" => Ok(Mode::Geometric),
-            _ => Err(anyhow::anyhow!("Invalid mode: {}", s)),
-        }
+        let mode = match s {
+            "arithmetic" => Mode::Arithmetic,
+            "geometric" => Mode::Geometric,
+            _ => anyhow::bail!("Invalid mode: {}", s),
+        };
+
+        Ok(mode)
     }
 }
 // 计算网格价格
@@ -318,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_try_from_node_to_spot_grid() -> Result<()> {
-        let json_str = r#"{"id":4,"type":"交易策略/网格(现货)","pos":[367,125],"size":{"0":210,"1":310},"flags":{},"order":1,"mode":0,"inputs":[{"name":"交易所信息","type":"exchangeData","link":null},{"name":"最新成交价格","type":"tickerStream","link":null},{"name":"账户","type":"account","link":null},{"name":"回测","type":"backtest","link":null}],"properties":{"type":"strategy.spotGrid","params":["arithmetic",1,1.1,8,1,"","","",true]}}"#;
+        let json_str = r#"{"id":4,"type":"交易策略/网格(现货)","pos":[367,125],"size":{"0":210,"1":310},"flags":{},"order":1,"mode":0,"inputs":[{"name":"交易所信息","type":"exchangeData","link":null},{"name":"最新成交价格","type":"tickerStream","link":null},{"name":"账户","type":"account","link":null},{"name":"回测","type":"backtest","link":null}],"properties":{"type":"strategy.SpotGrid","params":["arithmetic",1,1.1,8,1,"","","",true]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
 

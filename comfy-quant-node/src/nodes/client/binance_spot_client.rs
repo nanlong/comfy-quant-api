@@ -1,8 +1,5 @@
 use crate::{
-    node_core::{
-        traits::{NodeExecutor, NodePorts},
-        Ports,
-    },
+    node_core::{Executable, PortManager, Ports},
     workflow,
 };
 use anyhow::Result;
@@ -40,7 +37,7 @@ impl BinanceSpotClient {
     }
 }
 
-impl NodePorts for BinanceSpotClient {
+impl PortManager for BinanceSpotClient {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }
@@ -50,7 +47,7 @@ impl NodePorts for BinanceSpotClient {
     }
 }
 
-impl NodeExecutor for BinanceSpotClient {
+impl Executable for BinanceSpotClient {
     async fn execute(&mut self) -> Result<()> {
         Ok(())
     }

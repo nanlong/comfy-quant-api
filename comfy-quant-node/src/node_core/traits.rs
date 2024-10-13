@@ -5,13 +5,13 @@ use enum_dispatch::enum_dispatch;
 // 节点执行
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
-pub trait NodeExecutor {
+pub trait Executable {
     async fn execute(&mut self) -> Result<()>;
 }
 
 // 节点插槽
 #[enum_dispatch]
-pub trait NodePorts {
+pub trait PortManager {
     fn get_ports(&self) -> Result<&Ports>;
 
     fn get_ports_mut(&mut self) -> Result<&mut Ports>;
@@ -20,27 +20,27 @@ pub trait NodePorts {
 // 节点连接
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
-pub trait NodeConnector {
+pub trait Connectable {
     fn connection<U>(
-        &self,                      // 当前节点
-        target: &mut dyn NodePorts, // 目标节点
-        origin_slot: usize,         // 当前节点输出槽位
-        target_slot: usize,         // 目标节点输入槽位
+        &self,                        // 当前节点
+        target: &mut dyn PortManager, // 目标节点
+        origin_slot: usize,           // 当前节点输出槽位
+        target_slot: usize,           // 目标节点输入槽位
     ) -> Result<()>
     where
         U: Clone + Send + Sync + 'static;
 }
 
 // 节点连接默认实现
-impl<T> NodeConnector for T
+impl<T> Connectable for T
 where
-    T: NodePorts + Send + Sync + 'static,
+    T: PortManager + Send + Sync + 'static,
 {
     fn connection<U>(
-        &self,                      // 当前节点
-        target: &mut dyn NodePorts, // 目标节点
-        origin_slot: usize,         // 当前节点输出槽位
-        target_slot: usize,         // 目标节点输入槽位
+        &self,                        // 当前节点
+        target: &mut dyn PortManager, // 目标节点
+        origin_slot: usize,           // 当前节点输出槽位
+        target_slot: usize,           // 目标节点输入槽位
     ) -> Result<()>
     where
         U: Clone + Send + Sync + 'static,

@@ -1,10 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use comfy_quant_node::{
-    node_core::{
-        traits::{NodeConnector, NodeExecutor, NodePorts},
-        Ports,
-    },
+    node_core::{Connectable, Executable, PortManager, Ports},
     node_io::{SpotPairInfo, TickStream},
     nodes::data::{binance_spot_ticker_mock, BinanceSpotTickerMock},
 };
@@ -22,7 +19,7 @@ impl DebugNode {
     }
 }
 
-impl NodePorts for DebugNode {
+impl PortManager for DebugNode {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }
@@ -32,7 +29,7 @@ impl NodePorts for DebugNode {
     }
 }
 
-impl NodeExecutor for DebugNode {
+impl Executable for DebugNode {
     async fn execute(&mut self) -> Result<()> {
         let slot = self.ports.get_input::<SpotPairInfo>(0)?;
         let pair_info = slot.inner();

@@ -1,8 +1,5 @@
 use crate::{
-    node_core::{
-        traits::{NodeExecutor, NodePorts},
-        Ports, Slot,
-    },
+    node_core::{Executable, PortManager, Ports, Slot},
     node_io::{SpotPairInfo, Tick, TickStream},
     utils::add_utc_offset,
     workflow,
@@ -13,7 +10,7 @@ use chrono::{DateTime, Utc};
 use comfy_quant_config::app_context::APP_CONTEXT;
 use comfy_quant_database::kline;
 use comfy_quant_task::{
-    task_core::{status::TaskStatus, traits::TaskExecutor},
+    task_core::{status::TaskStatus, traits::Executable as _},
     tasks::binance_klines::BinanceKlinesTask,
 };
 use futures::StreamExt;
@@ -170,7 +167,7 @@ impl BinanceSpotTickerMock {
     }
 }
 
-impl NodePorts for BinanceSpotTickerMock {
+impl PortManager for BinanceSpotTickerMock {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }
@@ -180,7 +177,7 @@ impl NodePorts for BinanceSpotTickerMock {
     }
 }
 
-impl NodeExecutor for BinanceSpotTickerMock {
+impl Executable for BinanceSpotTickerMock {
     async fn execute(&mut self) -> Result<()> {
         self.output1().await?;
         Ok(())

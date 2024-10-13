@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-use crate::task_core::{status::TaskStatus, traits::TaskExecutor};
+use crate::task_core::{status::TaskStatus, traits::Executable};
 
 #[derive(Builder, Clone, Debug)]
 #[builder(on(String, into))]
@@ -58,7 +58,7 @@ impl BinanceKlinesTask {
     }
 }
 
-impl TaskExecutor for BinanceKlinesTask {
+impl Executable for BinanceKlinesTask {
     async fn check_data_complete(&self) -> Result<bool> {
         let store_kline_count = kline::time_range_klines_count(
             &self.db,

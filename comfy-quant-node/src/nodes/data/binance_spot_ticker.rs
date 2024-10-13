@@ -1,8 +1,5 @@
 use crate::{
-    node_core::{
-        traits::{NodeExecutor, NodePorts},
-        Ports, Slot,
-    },
+    node_core::{Executable, PortManager, Ports, Slot},
     node_io::SpotPairInfo,
     workflow,
 };
@@ -73,7 +70,7 @@ impl BinanceSpotTicker {
     }
 }
 
-impl NodePorts for BinanceSpotTicker {
+impl PortManager for BinanceSpotTicker {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }
@@ -83,7 +80,7 @@ impl NodePorts for BinanceSpotTicker {
     }
 }
 
-impl NodeExecutor for BinanceSpotTicker {
+impl Executable for BinanceSpotTicker {
     async fn execute(&mut self) -> Result<()> {
         self.output1().await?;
         Ok(())
