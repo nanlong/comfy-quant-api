@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Executable, PortManager, Ports, Slot},
+    node_core::{Executable, PortAccessor, Ports, Slot},
     workflow,
 };
 use anyhow::Result;
@@ -44,7 +44,7 @@ impl SpotClientMock {
     }
 }
 
-impl PortManager for SpotClientMock {
+impl PortAccessor for SpotClientMock {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }

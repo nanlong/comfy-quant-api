@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Executable, PortManager, Ports},
+    node_core::{Executable, PortAccessor, Ports},
     node_io::{SpotPairInfo, TickStream},
     workflow,
 };
@@ -55,7 +55,7 @@ impl SpotGrid {
     }
 }
 
-impl PortManager for SpotGrid {
+impl PortAccessor for SpotGrid {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }

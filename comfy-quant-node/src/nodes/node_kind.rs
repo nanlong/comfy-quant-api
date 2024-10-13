@@ -1,6 +1,6 @@
-use super::client::spot_client_mock::SpotClientMock;
+use super::client::SpotClientMock;
 use crate::{
-    node_core::{Executable, PortManager, Ports},
+    node_core::{Executable, PortAccessor, Ports},
     nodes::{data::BinanceSpotTickerMock, strategy::SpotGrid},
     workflow,
 };
@@ -8,7 +8,7 @@ use anyhow::Result;
 use enum_dispatch::enum_dispatch;
 
 #[derive(Debug)]
-#[enum_dispatch(PortManager, Executable)]
+#[enum_dispatch(PortAccessor, Executable)]
 pub enum NodeKind {
     // data
     BinanceSpotTickerMock(BinanceSpotTickerMock),

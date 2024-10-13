@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Executable, PortManager, Ports, Slot},
+    node_core::{Executable, PortAccessor, Ports, Slot},
     node_io::SpotPairInfo,
     workflow,
 };
@@ -70,7 +70,7 @@ impl BinanceSpotTicker {
     }
 }
 
-impl PortManager for BinanceSpotTicker {
+impl PortAccessor for BinanceSpotTicker {
     fn get_ports(&self) -> Result<&Ports> {
         Ok(&self.ports)
     }
