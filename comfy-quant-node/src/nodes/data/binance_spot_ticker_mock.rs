@@ -24,8 +24,8 @@ const INTERVAL: &str = "1s";
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub(crate) struct Widget {
-    pub(crate) base_currency: String,
-    pub(crate) quote_currency: String,
+    pub(crate) base_asset: String,
+    pub(crate) quote_asset: String,
     pub(crate) start_datetime: DateTime<Utc>,
     pub(crate) end_datetime: DateTime<Utc>,
 }
@@ -48,8 +48,8 @@ impl BinanceSpotTickerMock {
         let mut port = Port::new();
 
         let pair_info = SpotPairInfo::builder()
-            .base_currency(&widget.base_currency)
-            .quote_currency(&widget.quote_currency)
+            .base_asset(&widget.base_asset)
+            .quote_asset(&widget.quote_asset)
             .build();
         let tick_stream = TickStream::new();
 
@@ -73,11 +73,8 @@ impl BinanceSpotTickerMock {
 
     async fn output1(&self) -> Result<()> {
         let slot1 = self.port.get_output::<TickStream>(1)?;
-        let symbol = format!(
-            "{}{}",
-            self.widget.base_currency, self.widget.quote_currency
-        )
-        .to_uppercase();
+        let symbol =
+            format!("{}{}", self.widget.base_asset, self.widget.quote_asset).to_uppercase();
         let symbol_cloned = symbol.clone();
         let start_timestamp = self.widget.start_datetime.timestamp();
         let end_timestamp = self.widget.end_datetime.timestamp();
@@ -199,7 +196,7 @@ impl TryFrom<workflow::Node> for BinanceSpotTickerMock {
             );
         }
 
-        let [base_currency, quote_currency, start_datetime, end_datetime] =
+        let [base_asset, quote_asset, start_datetime, end_datetime] =
             node.properties.params.as_slice()
         else {
             anyhow::bail!(
@@ -207,12 +204,12 @@ impl TryFrom<workflow::Node> for BinanceSpotTickerMock {
             );
         };
 
-        let base_currency = base_currency.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid base_currency"
+        let base_asset = base_asset.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid base_asset"
         ))?;
 
-        let quote_currency = quote_currency.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid quote_currency"
+        let quote_asset = quote_asset.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid quote_asset"
         ))?;
 
         let start_datetime = start_datetime.as_str().ok_or(anyhow::anyhow!(
@@ -227,8 +224,8 @@ impl TryFrom<workflow::Node> for BinanceSpotTickerMock {
         let end_datetime = add_utc_offset(end_datetime)?;
 
         let widget = Widget::builder()
-            .base_currency(base_currency)
-            .quote_currency(quote_currency)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
             .start_datetime(start_datetime)
             .end_datetime(end_datetime)
             .build();

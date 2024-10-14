@@ -9,8 +9,8 @@ use bon::Builder;
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub(crate) struct Widget {
-    base_currency: String,
-    quote_currency: String,
+    base_asset: String,
+    quote_asset: String,
 }
 
 #[allow(unused)]
@@ -27,8 +27,8 @@ impl BinanceSpotTicker {
         let mut port = Port::new();
 
         let pair_info = SpotPairInfo::builder()
-            .base_currency(&widget.base_currency)
-            .quote_currency(&widget.quote_currency)
+            .base_asset(&widget.base_asset)
+            .quote_asset(&widget.quote_asset)
             .build();
 
         let pair_info_slot = Slot::<SpotPairInfo>::new(pair_info);
@@ -45,8 +45,8 @@ impl BinanceSpotTicker {
 
         // let symbol = format!(
         //     "{}{}@ticker",
-        //     self.widget.base_currency.to_lowercase(),
-        //     self.widget.quote_currency.to_lowercase()
+        //     self.widget.base_asset.to_lowercase(),
+        //     self.widget.quote_asset.to_lowercase()
         // );
 
         // todo: 从数据库推送中获取行情
@@ -95,21 +95,21 @@ impl TryFrom<workflow::Node> for BinanceSpotTicker {
             anyhow::bail!("Try from workflow::Node to binanceSpotTicker failed: Invalid prop_type");
         }
 
-        let [base_currency, quote_currency] = node.properties.params.as_slice() else {
+        let [base_asset, quote_asset] = node.properties.params.as_slice() else {
             anyhow::bail!("Try from workflow::Node to binanceSpotTicker failed: Invalid params");
         };
 
-        let base_currency = base_currency.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to binanceSpotTicker failed: Invalid base_currency"
+        let base_asset = base_asset.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to binanceSpotTicker failed: Invalid base_asset"
         ))?;
 
-        let quote_currency = quote_currency.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to binanceSpotTicker failed: Invalid quote_currency"
+        let quote_asset = quote_asset.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to binanceSpotTicker failed: Invalid quote_asset"
         ))?;
 
         let widget = Widget::builder()
-            .base_currency(base_currency)
-            .quote_currency(quote_currency)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
             .build();
 
         BinanceSpotTicker::try_new(widget)
@@ -127,8 +127,8 @@ mod tests {
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let binance_spot_ticker = BinanceSpotTicker::try_from(node)?;
 
-        assert_eq!(binance_spot_ticker.widget.base_currency, "BTC");
-        assert_eq!(binance_spot_ticker.widget.quote_currency, "USDT");
+        assert_eq!(binance_spot_ticker.widget.base_asset, "BTC");
+        assert_eq!(binance_spot_ticker.widget.quote_asset, "USDT");
         Ok(())
     }
 }

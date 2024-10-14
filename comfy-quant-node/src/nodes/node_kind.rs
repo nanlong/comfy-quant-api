@@ -49,8 +49,8 @@ mod tests {
 
         match node_kind {
             NodeKind::BinanceSpotTickerMock(node) => {
-                assert_eq!(node.widget.base_currency, "BTC");
-                assert_eq!(node.widget.quote_currency, "USDT");
+                assert_eq!(node.widget.base_asset, "BTC");
+                assert_eq!(node.widget.quote_asset, "USDT");
                 assert_eq!(
                     node.widget.start_datetime,
                     utils::add_utc_offset("2024-01-01 00:00:00")?

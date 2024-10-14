@@ -1,6 +1,6 @@
 use crate::{
     node_core::{Executable, Port, PortAccessor},
-    node_io::{SpotPairInfo, TickStream},
+    node_io::{SpotPairInfo, Tick, TickStream},
     utils::{floor_to, round_to},
     workflow,
 };
@@ -8,9 +8,10 @@ use anyhow::Result;
 use bon::{bon, Builder};
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, OrderSide},
-    spot_client_kind::SpotClientKind,
+    spot_client_kind::{SpotClientKind, SpotExchangeClient},
 };
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
+use tokio::sync::Mutex;
 
 const PRICE_TOLERANCE: f64 = 0.005; // 0.5% 价格容忍度
 
@@ -28,28 +29,20 @@ pub(crate) struct Widget {
     sell_all_on_stop: bool,     // 是否在止损时卖出所有基准币，默认为true
 }
 
+/// 网格交易
+/// inputs:
+///      0: SpotPairInfo
+///      1: SpotClient
+///      2: TickStream
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct SpotGrid {
-    pub(crate) widget: Widget,
-    // inputs:
-    //      0: SpotPairInfo
-    //      1: SpotClient
-    //      2: TickStream
-    pub(crate) port: Port,
-
-    // 网格
-    pub(crate) grid: Option<Grid>,
-    // 账户信息, 总余额、
-    // pub(crate) account: Option<Account>,
-
-    // 持仓信息
-    // pub(crate) position: {base_currency: f64, quote_currency: f64},
-
-    // 订单信息，提交 - 确认，流程完成后删除
-    // pub(crate) orders: Vec<Order>,
-    shutdown_tx: flume::Sender<()>,
-    shutdown_rx: flume::Receiver<()>,
+    widget: Widget,                   // 前端配置
+    port: Port,                       // 输入输出
+    grid: Option<Arc<Mutex<Grid>>>,   // 网格
+    initialized: bool,                // 是否初始化
+    shutdown_tx: flume::Sender<()>,   // 关闭信号
+    shutdown_rx: flume::Receiver<()>, // 关闭信号
 }
 
 impl SpotGrid {
@@ -62,9 +55,60 @@ impl SpotGrid {
             widget,
             port,
             grid,
+            initialized: false,
             shutdown_tx,
             shutdown_rx,
         })
+    }
+
+    pub(crate) async fn initialize(
+        &mut self,
+        pair_info: &SpotPairInfo,
+        client: &SpotClientKind,
+        current_price: f64,
+    ) -> Result<()> {
+        if self.initialized {
+            return Ok(());
+        }
+
+        let balance = client.get_balance(&pair_info.quote_asset).await?;
+
+        if balance.free.parse::<f64>()? < self.widget.investment {
+            anyhow::bail!("Insufficient free balance");
+        }
+
+        let symbol_info = client
+            .get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset)
+            .await?;
+        let account = client.get_account().await?;
+        let base_asset_precision = symbol_info.base_asset_precision as u32;
+        let quote_asset_precision = symbol_info.quote_asset_precision as u32;
+        let commission = account.taker_commission as f64;
+
+        // 计算网格价格
+        let grid_prices = calc_grid_prices(
+            &self.widget.mode,
+            self.widget.lower_price,
+            self.widget.upper_price,
+            self.widget.grid_count,
+            quote_asset_precision,
+        );
+
+        // 创建网格
+        let grid = Grid::builder()
+            .investment(self.widget.investment)
+            .grid_prices(grid_prices)
+            .current_price(current_price)
+            .base_asset_precision(base_asset_precision)
+            .quote_asset_precision(quote_asset_precision)
+            .commission(commission)
+            .build();
+
+        self.grid = Some(Arc::new(Mutex::new(grid)));
+
+        self.initialized = true;
+
+        Ok(())
     }
 }
 
@@ -86,45 +130,18 @@ impl Executable for SpotGrid {
         let pair_info = self.port.get_input::<SpotPairInfo>(0)?;
         let client = self.port.get_input::<SpotClientKind>(1)?;
         let tick_stream = self.port.get_input::<TickStream>(2)?;
-        let tick_rx = tick_stream.subscribe();
+
+        let current_price = tick_stream.subscribe().recv_async().await?.price;
+        self.initialize(&pair_info, &client, current_price).await?;
+
         let shutdown_rx = self.shutdown_rx.clone();
-        let current_price = tick_rx.recv_async().await?.price;
-
-        // 计算网格价格
-        let grid_prices = calc_grid_prices(
-            &self.widget.mode,
-            self.widget.lower_price,
-            self.widget.upper_price,
-            self.widget.grid_count,
-            6,
-        );
-
-        // 创建网格
-        let grid = Grid::builder()
-            .investment(self.widget.investment)
-            .grid_prices(grid_prices)
-            .current_price(current_price)
-            .base_currency_decimals(6)
-            .quote_currency_decimals(6)
-            .commission(0.001)
-            .build();
-
-        self.grid = Some(grid);
-
-        let decimals = 10;
-        let maker_commission = 0.001;
-        let taker_commission = 0.001;
+        let widget = self.widget.clone();
+        let grid = self.grid.clone().expect("Grid not initialized");
+        let tick_rx = tick_stream.subscribe();
 
         tokio::spawn(async move {
             tokio::select! {
-                _ = async {
-                    while let Ok(tick) = tick_rx.recv_async().await {
-                        // dbg!(&tick);
-                    }
-
-                    #[allow(unreachable_code)]
-                    Ok::<(), anyhow::Error>(())
-                } => {}
+                _ = spot_grid_execute(&widget, &pair_info, &client, &grid, &tick_rx) => {}
                 _ = shutdown_rx.recv_async() => {
                     tracing::info!("SpotGrid shutdown");
                 }
@@ -133,6 +150,57 @@ impl Executable for SpotGrid {
 
         Ok(())
     }
+}
+
+async fn spot_grid_execute(
+    widget: &Widget,
+    pair_info: &SpotPairInfo,
+    client: &SpotClientKind,
+    grid: &Arc<Mutex<Grid>>,
+    tick_rx: &flume::Receiver<Tick>,
+) -> Result<()> {
+    while let Ok(tick) = tick_rx.recv_async().await {
+        let mut grid_guard = grid.lock().await;
+        let signal = grid_guard.evaluate_with_price(&widget, tick.price);
+
+        if let Some(signal) = signal {
+            match signal {
+                TradeSignal::Buy(quantity) => {
+                    let order = client
+                        .market_buy(&pair_info.base_asset, &pair_info.quote_asset, quantity)
+                        .await?;
+                    grid_guard.update_with_order(&signal, &order);
+                }
+                TradeSignal::Sell(quantity) => {
+                    let order = client
+                        .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
+                        .await?;
+                    grid_guard.update_with_order(&signal, &order);
+                }
+                TradeSignal::StopLoss(sell_all) => {
+                    if sell_all {
+                        let balance = client.get_balance(&pair_info.base_asset).await?;
+                        let quantity = balance.free.parse::<f64>()?;
+                        let order = client
+                            .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
+                            .await?;
+                        grid_guard.update_with_order(&signal, &order);
+                    }
+                }
+                TradeSignal::TakeProfit => {
+                    let balance = client.get_balance(&pair_info.base_asset).await?;
+                    let quantity = balance.free.parse::<f64>()?;
+                    let order = client
+                        .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
+                        .await?;
+                    grid_guard.update_with_order(&signal, &order);
+                }
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    Ok::<(), anyhow::Error>(())
 }
 
 impl Drop for SpotGrid {
@@ -258,25 +326,25 @@ pub(crate) enum TradeSignal {
 impl Grid {
     #[builder]
     fn new(
-        investment: f64,              // 投资金额
-        grid_prices: Vec<f64>,        // 网格价格
-        current_price: f64,           // 当前价格
-        base_currency_decimals: u32,  // 基础币种小数点位数
-        quote_currency_decimals: u32, // 报价币种小数点位数
-        commission: f64,              // 手续费
+        investment: f64,            // 投资金额
+        grid_prices: Vec<f64>,      // 网格价格
+        current_price: f64,         // 当前价格
+        base_asset_precision: u32,  // 基础币种小数点位数
+        quote_asset_precision: u32, // 报价币种小数点位数
+        commission: f64,            // 手续费
     ) -> Self {
         let grid_investment = floor_to(
             investment / (grid_prices.len() - 1) as f64,
-            quote_currency_decimals,
+            quote_asset_precision,
         );
 
         let rows = grid_prices
             .windows(2)
             .enumerate()
             .map(|(i, w)| {
-                let buy_quantity = floor_to(grid_investment / w[0], base_currency_decimals);
+                let buy_quantity = floor_to(grid_investment / w[0], base_asset_precision);
                 let sell_quantity =
-                    floor_to(buy_quantity * (1. - commission), base_currency_decimals);
+                    floor_to(buy_quantity * (1. - commission), base_asset_precision);
 
                 let grid_row = GridRow::builder()
                     .index(i)
@@ -402,7 +470,7 @@ impl Grid {
     }
 
     /// 更新网格状态
-    fn update_with_order(&mut self, order: Order) {
+    fn update_with_order(&mut self, signal: &TradeSignal, order: &Order) {
         let current_grid = self.current_grid_mut();
 
         match order.side {
@@ -458,23 +526,23 @@ pub(crate) struct GridRow {
 
 // 计算网格价格
 fn calc_grid_prices(
-    mode: &Mode,                  // 网格模式
-    lower_price: f64,             // 网格下界
-    upper_price: f64,             // 网格上界
-    grid_count: u64,              // 网格数量
-    quote_currency_decimals: u32, // 小数点位数
+    mode: &Mode,                // 网格模式
+    lower_price: f64,           // 网格下界
+    upper_price: f64,           // 网格上界
+    grid_count: u64,            // 网格数量
+    quote_asset_precision: u32, // 小数点位数
 ) -> Vec<f64> {
     match mode {
         Mode::Arithmetic => {
             let step = (upper_price - lower_price) / grid_count as f64;
             (0..=grid_count)
-                .map(|i| round_to(lower_price + step * i as f64, quote_currency_decimals))
+                .map(|i| round_to(lower_price + step * i as f64, quote_asset_precision))
                 .collect()
         }
         Mode::Geometric => {
             let step = (upper_price / lower_price).powf(1.0 / grid_count as f64);
             (0..=grid_count)
-                .map(|i| round_to(lower_price * step.powi(i as i32), quote_currency_decimals))
+                .map(|i| round_to(lower_price * step.powi(i as i32), quote_asset_precision))
                 .collect()
         }
     }
@@ -615,8 +683,8 @@ mod tests {
             .sell_all_on_stop(true)
             .build();
 
-        let base_currency_decimals = 2;
-        let quote_currency_decimals = 3;
+        let base_asset_precision = 2;
+        let quote_asset_precision = 3;
         let commission = 0.001;
 
         let grid_prices = calc_grid_prices(
@@ -624,14 +692,14 @@ mod tests {
             widget.lower_price,
             widget.upper_price,
             widget.grid_count,
-            quote_currency_decimals,
+            quote_asset_precision,
         );
 
         let mut grid = Grid::builder()
             .investment(widget.investment)
             .grid_prices(grid_prices)
-            .base_currency_decimals(base_currency_decimals)
-            .quote_currency_decimals(quote_currency_decimals)
+            .base_asset_precision(base_asset_precision)
+            .quote_asset_precision(quote_asset_precision)
             .current_price(4.25)
             .commission(commission)
             .build();
@@ -663,7 +731,7 @@ mod tests {
             .update_time(0)
             .build();
 
-        grid.update_with_order(order);
+        grid.update_with_order(&signal.unwrap(), &order);
 
         assert_eq!(grid.current_grid().buyed, true);
         assert_eq!(grid.locked, false);
@@ -688,7 +756,7 @@ mod tests {
             .update_time(0)
             .build();
 
-        grid.update_with_order(order);
+        grid.update_with_order(&signal.unwrap(), &order);
 
         assert_eq!(grid.current_grid().sold, true);
         assert_eq!(grid.locked, false);

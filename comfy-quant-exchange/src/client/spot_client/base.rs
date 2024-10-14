@@ -6,6 +6,15 @@ pub struct AccountInformation {
     pub taker_commission: f32,
 }
 
+#[derive(Builder, Debug)]
+pub struct SymbolInformation {
+    pub symbol: String,
+    pub base_asset: String,
+    pub quote_asset: String,
+    pub base_asset_precision: u64,
+    pub quote_asset_precision: u64,
+}
+
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub struct Balance {

@@ -1,4 +1,6 @@
-use super::base::{AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType};
+use super::base::{
+    AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType, SymbolInformation,
+};
 use crate::client::spot_client_kind::SpotExchangeClient;
 use anyhow::Result;
 use bon::bon;
@@ -126,6 +128,14 @@ impl MockSpotClient {
 
         Ok(())
     }
+
+    fn to_symbol(base_asset: &str, quote_asset: &str) -> String {
+        format!(
+            "{}{}",
+            base_asset.to_uppercase(),
+            quote_asset.to_uppercase()
+        )
+    }
 }
 
 impl SpotExchangeClient for MockSpotClient {
@@ -135,6 +145,26 @@ impl SpotExchangeClient for MockSpotClient {
         Ok(AccountInformation::builder()
             .maker_commission(data.commissions.unwrap_or(0.001) as f32)
             .taker_commission(data.commissions.unwrap_or(0.001) as f32)
+            .build())
+    }
+
+    async fn get_symbol_info(
+        &self,
+        base_asset: &str,
+        quote_asset: &str,
+    ) -> Result<SymbolInformation> {
+        let symbol = format!(
+            "{}{}",
+            base_asset.to_uppercase(),
+            quote_asset.to_uppercase()
+        );
+
+        Ok(SymbolInformation::builder()
+            .symbol(symbol)
+            .base_asset(base_asset.to_string())
+            .quote_asset(quote_asset.to_string())
+            .base_asset_precision(3)
+            .quote_asset_precision(3)
             .build())
     }
 
@@ -164,15 +194,22 @@ impl SpotExchangeClient for MockSpotClient {
         Ok(order)
     }
 
-    async fn market_buy(&self, _symbol: &str, _qty: f64) -> Result<Order> {
+    async fn market_buy(&self, _base_asset: &str, _quote_asset: &str, _qty: f64) -> Result<Order> {
         unimplemented!()
     }
 
-    async fn market_sell(&self, _symbol: &str, _qty: f64) -> Result<Order> {
+    async fn market_sell(&self, _base_asset: &str, _quote_asset: &str, _qty: f64) -> Result<Order> {
         unimplemented!()
     }
 
-    async fn limit_buy(&self, symbol: &str, qty: f64, price: f64) -> Result<Order> {
+    async fn limit_buy(
+        &self,
+        base_asset: &str,
+        quote_asset: &str,
+        qty: f64,
+        price: f64,
+    ) -> Result<Order> {
+        let symbol = Self::to_symbol(base_asset, quote_asset);
         let mut data = self.data.lock().await;
         data.order_id += 1;
 
@@ -192,7 +229,14 @@ impl SpotExchangeClient for MockSpotClient {
         Ok(order)
     }
 
-    async fn limit_sell(&self, symbol: &str, qty: f64, price: f64) -> Result<Order> {
+    async fn limit_sell(
+        &self,
+        base_asset: &str,
+        quote_asset: &str,
+        qty: f64,
+        price: f64,
+    ) -> Result<Order> {
+        let symbol = Self::to_symbol(base_asset, quote_asset);
         let mut data = self.data.lock().await;
         data.order_id += 1;
 

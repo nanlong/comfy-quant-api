@@ -4,8 +4,8 @@ use bon::Builder;
 #[builder(on(String, into))]
 #[allow(unused)]
 pub(crate) struct SpotPairInfo {
-    pub(crate) base_currency: String,
-    pub(crate) quote_currency: String,
+    pub(crate) base_asset: String,
+    pub(crate) quote_asset: String,
 }
 
 #[cfg(test)]
@@ -15,11 +15,11 @@ mod tests {
     #[test]
     fn test_exchange_info_builder() {
         let exchange = SpotPairInfo::builder()
-            .base_currency("BTC")
-            .quote_currency("USDT")
+            .base_asset("BTC")
+            .quote_asset("USDT")
             .build();
 
-        assert_eq!(exchange.base_currency, "BTC");
-        assert_eq!(exchange.quote_currency, "USDT");
+        assert_eq!(exchange.base_asset, "BTC");
+        assert_eq!(exchange.quote_asset, "USDT");
     }
 }
