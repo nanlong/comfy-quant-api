@@ -143,8 +143,8 @@ impl SpotExchangeClient for MockSpotClient {
         let data = self.data.lock().await;
 
         Ok(AccountInformation::builder()
-            .maker_commission(data.commissions.unwrap_or(0.001) as f32)
-            .taker_commission(data.commissions.unwrap_or(0.001) as f32)
+            .maker_commission(data.commissions.unwrap_or(0.001))
+            .taker_commission(data.commissions.unwrap_or(0.001))
             .build())
     }
 

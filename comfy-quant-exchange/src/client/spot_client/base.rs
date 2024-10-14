@@ -2,8 +2,8 @@ use bon::Builder;
 
 #[derive(Builder, Debug)]
 pub struct AccountInformation {
-    pub maker_commission: f32,
-    pub taker_commission: f32,
+    pub maker_commission: f64,
+    pub taker_commission: f64,
 }
 
 #[derive(Builder, Debug)]
@@ -11,8 +11,8 @@ pub struct SymbolInformation {
     pub symbol: String,
     pub base_asset: String,
     pub quote_asset: String,
-    pub base_asset_precision: u64,
-    pub quote_asset_precision: u64,
+    pub base_asset_precision: u32,
+    pub quote_asset_precision: u32,
 }
 
 #[derive(Builder, Debug, Clone)]

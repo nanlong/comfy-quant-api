@@ -21,7 +21,7 @@ pub(crate) struct Widget {
     mode: Mode,                 // 网格模式
     lower_price: f64,           // 网格下界
     upper_price: f64,           // 网格上界
-    grid_count: u64,            // 网格数量
+    grid_rows: u64,             // 网格数量
     investment: f64,            // 投资金额
     trigger_price: Option<f64>, // 触发价格
     stop_loss: Option<f64>,     // 止损价格
@@ -49,13 +49,14 @@ impl SpotGrid {
     pub(crate) fn new(widget: Widget) -> Result<Self> {
         let port = Port::new();
         let grid = None;
+        let initialized = false;
         let (shutdown_tx, shutdown_rx) = flume::bounded(1);
 
         Ok(SpotGrid {
             widget,
             port,
             grid,
-            initialized: false,
+            initialized,
             shutdown_tx,
             shutdown_rx,
         })
@@ -81,16 +82,16 @@ impl SpotGrid {
             .get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset)
             .await?;
         let account = client.get_account().await?;
-        let base_asset_precision = symbol_info.base_asset_precision as u32;
-        let quote_asset_precision = symbol_info.quote_asset_precision as u32;
-        let commission = account.taker_commission as f64;
+        let base_asset_precision = symbol_info.base_asset_precision;
+        let quote_asset_precision = symbol_info.quote_asset_precision;
+        let commission = account.taker_commission;
 
         // 计算网格价格
         let grid_prices = calc_grid_prices(
             &self.widget.mode,
             self.widget.lower_price,
             self.widget.upper_price,
-            self.widget.grid_count,
+            self.widget.grid_rows,
             quote_asset_precision,
         );
 
@@ -217,7 +218,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
             anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid prop_type");
         }
 
-        let [mode, lower_price, upper_price, grid_count, investment, trigger_price, stop_loss, take_profit, sell_all_on_stop] =
+        let [mode, lower_price, upper_price, grid_rows, investment, trigger_price, stop_loss, take_profit, sell_all_on_stop] =
             node.properties.params.as_slice()
         else {
             anyhow::bail!("Try from workflow::Node to BinanceSubAccount failed: Invalid params");
@@ -244,12 +245,12 @@ impl TryFrom<workflow::Node> for SpotGrid {
             );
         }
 
-        let grid_count = grid_count.as_u64().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to SpotGrid failed: Invalid grid_count"
+        let grid_rows = grid_rows.as_u64().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to SpotGrid failed: Invalid grid_rows"
         ))?;
 
-        if !(2..150).contains(&grid_count) {
-            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid grid_count");
+        if !(2..150).contains(&grid_rows) {
+            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid grid_rows");
         }
 
         let investment = investment.as_f64().ok_or(anyhow::anyhow!(
@@ -268,7 +269,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
             .mode(mode)
             .lower_price(lower_price)
             .upper_price(upper_price)
-            .grid_count(grid_count)
+            .grid_rows(grid_rows)
             .investment(investment)
             .maybe_trigger_price(trigger_price)
             .maybe_stop_loss(stop_loss)
@@ -529,19 +530,19 @@ fn calc_grid_prices(
     mode: &Mode,                // 网格模式
     lower_price: f64,           // 网格下界
     upper_price: f64,           // 网格上界
-    grid_count: u64,            // 网格数量
+    grid_rows: u64,             // 网格数量
     quote_asset_precision: u32, // 小数点位数
 ) -> Vec<f64> {
     match mode {
         Mode::Arithmetic => {
-            let step = (upper_price - lower_price) / grid_count as f64;
-            (0..=grid_count)
+            let step = (upper_price - lower_price) / grid_rows as f64;
+            (0..=grid_rows)
                 .map(|i| round_to(lower_price + step * i as f64, quote_asset_precision))
                 .collect()
         }
         Mode::Geometric => {
-            let step = (upper_price / lower_price).powf(1.0 / grid_count as f64);
-            (0..=grid_count)
+            let step = (upper_price / lower_price).powf(1.0 / grid_rows as f64);
+            (0..=grid_rows)
                 .map(|i| round_to(lower_price * step.powi(i as i32), quote_asset_precision))
                 .collect()
         }
@@ -563,11 +564,11 @@ fn calculate_grid_profit(
     lower_price: f64,      // 网格下界
     upper_price: f64,      // 网格上界
     taker_commission: f64, // 手续费
-    grid_count: u64,       // 网格数量
+    grid_rows: u64,        // 网格数量
 ) -> GridProfitRate {
     match mode {
         Mode::Arithmetic => {
-            let step = (upper_price - lower_price) / grid_count as f64;
+            let step = (upper_price - lower_price) / grid_rows as f64;
             let max_profit_rate =
                 (1. - taker_commission) * step / lower_price - 2. * taker_commission;
             let min_profit_rate = (upper_price * (1. - taker_commission)) / (upper_price - step)
@@ -580,7 +581,7 @@ fn calculate_grid_profit(
             }
         }
         Mode::Geometric => {
-            let step = (upper_price / lower_price).powf(1.0 / grid_count as f64);
+            let step = (upper_price / lower_price).powf(1.0 / grid_rows as f64);
             let profit_rate = (1. - taker_commission) * step - 1. - taker_commission;
 
             GridProfitRate::Geometric {
@@ -596,7 +597,7 @@ fn calculate_minimum_investment(
     min_notional: Option<f64>, // 最小名义价值
     upper_price: f64,          // 网格上界
     lower_price: f64,          // 网格下界
-    grid_count: u32,           // 网格数量
+    grid_rows: u32,            // 网格数量
     current_price: f64,        // 当前价格
 ) -> f64 {
     todo!()
@@ -604,9 +605,8 @@ fn calculate_minimum_investment(
 
 #[cfg(test)]
 mod tests {
-    use comfy_quant_exchange::client::spot_client::base::{OrderStatus, OrderType};
-
     use super::*;
+    use comfy_quant_exchange::client::spot_client::base::{OrderStatus, OrderType};
 
     #[test]
     fn test_try_from_node_to_spot_grid() -> Result<()> {
@@ -619,7 +619,7 @@ mod tests {
         assert_eq!(spot_grid.widget.mode, Mode::Arithmetic);
         assert_eq!(spot_grid.widget.lower_price, 1.0);
         assert_eq!(spot_grid.widget.upper_price, 1.1);
-        assert_eq!(spot_grid.widget.grid_count, 8);
+        assert_eq!(spot_grid.widget.grid_rows, 8);
         assert_eq!(spot_grid.widget.investment, 1.0);
         assert_eq!(spot_grid.widget.trigger_price, None);
         assert_eq!(spot_grid.widget.stop_loss, None);
@@ -630,7 +630,7 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_grid_count() -> Result<()> {
+    fn test_calculate_grid_rows() -> Result<()> {
         let grid_prices = calc_grid_prices(&Mode::Arithmetic, 1.0, 1.1, 8, 3);
         assert_eq!(
             grid_prices,
@@ -678,7 +678,7 @@ mod tests {
             .mode(Mode::Geometric)
             .lower_price(4.0)
             .upper_price(20.0)
-            .grid_count(10)
+            .grid_rows(10)
             .investment(1000.0)
             .sell_all_on_stop(true)
             .build();
@@ -691,7 +691,7 @@ mod tests {
             &widget.mode,
             widget.lower_price,
             widget.upper_price,
-            widget.grid_count,
+            widget.grid_rows,
             quote_asset_precision,
         );
 
