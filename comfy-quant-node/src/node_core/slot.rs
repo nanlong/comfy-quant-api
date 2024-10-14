@@ -1,4 +1,3 @@
-use bon::bon;
 use std::{
     fmt,
     ops::{Deref, DerefMut},
@@ -21,29 +20,11 @@ impl<T> DerefMut for Slot<T> {
     }
 }
 
-#[bon]
 impl<T> Slot<T>
 where
     T: Clone + fmt::Debug + Send + Sync + 'static,
 {
-    #[builder]
     pub fn new(data: T) -> Self {
         Slot(data)
-    }
-
-    pub fn inner(&self) -> &T {
-        &self.0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_slot_builder() -> anyhow::Result<()> {
-        let slot = Slot::<usize>::builder().data(10).build();
-        assert_eq!(slot.inner(), &10);
-        Ok(())
     }
 }

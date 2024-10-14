@@ -34,11 +34,9 @@ impl SpotClientMock {
             .commissions(widget.commissions)
             .build();
 
-        let output_slot0 = Slot::<SpotClientKind>::builder()
-            .data(client.into())
-            .build();
+        let client_slot = Slot::<SpotClientKind>::new(client.into());
 
-        port.add_output(0, output_slot0)?;
+        port.add_output(0, client_slot)?;
 
         Ok(SpotClientMock { widget, port })
     }
@@ -127,9 +125,7 @@ mod tests {
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = SpotClientMock::try_from(node)?;
 
-        let slot0 = account.port.get_output::<SpotClientKind>(0)?;
-
-        let client = slot0.inner();
+        let client = account.port.get_output::<SpotClientKind>(0)?;
 
         let balance = client.get_balance("BTC").await?;
         assert_eq!(balance.free, "10");

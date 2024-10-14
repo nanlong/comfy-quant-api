@@ -70,13 +70,13 @@ mod tests {
         let mut port = Port::new();
 
         // Add input
-        let slot = Arc::new(Slot::<usize>::builder().data(5).build());
+        let slot = Arc::new(Slot::<usize>::new(5));
         port.add_input(0, slot).unwrap();
         let slot = port.get_input::<usize>(0).unwrap();
         assert_eq!(**slot, 5);
 
         // Add output
-        let slot = Slot::<usize>::builder().data(10).build();
+        let slot = Slot::<usize>::new(10);
         port.add_output(0, slot).unwrap();
         let slot = port.get_output::<usize>(0).unwrap();
         assert_eq!(**slot, 10);

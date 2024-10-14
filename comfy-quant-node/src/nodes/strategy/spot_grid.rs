@@ -1,12 +1,15 @@
 use crate::{
     node_core::{Executable, Port, PortAccessor},
     node_io::{SpotPairInfo, TickStream},
+    utils::{floor_to, round_to},
     workflow,
 };
 use anyhow::Result;
-use bon::Builder;
-use comfy_quant_exchange::client::spot_client_kind::{SpotClientKind, SpotExchangeClient};
+use bon::{bon, Builder};
+use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
 use std::str::FromStr;
+
+const PRICE_TOLERANCE: f64 = 0.005; // 0.5% 价格容忍度
 
 #[allow(unused)]
 #[derive(Builder, Debug, Clone)]
@@ -14,7 +17,7 @@ pub(crate) struct Widget {
     mode: Mode,                 // 网格模式
     lower_price: f64,           // 网格下界
     upper_price: f64,           // 网格上界
-    grids: u64,                 // 网格数量
+    grid_count: u64,            // 网格数量
     investment: f64,            // 投资金额
     trigger_price: Option<f64>, // 触发价格
     stop_loss: Option<f64>,     // 止损价格
@@ -31,12 +34,9 @@ pub(crate) struct SpotGrid {
     //      1: SpotClient
     //      2: TickStream
     pub(crate) port: Port,
-    // 要交易的币种信息
-    // pub(crate) pair: Option<Pair>,
 
-    // 网格价格
-    // pub(crate) grids: Vec<f64>,
-
+    // 网格
+    pub(crate) grid: Option<Grid>,
     // 账户信息, 总余额、
     // pub(crate) account: Option<Account>,
 
@@ -48,10 +48,12 @@ pub(crate) struct SpotGrid {
 }
 
 impl SpotGrid {
-    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
-        let port = Port::new();
-
-        Ok(SpotGrid { widget, port })
+    pub(crate) fn new(widget: Widget) -> Result<Self> {
+        Ok(SpotGrid {
+            widget,
+            port: Port::new(),
+            grid: None,
+        })
     }
 }
 
@@ -69,63 +71,50 @@ impl PortAccessor for SpotGrid {
 #[allow(unused)]
 impl Executable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
-        let slot0 = self.port.get_input::<SpotPairInfo>(0)?;
-        let slot1 = self.port.get_input::<SpotClientKind>(1)?;
-        let slot2 = self.port.get_input::<TickStream>(2)?;
+        // 获取输入
+        let pair_info = self.port.get_input::<SpotPairInfo>(0)?;
+        let client = self.port.get_input::<SpotClientKind>(1)?;
+        let tick_stream = self.port.get_input::<TickStream>(2)?;
+        let rx = tick_stream.subscribe();
+        let current_price = rx.recv_async().await?.price;
 
-        let pair_info = slot0.inner();
-        let client = slot1.inner();
-
-        tokio::spawn(async move {
-            let rx = slot2.subscribe();
-
-            while let Ok(tick) = rx.recv_async().await {
-                dbg!(&tick);
-            }
-
-            #[allow(unreachable_code)]
-            Ok::<(), anyhow::Error>(())
-        });
-
-        dbg!(&pair_info);
-        dbg!(&client);
-
-        dbg!(client.get_account().await?);
-
+        self.grid = Some(
+            Grid::builder()
+                .investment(self.widget.investment)
+                .grid_prices(calc_grid_prices(
+                    &self.widget.mode,
+                    self.widget.lower_price,
+                    self.widget.upper_price,
+                    self.widget.grid_count,
+                    6,
+                ))
+                .current_price(current_price)
+                .base_currency_decimals(6)
+                .quote_currency_decimals(6)
+                .commission(0.001)
+                .build(),
+        );
         let decimals = 10;
         let maker_commission = 0.001;
         let taker_commission = 0.001;
 
         // 根据最低价、最高价、网格数量计算网格价格
-        let grids = calculate_grids(
-            self.widget.mode.clone(),
-            self.widget.lower_price,
-            self.widget.upper_price,
-            self.widget.grids,
-            decimals,
-        );
+        // self.grid_count = calculate_grid_count(
+        //     self.widget.mode.clone(),
+        //     self.widget.lower_price,
+        //     self.widget.upper_price,
+        //     self.widget.grid_count,
+        //     decimals,
+        // );
 
-        // 计算每格利润率
-        let profit = calculate_grid_profit(
-            self.widget.mode.clone(),
-            self.widget.lower_price,
-            self.widget.upper_price,
-            taker_commission,
-            self.widget.grids,
-        );
+        tokio::spawn(async move {
+            while let Ok(tick) = rx.recv_async().await {
+                // dbg!(&tick);
+            }
 
-        // tokio::spawn(async move {
-        //     let rx = slot.subscribe();
-
-        //     while let Ok(tick) = rx.recv_async().await {
-        //         dbg!(&tick);
-        //     }
-
-        //     println!("tick_stream.next().await is done");
-
-        //     #[allow(unreachable_code)]
-        //     Ok::<(), anyhow::Error>(())
-        // });
+            #[allow(unreachable_code)]
+            Ok::<(), anyhow::Error>(())
+        });
 
         Ok(())
     }
@@ -139,7 +128,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
             anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid prop_type");
         }
 
-        let [mode, lower_price, upper_price, grids, investment, trigger_price, stop_loss, take_profit, sell_all_on_stop] =
+        let [mode, lower_price, upper_price, grid_count, investment, trigger_price, stop_loss, take_profit, sell_all_on_stop] =
             node.properties.params.as_slice()
         else {
             anyhow::bail!("Try from workflow::Node to BinanceSubAccount failed: Invalid params");
@@ -166,12 +155,12 @@ impl TryFrom<workflow::Node> for SpotGrid {
             );
         }
 
-        let grids = grids.as_u64().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to SpotGrid failed: Invalid grids"
+        let grid_count = grid_count.as_u64().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to SpotGrid failed: Invalid grid_count"
         ))?;
 
-        if !(2..150).contains(&grids) {
-            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid grids");
+        if !(2..150).contains(&grid_count) {
+            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid grid_count");
         }
 
         let investment = investment.as_f64().ok_or(anyhow::anyhow!(
@@ -190,7 +179,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
             .mode(mode)
             .lower_price(lower_price)
             .upper_price(upper_price)
-            .grids(grids)
+            .grid_count(grid_count)
             .investment(investment)
             .maybe_trigger_price(trigger_price)
             .maybe_stop_loss(stop_loss)
@@ -198,7 +187,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
             .sell_all_on_stop(sell_all_on_stop)
             .build();
 
-        SpotGrid::try_new(widget)
+        SpotGrid::new(widget)
     }
 }
 
@@ -223,31 +212,232 @@ impl FromStr for Mode {
         Ok(mode)
     }
 }
+
+#[derive(Debug)]
+pub(crate) struct Grid {
+    rows: Vec<GridRow>,   // 网格行
+    cursor: usize,        // 当前网格序号
+    prev_sell_price: f64, // 上一次的卖出价格
+    running: bool,        // 是否运行
+    locked: bool,         // 是否锁定
+}
+
+#[derive(Debug)]
+#[allow(unused)]
+pub(crate) enum TradeSignal {
+    Buy(f64),       // 买入数量
+    Sell(f64),      // 卖出数量
+    StopLoss(bool), // 止损
+    TakeProfit,     // 止盈
+}
+
+#[allow(unused)]
+#[bon]
+impl Grid {
+    #[builder]
+    fn new(
+        investment: f64,              // 投资金额
+        grid_prices: Vec<f64>,        // 网格价格
+        current_price: f64,           // 当前价格
+        base_currency_decimals: u32,  // 基础币种小数点位数
+        quote_currency_decimals: u32, // 报价币种小数点位数
+        commission: f64,              // 手续费
+    ) -> Self {
+        let grid_investment = floor_to(
+            investment / (grid_prices.len() - 1) as f64,
+            quote_currency_decimals,
+        );
+
+        let rows = grid_prices
+            .windows(2)
+            .enumerate()
+            .map(|(i, w)| {
+                let buy_quantity = floor_to(grid_investment / w[0], base_currency_decimals);
+                let sell_quantity =
+                    floor_to(buy_quantity * (1. - commission), base_currency_decimals);
+
+                let grid_row = GridRow::builder()
+                    .index(i)
+                    .buy_price(w[0])
+                    .buy_quantity(buy_quantity)
+                    .sell_price(w[1])
+                    .sell_quantity(sell_quantity)
+                    .buyed(false)
+                    .sold(false)
+                    .build();
+
+                grid_row
+            })
+            .collect::<Vec<_>>();
+
+        let cursor = rows
+            .iter()
+            .position(|r| r.buy_price <= current_price && r.sell_price >= current_price)
+            .unwrap_or(0);
+
+        let prev_sell_price = 0.;
+
+        let running = false;
+        let locked = false;
+
+        Grid {
+            rows,
+            cursor,
+            prev_sell_price,
+            running,
+            locked,
+        }
+    }
+
+    /// 根据当前价格，获取交易信号
+    async fn evaluate_with_price(
+        &mut self,
+        widget: &Widget,
+        current_price: f64,
+    ) -> Option<TradeSignal> {
+        // 如果未运行或锁定，则不进行操作
+        if !self.running || self.locked {
+            return None;
+        }
+
+        // 如果设置了触发价格，则根据触发价格决定是否运行
+        if let Some(trigger_price) = widget.trigger_price {
+            if current_price <= trigger_price {
+                self.running = true;
+                return None;
+            }
+        } else {
+            self.running = true;
+            return None;
+        }
+
+        // 止损
+        if let Some(stop_loss) = widget.stop_loss {
+            if current_price <= stop_loss {
+                self.running = false;
+                return Some(TradeSignal::StopLoss(widget.sell_all_on_stop));
+            }
+        }
+
+        // 止盈
+        if let Some(take_profit) = widget.take_profit {
+            if current_price >= take_profit {
+                self.running = false;
+                return Some(TradeSignal::TakeProfit);
+            }
+        }
+
+        // 当前格子
+        let current_grid = self.current_grid();
+
+        // 买入
+        if !current_grid.buyed // 当前格子未买入
+            && self.prev_sell_price != current_grid.buy_price // 上一次的卖出价格不等于当前的买入价格
+            && current_price <= current_grid.buy_price
+            && current_price > current_grid.buy_price * (1.0 - PRICE_TOLERANCE)
+        {
+            let buy_quantity = current_grid.buy_quantity;
+            self.locked = true;
+            return Some(TradeSignal::Buy(buy_quantity));
+        }
+
+        // 卖出
+        if current_grid.buyed // 当前格子已买入
+            && !current_grid.sold // 当前格子未卖出
+            && current_price >= current_grid.sell_price
+            && current_price < current_grid.sell_price * (1.0 + PRICE_TOLERANCE)
+        {
+            let sell_quantity = current_grid.sell_quantity;
+            let sell_price = current_grid.sell_price;
+            self.locked = true;
+            self.prev_sell_price = sell_price;
+            return Some(TradeSignal::Sell(sell_quantity));
+        }
+
+        // 向下移动一格
+        if current_price < current_grid.buy_price {
+            if let Some(lower_grid) = self.lower_grid() {
+                let step = (lower_grid.sell_price - lower_grid.buy_price) / 2.;
+                if current_price <= current_grid.buy_price - step {
+                    self.cursor -= 1;
+                    return None;
+                }
+            }
+        }
+
+        // 向上移动一格
+        if current_price > current_grid.sell_price {
+            if let Some(upper_grid) = self.upper_grid() {
+                let step = (upper_grid.sell_price - upper_grid.buy_price) / 2.;
+                if current_price >= current_grid.sell_price + step {
+                    self.cursor += 1;
+                    return None;
+                }
+            }
+        }
+
+        None
+    }
+
+    /// 获取当前行
+    fn current_grid(&self) -> &GridRow {
+        &self.rows[self.cursor]
+    }
+
+    /// 获取当前行可变引用
+    fn current_grid_mut(&mut self) -> &mut GridRow {
+        &mut self.rows[self.cursor]
+    }
+
+    /// 上方向的网格
+    fn upper_grid(&self) -> Option<&GridRow> {
+        self.rows.get(self.cursor + 1)
+    }
+
+    /// 下方向的网格
+    fn lower_grid(&self) -> Option<&GridRow> {
+        self.rows.get(self.cursor - 1)
+    }
+}
+
+#[derive(Builder, Debug)]
+#[allow(unused)]
+pub(crate) struct GridRow {
+    index: usize,       // 网格序号
+    buy_price: f64,     // 买入价格
+    buy_quantity: f64,  // 买入数量
+    sell_price: f64,    // 卖出价格
+    sell_quantity: f64, // 卖出数量
+    buyed: bool,        // 是否已买入
+    sold: bool,         // 是否已卖出
+}
+
 // 计算网格价格
-fn calculate_grids(
-    mode: Mode,       // 网格模式
-    lower_price: f64, // 网格下界
-    upper_price: f64, // 网格上界
-    grids: u64,       // 网格数量
-    decimals: u32,    // 小数点位数
+fn calc_grid_prices(
+    mode: &Mode,                  // 网格模式
+    lower_price: f64,             // 网格下界
+    upper_price: f64,             // 网格上界
+    grid_count: u64,              // 网格数量
+    quote_currency_decimals: u32, // 小数点位数
 ) -> Vec<f64> {
     match mode {
         Mode::Arithmetic => {
-            let step = (upper_price - lower_price) / grids as f64;
-            (0..=grids)
-                .map(|i| round_to(lower_price + step * i as f64, decimals))
+            let step = (upper_price - lower_price) / grid_count as f64;
+            (0..=grid_count)
+                .map(|i| round_to(lower_price + step * i as f64, quote_currency_decimals))
                 .collect()
         }
         Mode::Geometric => {
-            let step = (upper_price / lower_price).powf(1.0 / grids as f64);
-            (0..=grids)
-                .map(|i| round_to(lower_price * step.powi(i as i32), decimals))
+            let step = (upper_price / lower_price).powf(1.0 / grid_count as f64);
+            (0..=grid_count)
+                .map(|i| round_to(lower_price * step.powi(i as i32), quote_currency_decimals))
                 .collect()
         }
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
+#[allow(unused)]
 enum GridProfitRate {
     Arithmetic { min_rate: f64, max_rate: f64 },
     Geometric { rate: f64 },
@@ -255,16 +445,17 @@ enum GridProfitRate {
 
 // 计算网格的每格利润率
 // 参考资料：https://www.binance.com/zh-CN/support/faq/币安现货网格交易的参数说明-688ff6ff08734848915de76a07b953dd
+#[allow(unused)]
 fn calculate_grid_profit(
     mode: Mode,            // 网格模式
     lower_price: f64,      // 网格下界
     upper_price: f64,      // 网格上界
     taker_commission: f64, // 手续费
-    grids: u64,            // 网格数量
+    grid_count: u64,       // 网格数量
 ) -> GridProfitRate {
     match mode {
         Mode::Arithmetic => {
-            let step = (upper_price - lower_price) / grids as f64;
+            let step = (upper_price - lower_price) / grid_count as f64;
             let max_profit_rate =
                 (1. - taker_commission) * step / lower_price - 2. * taker_commission;
             let min_profit_rate = (upper_price * (1. - taker_commission)) / (upper_price - step)
@@ -277,7 +468,7 @@ fn calculate_grid_profit(
             }
         }
         Mode::Geometric => {
-            let step = (upper_price / lower_price).powf(1.0 / grids as f64);
+            let step = (upper_price / lower_price).powf(1.0 / grid_count as f64);
             let profit_rate = (1. - taker_commission) * step - 1. - taker_commission;
 
             GridProfitRate::Geometric {
@@ -299,18 +490,6 @@ fn calculate_minimum_investment(
     todo!()
 }
 
-// 保留小数点位数，向下取整
-fn floor_to(f: f64, decimals: u32) -> f64 {
-    let scale = 10_u64.pow(decimals);
-    (f * scale as f64).floor() / scale as f64
-}
-
-// 保留小数点位数，四舍五入
-fn round_to(f: f64, decimals: u32) -> f64 {
-    let scale = 10_u64.pow(decimals);
-    (f * scale as f64).round() / scale as f64
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,7 +505,7 @@ mod tests {
         assert_eq!(spot_grid.widget.mode, Mode::Arithmetic);
         assert_eq!(spot_grid.widget.lower_price, 1.0);
         assert_eq!(spot_grid.widget.upper_price, 1.1);
-        assert_eq!(spot_grid.widget.grids, 8);
+        assert_eq!(spot_grid.widget.grid_count, 8);
         assert_eq!(spot_grid.widget.investment, 1.0);
         assert_eq!(spot_grid.widget.trigger_price, None);
         assert_eq!(spot_grid.widget.stop_loss, None);
@@ -337,27 +516,27 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_grids() -> Result<()> {
-        let grids = calculate_grids(Mode::Arithmetic, 1.0, 1.1, 8, 3);
+    fn test_calculate_grid_count() -> Result<()> {
+        let grid_prices = calc_grid_prices(&Mode::Arithmetic, 1.0, 1.1, 8, 3);
         assert_eq!(
-            grids,
+            grid_prices,
             vec![1.0, 1.013, 1.025, 1.038, 1.05, 1.063, 1.075, 1.088, 1.1]
         );
 
-        let grids = calculate_grids(Mode::Geometric, 1.0, 1.1, 8, 3);
+        let grid_prices = calc_grid_prices(&Mode::Geometric, 1.0, 1.1, 8, 3);
         assert_eq!(
-            grids,
+            grid_prices,
             vec![1.0, 1.012, 1.024, 1.036, 1.049, 1.061, 1.074, 1.087, 1.1]
         );
 
-        let grids = calculate_grids(Mode::Geometric, 4.0, 20.0, 10, 3);
+        let grid_prices = calc_grid_prices(&Mode::Geometric, 4.0, 20.0, 10, 3);
         assert_eq!(
-            grids,
+            grid_prices,
             vec![4.0, 4.698, 5.519, 6.483, 7.615, 8.944, 10.506, 12.341, 14.496, 17.027, 20.0]
         );
 
-        let grids = calculate_grids(Mode::Geometric, 4.0, 20.0, 2, 3);
-        assert_eq!(grids, vec![4.0, 8.944, 20.0]);
+        let grid_prices = calc_grid_prices(&Mode::Geometric, 4.0, 20.0, 2, 3);
+        assert_eq!(grid_prices, vec![4.0, 8.944, 20.0]);
 
         Ok(())
     }
@@ -375,6 +554,28 @@ mod tests {
 
         let profit = calculate_grid_profit(Mode::Geometric, 4.0, 20.0, 0.001, 10);
         assert_eq!(profit, GridProfitRate::Geometric { rate: 0.1724 });
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_spot_grid_grid() -> Result<()> {
+        let grid_prices = calc_grid_prices(&Mode::Geometric, 4.0, 20.0, 10, 3);
+        let grid = Grid::builder()
+            .investment(1000.0)
+            .grid_prices(grid_prices)
+            .base_currency_decimals(6)
+            .quote_currency_decimals(6)
+            .current_price(8.25)
+            .commission(0.001)
+            .build();
+
+        assert_eq!(grid.rows.len(), 10);
+        assert_eq!(grid.cursor, 4);
+        assert_eq!(grid.current_grid().buy_price, 7.615);
+        assert_eq!(grid.current_grid().sell_price, 8.944);
+        assert!(!grid.running);
+        assert!(!grid.locked);
 
         Ok(())
     }

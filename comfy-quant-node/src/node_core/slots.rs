@@ -7,6 +7,7 @@ pub struct Slots {
     data: Option<Box<AnyMap>>,
 }
 
+#[allow(unused)]
 impl Slots {
     #[inline]
     pub fn new() -> Self {

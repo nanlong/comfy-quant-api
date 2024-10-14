@@ -2,6 +2,7 @@ use bon::Builder;
 
 #[derive(Debug, Clone, Builder)]
 #[builder(on(String, into))]
+#[allow(unused)]
 pub(crate) struct SpotPairInfo {
     pub(crate) base_currency: String,
     pub(crate) quote_currency: String,

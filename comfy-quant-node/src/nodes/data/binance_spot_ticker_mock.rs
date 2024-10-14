@@ -51,17 +51,16 @@ impl BinanceSpotTickerMock {
             .base_currency(&widget.base_currency)
             .quote_currency(&widget.quote_currency)
             .build();
-
         let tick_stream = TickStream::new();
 
-        let output_slot0 = Slot::<SpotPairInfo>::builder().data(pair_info).build();
-        let output_slot1 = Slot::<TickStream>::builder().data(tick_stream).build();
-
-        port.add_output(0, output_slot0)?;
-        port.add_output(1, output_slot1)?;
+        let pair_info_slot = Slot::<SpotPairInfo>::new(pair_info);
+        let tick_stream_slot = Slot::<TickStream>::new(tick_stream);
 
         let barrier = Arc::new(Barrier::new(2));
         let (shutdown_tx, shutdown_rx) = flume::bounded(1);
+
+        port.add_output(0, pair_info_slot)?;
+        port.add_output(1, tick_stream_slot)?;
 
         Ok(BinanceSpotTickerMock {
             widget,
