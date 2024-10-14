@@ -30,7 +30,7 @@ pub enum OrderType {
     Limit,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OrderSide {
     Buy,
     Sell,
@@ -39,14 +39,14 @@ pub enum OrderSide {
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub struct Order {
-    pub symbol: String,            // 交易对
-    pub order_id: String,          // 订单ID
-    pub price: String,             // 订单价格
-    pub orig_qty: String,          // 用户设置的原始订单数量
-    pub executed_qty: String,      // 已执行数量
-    pub order_type: OrderType,     // 订单类型
-    pub order_side: OrderSide,     // 订单方向
-    pub order_status: OrderStatus, // 订单状态
-    pub time: i64,                 // 创建时间
-    pub update_time: i64,          // 更新时间
+    pub symbol: String,       // 交易对
+    pub id: String,           // 订单ID
+    pub price: String,        // 订单价格
+    pub orig_qty: String,     // 用户设置的原始订单数量
+    pub executed_qty: String, // 已执行数量
+    pub r#type: OrderType,    // 订单类型
+    pub side: OrderSide,      // 订单方向
+    pub status: OrderStatus,  // 订单状态
+    pub time: i64,            // 创建时间
+    pub update_time: i64,     // 更新时间
 }

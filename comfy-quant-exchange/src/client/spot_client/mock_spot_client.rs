@@ -157,7 +157,7 @@ impl SpotExchangeClient for MockSpotClient {
         let order = data
             .order_history
             .iter()
-            .find(|order| order.order_id == order_id)
+            .find(|order| order.id == order_id)
             .ok_or(anyhow::anyhow!("Order not found"))?
             .clone();
 
@@ -178,13 +178,13 @@ impl SpotExchangeClient for MockSpotClient {
 
         let order = Order::builder()
             .symbol(symbol)
-            .order_id(data.order_id.to_string())
+            .id(data.order_id.to_string())
             .price(price.to_string())
             .orig_qty(qty.to_string())
             .executed_qty("0")
-            .order_type(OrderType::Limit)
-            .order_side(OrderSide::Buy)
-            .order_status(OrderStatus::Filled)
+            .r#type(OrderType::Limit)
+            .side(OrderSide::Buy)
+            .status(OrderStatus::Filled)
             .time(0)
             .update_time(0)
             .build();
@@ -198,13 +198,13 @@ impl SpotExchangeClient for MockSpotClient {
 
         let order = Order::builder()
             .symbol(symbol)
-            .order_id(data.order_id.to_string())
+            .id(data.order_id.to_string())
             .price(price.to_string())
             .orig_qty(qty.to_string())
             .executed_qty("0")
-            .order_type(OrderType::Limit)
-            .order_side(OrderSide::Sell)
-            .order_status(OrderStatus::Filled)
+            .r#type(OrderType::Limit)
+            .side(OrderSide::Sell)
+            .status(OrderStatus::Filled)
             .time(0)
             .update_time(0)
             .build();

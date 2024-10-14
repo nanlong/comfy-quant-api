@@ -6,13 +6,16 @@ use crate::{
 };
 use anyhow::Result;
 use bon::{bon, Builder};
-use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
+use comfy_quant_exchange::client::{
+    spot_client::base::{Order, OrderSide},
+    spot_client_kind::SpotClientKind,
+};
 use std::str::FromStr;
 
 const PRICE_TOLERANCE: f64 = 0.005; // 0.5% 价格容忍度
 
-#[allow(unused)]
 #[derive(Builder, Debug, Clone)]
+#[allow(unused)]
 pub(crate) struct Widget {
     mode: Mode,                 // 网格模式
     lower_price: f64,           // 网格下界
@@ -78,34 +81,28 @@ impl Executable for SpotGrid {
         let rx = tick_stream.subscribe();
         let current_price = rx.recv_async().await?.price;
 
-        self.grid = Some(
-            Grid::builder()
-                .investment(self.widget.investment)
-                .grid_prices(calc_grid_prices(
-                    &self.widget.mode,
-                    self.widget.lower_price,
-                    self.widget.upper_price,
-                    self.widget.grid_count,
-                    6,
-                ))
-                .current_price(current_price)
-                .base_currency_decimals(6)
-                .quote_currency_decimals(6)
-                .commission(0.001)
-                .build(),
+        let grid_prices = calc_grid_prices(
+            &self.widget.mode,
+            self.widget.lower_price,
+            self.widget.upper_price,
+            self.widget.grid_count,
+            6,
         );
+
+        let grid = Grid::builder()
+            .investment(self.widget.investment)
+            .grid_prices(grid_prices)
+            .current_price(current_price)
+            .base_currency_decimals(6)
+            .quote_currency_decimals(6)
+            .commission(0.001)
+            .build();
+
+        self.grid = Some(grid);
+
         let decimals = 10;
         let maker_commission = 0.001;
         let taker_commission = 0.001;
-
-        // 根据最低价、最高价、网格数量计算网格价格
-        // self.grid_count = calculate_grid_count(
-        //     self.widget.mode.clone(),
-        //     self.widget.lower_price,
-        //     self.widget.upper_price,
-        //     self.widget.grid_count,
-        //     decimals,
-        // );
 
         tokio::spawn(async move {
             while let Ok(tick) = rx.recv_async().await {
@@ -218,11 +215,12 @@ pub(crate) struct Grid {
     rows: Vec<GridRow>,   // 网格行
     cursor: usize,        // 当前网格序号
     prev_sell_price: f64, // 上一次的卖出价格
+    starting: bool,       // 是否开始
     running: bool,        // 是否运行
     locked: bool,         // 是否锁定
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(unused)]
 pub(crate) enum TradeSignal {
     Buy(f64),       // 买入数量
@@ -277,6 +275,7 @@ impl Grid {
 
         let prev_sell_price = 0.;
 
+        let starting = true;
         let running = false;
         let locked = false;
 
@@ -284,37 +283,36 @@ impl Grid {
             rows,
             cursor,
             prev_sell_price,
+            starting,
             running,
             locked,
         }
     }
 
     /// 根据当前价格，获取交易信号
-    async fn evaluate_with_price(
-        &mut self,
-        widget: &Widget,
-        current_price: f64,
-    ) -> Option<TradeSignal> {
+    fn evaluate_with_price(&mut self, widget: &Widget, current_price: f64) -> Option<TradeSignal> {
         // 如果未运行或锁定，则不进行操作
-        if !self.running || self.locked {
+        if !self.starting || self.locked {
             return None;
         }
 
-        // 如果设置了触发价格，则根据触发价格决定是否运行
-        if let Some(trigger_price) = widget.trigger_price {
-            if current_price <= trigger_price {
+        if !self.running {
+            // 如果设置了触发价格，则根据触发价格决定是否运行
+            if let Some(trigger_price) = widget.trigger_price {
+                if current_price <= trigger_price {
+                    self.running = true;
+                }
+            } else {
                 self.running = true;
-                return None;
             }
-        } else {
-            self.running = true;
+
             return None;
         }
 
         // 止损
         if let Some(stop_loss) = widget.stop_loss {
             if current_price <= stop_loss {
-                self.running = false;
+                self.starting = false;
                 return Some(TradeSignal::StopLoss(widget.sell_all_on_stop));
             }
         }
@@ -322,7 +320,7 @@ impl Grid {
         // 止盈
         if let Some(take_profit) = widget.take_profit {
             if current_price >= take_profit {
-                self.running = false;
+                self.starting = false;
                 return Some(TradeSignal::TakeProfit);
             }
         }
@@ -379,6 +377,24 @@ impl Grid {
         None
     }
 
+    /// 更新网格状态
+    fn update_with_order(&mut self, order: Order) {
+        let current_grid = self.current_grid_mut();
+
+        match order.side {
+            OrderSide::Buy => {
+                current_grid.buyed = true;
+                current_grid.sold = false;
+            }
+            OrderSide::Sell => {
+                current_grid.sold = true;
+                current_grid.buyed = false;
+            }
+        }
+
+        self.locked = false;
+    }
+
     /// 获取当前行
     fn current_grid(&self) -> &GridRow {
         &self.rows[self.cursor]
@@ -396,7 +412,11 @@ impl Grid {
 
     /// 下方向的网格
     fn lower_grid(&self) -> Option<&GridRow> {
-        self.rows.get(self.cursor - 1)
+        if self.cursor > 0 {
+            self.rows.get(self.cursor - 1)
+        } else {
+            None
+        }
     }
 }
 
@@ -492,6 +512,8 @@ fn calculate_minimum_investment(
 
 #[cfg(test)]
 mod tests {
+    use comfy_quant_exchange::client::spot_client::base::{OrderStatus, OrderType};
+
     use super::*;
 
     #[test]
@@ -559,23 +581,111 @@ mod tests {
     }
 
     #[test]
-    fn test_spot_grid_grid() -> Result<()> {
-        let grid_prices = calc_grid_prices(&Mode::Geometric, 4.0, 20.0, 10, 3);
-        let grid = Grid::builder()
+    fn test_grid_logic() -> Result<()> {
+        let widget = Widget::builder()
+            .mode(Mode::Geometric)
+            .lower_price(4.0)
+            .upper_price(20.0)
+            .grid_count(10)
             .investment(1000.0)
+            .sell_all_on_stop(true)
+            .build();
+
+        let base_currency_decimals = 2;
+        let quote_currency_decimals = 3;
+        let commission = 0.001;
+
+        let grid_prices = calc_grid_prices(
+            &widget.mode,
+            widget.lower_price,
+            widget.upper_price,
+            widget.grid_count,
+            quote_currency_decimals,
+        );
+
+        let mut grid = Grid::builder()
+            .investment(widget.investment)
             .grid_prices(grid_prices)
-            .base_currency_decimals(6)
-            .quote_currency_decimals(6)
-            .current_price(8.25)
-            .commission(0.001)
+            .base_currency_decimals(base_currency_decimals)
+            .quote_currency_decimals(quote_currency_decimals)
+            .current_price(4.25)
+            .commission(commission)
             .build();
 
         assert_eq!(grid.rows.len(), 10);
-        assert_eq!(grid.cursor, 4);
-        assert_eq!(grid.current_grid().buy_price, 7.615);
-        assert_eq!(grid.current_grid().sell_price, 8.944);
+        assert_eq!(grid.cursor, 0);
+        assert_eq!(grid.current_grid().buy_price, 4.0);
+        assert_eq!(grid.current_grid().sell_price, 4.698);
         assert!(!grid.running);
         assert!(!grid.locked);
+
+        let signal = grid.evaluate_with_price(&widget, 4.25);
+        assert_eq!(signal, None);
+
+        let signal = grid.evaluate_with_price(&widget, 4.0);
+        assert_eq!(signal, Some(TradeSignal::Buy(25.0)));
+        assert_eq!(grid.locked, true);
+
+        let order = Order::builder()
+            .symbol("DOTUSDT")
+            .id("1")
+            .price("4.0")
+            .orig_qty("25.0")
+            .executed_qty("25.0")
+            .r#type(OrderType::Market)
+            .side(OrderSide::Buy)
+            .status(OrderStatus::Filled)
+            .time(0)
+            .update_time(0)
+            .build();
+
+        grid.update_with_order(order);
+
+        assert_eq!(grid.current_grid().buyed, true);
+        assert_eq!(grid.locked, false);
+
+        let signal = grid.evaluate_with_price(&widget, 3.99);
+        assert_eq!(signal, None);
+
+        let signal = grid.evaluate_with_price(&widget, 4.698);
+        assert_eq!(signal, Some(TradeSignal::Sell(24.97)));
+        assert_eq!(grid.locked, true);
+
+        let order = Order::builder()
+            .symbol("DOTUSDT")
+            .id("2")
+            .price("4.698")
+            .orig_qty("24.97")
+            .executed_qty("24.97")
+            .r#type(OrderType::Market)
+            .side(OrderSide::Sell)
+            .status(OrderStatus::Filled)
+            .time(0)
+            .update_time(0)
+            .build();
+
+        grid.update_with_order(order);
+
+        assert_eq!(grid.current_grid().sold, true);
+        assert_eq!(grid.locked, false);
+
+        let signal = grid.evaluate_with_price(&widget, 5.108);
+        assert_eq!(signal, None);
+        assert_eq!(grid.cursor, 0);
+
+        let signal = grid.evaluate_with_price(&widget, 5.109);
+        assert_eq!(signal, None);
+        assert_eq!(grid.cursor, 1);
+
+        let signal = grid.evaluate_with_price(&widget, 4.697);
+        assert_eq!(signal, None);
+
+        let signal = grid.evaluate_with_price(&widget, 6.001);
+        assert_eq!(signal, None);
+        assert_eq!(grid.cursor, 2);
+
+        let signal = grid.evaluate_with_price(&widget, 5.519);
+        assert_eq!(signal, Some(TradeSignal::Buy(18.11)));
 
         Ok(())
     }
