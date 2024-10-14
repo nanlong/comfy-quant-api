@@ -48,14 +48,22 @@ pub(crate) struct SpotGrid {
 
     // 订单信息，提交 - 确认，流程完成后删除
     // pub(crate) orders: Vec<Order>,
+    shutdown_tx: flume::Sender<()>,
+    shutdown_rx: flume::Receiver<()>,
 }
 
 impl SpotGrid {
     pub(crate) fn new(widget: Widget) -> Result<Self> {
+        let port = Port::new();
+        let grid = None;
+        let (shutdown_tx, shutdown_rx) = flume::bounded(1);
+
         Ok(SpotGrid {
             widget,
-            port: Port::new(),
-            grid: None,
+            port,
+            grid,
+            shutdown_tx,
+            shutdown_rx,
         })
     }
 }
@@ -78,9 +86,11 @@ impl Executable for SpotGrid {
         let pair_info = self.port.get_input::<SpotPairInfo>(0)?;
         let client = self.port.get_input::<SpotClientKind>(1)?;
         let tick_stream = self.port.get_input::<TickStream>(2)?;
-        let rx = tick_stream.subscribe();
-        let current_price = rx.recv_async().await?.price;
+        let tick_rx = tick_stream.subscribe();
+        let shutdown_rx = self.shutdown_rx.clone();
+        let current_price = tick_rx.recv_async().await?.price;
 
+        // 计算网格价格
         let grid_prices = calc_grid_prices(
             &self.widget.mode,
             self.widget.lower_price,
@@ -89,6 +99,7 @@ impl Executable for SpotGrid {
             6,
         );
 
+        // 创建网格
         let grid = Grid::builder()
             .investment(self.widget.investment)
             .grid_prices(grid_prices)
@@ -105,15 +116,28 @@ impl Executable for SpotGrid {
         let taker_commission = 0.001;
 
         tokio::spawn(async move {
-            while let Ok(tick) = rx.recv_async().await {
-                // dbg!(&tick);
-            }
+            tokio::select! {
+                _ = async {
+                    while let Ok(tick) = tick_rx.recv_async().await {
+                        // dbg!(&tick);
+                    }
 
-            #[allow(unreachable_code)]
-            Ok::<(), anyhow::Error>(())
+                    #[allow(unreachable_code)]
+                    Ok::<(), anyhow::Error>(())
+                } => {}
+                _ = shutdown_rx.recv_async() => {
+                    tracing::info!("SpotGrid shutdown");
+                }
+            }
         });
 
         Ok(())
+    }
+}
+
+impl Drop for SpotGrid {
+    fn drop(&mut self) {
+        let _ = self.shutdown_tx.send(());
     }
 }
 
