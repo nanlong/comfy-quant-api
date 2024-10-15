@@ -23,33 +23,33 @@ const INTERVAL: &str = "1s";
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
-pub(crate) struct Widget {
+pub(crate) struct Params {
     pub(crate) base_asset: String,
     pub(crate) quote_asset: String,
     pub(crate) start_datetime: DateTime<Utc>,
     pub(crate) end_datetime: DateTime<Utc>,
 }
 
+/// 回测行情数据
+/// outputs:
+///      0: SpotPairInfo
+///      1: TickStream
 #[derive(Debug)]
-pub(crate) struct BinanceSpotTickerMock {
-    pub(crate) widget: Widget,
-    // outputs:
-    //      0: SpotPairInfo
-    //      1: TickStream
+pub(crate) struct BacktestSpotTicker {
+    pub(crate) params: Params,
     pub(crate) port: Port,
-
     barrier: Arc<Barrier>,
     shutdown_tx: flume::Sender<()>,
     shutdown_rx: flume::Receiver<()>,
 }
 
-impl BinanceSpotTickerMock {
-    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
+impl BacktestSpotTicker {
+    pub(crate) fn try_new(params: Params) -> Result<Self> {
         let mut port = Port::new();
 
         let pair_info = SpotPairInfo::builder()
-            .base_asset(&widget.base_asset)
-            .quote_asset(&widget.quote_asset)
+            .base_asset(&params.base_asset)
+            .quote_asset(&params.quote_asset)
             .build();
         let tick_stream = TickStream::new();
 
@@ -62,8 +62,8 @@ impl BinanceSpotTickerMock {
         port.add_output(0, pair_info_slot)?;
         port.add_output(1, tick_stream_slot)?;
 
-        Ok(BinanceSpotTickerMock {
-            widget,
+        Ok(BacktestSpotTicker {
+            params,
             port,
             barrier,
             shutdown_tx,
@@ -74,10 +74,10 @@ impl BinanceSpotTickerMock {
     async fn output1(&self) -> Result<()> {
         let slot1 = self.port.get_output::<TickStream>(1)?;
         let symbol =
-            format!("{}{}", self.widget.base_asset, self.widget.quote_asset).to_uppercase();
+            format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
         let symbol_cloned = symbol.clone();
-        let start_timestamp = self.widget.start_datetime.timestamp();
-        let end_timestamp = self.widget.end_datetime.timestamp();
+        let start_timestamp = self.params.start_datetime.timestamp();
+        let end_timestamp = self.params.end_datetime.timestamp();
         let task1_barrier = Arc::clone(&self.barrier);
         let task2_barrier = Arc::clone(&self.barrier);
         let task1_shutdown_rx = self.shutdown_rx.clone();
@@ -122,7 +122,7 @@ impl BinanceSpotTickerMock {
                     Ok::<(), anyhow::Error>(())
                 } => {}
                 _ = task1_shutdown_rx.recv_async() => {
-                    tracing::info!("BinanceSpotTickerMock task1 shutdown");
+                    tracing::info!("BacktestSpotTicker task1 shutdown");
                 }
             }
         });
@@ -154,7 +154,7 @@ impl BinanceSpotTickerMock {
                     Ok::<(), anyhow::Error>(())
                 } => {}
                 _ = task2_shutdown_rx.recv_async() => {
-                    tracing::info!("BinanceSpotTickerMock task2 shutdown");
+                    tracing::info!("BacktestSpotTicker task2 shutdown");
                 }
             }
         });
@@ -163,7 +163,7 @@ impl BinanceSpotTickerMock {
     }
 }
 
-impl PortAccessor for BinanceSpotTickerMock {
+impl PortAccessor for BacktestSpotTicker {
     fn get_port(&self) -> Result<&Port> {
         Ok(&self.port)
     }
@@ -173,63 +173,61 @@ impl PortAccessor for BinanceSpotTickerMock {
     }
 }
 
-impl Executable for BinanceSpotTickerMock {
+impl Executable for BacktestSpotTicker {
     async fn execute(&mut self) -> Result<()> {
         self.output1().await?;
         Ok(())
     }
 }
 
-impl Drop for BinanceSpotTickerMock {
+impl Drop for BacktestSpotTicker {
     fn drop(&mut self) {
         let _ = self.shutdown_tx.send(());
     }
 }
 
-impl TryFrom<workflow::Node> for BinanceSpotTickerMock {
+impl TryFrom<workflow::Node> for BacktestSpotTicker {
     type Error = anyhow::Error;
 
     fn try_from(node: workflow::Node) -> Result<Self> {
-        if node.properties.prop_type != "data.BinanceSpotTickerMock" {
+        if node.properties.prop_type != "data.BacktestSpotTicker" {
             anyhow::bail!(
-                "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid prop_type"
+                "Try from workflow::Node to BacktestSpotTicker failed: Invalid prop_type"
             );
         }
 
         let [base_asset, quote_asset, start_datetime, end_datetime] =
             node.properties.params.as_slice()
         else {
-            anyhow::bail!(
-                "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid params"
-            );
+            anyhow::bail!("Try from workflow::Node to BacktestSpotTicker failed: Invalid params");
         };
 
         let base_asset = base_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid base_asset"
+            "Try from workflow::Node to BacktestSpotTicker failed: Invalid base_asset"
         ))?;
 
         let quote_asset = quote_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid quote_asset"
+            "Try from workflow::Node to BacktestSpotTicker failed: Invalid quote_asset"
         ))?;
 
         let start_datetime = start_datetime.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid start_datetime"
+            "Try from workflow::Node to BacktestSpotTicker failed: Invalid start_datetime"
         ))?;
 
         let end_datetime = end_datetime.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotTickerMock failed: Invalid end_datetime"
+            "Try from workflow::Node to BacktestSpotTicker failed: Invalid end_datetime"
         ))?;
 
         let start_datetime = add_utc_offset(start_datetime)?;
         let end_datetime = add_utc_offset(end_datetime)?;
 
-        let widget = Widget::builder()
+        let params = Params::builder()
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .start_datetime(start_datetime)
             .end_datetime(end_datetime)
             .build();
 
-        BinanceSpotTickerMock::try_new(widget)
+        BacktestSpotTicker::try_new(params)
     }
 }

@@ -11,21 +11,21 @@ use bon::Builder;
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 #[allow(unused)]
-pub(crate) struct Widget {
+pub(crate) struct Params {
     api_key: String,
     secret_key: String,
 }
 
 #[allow(unused)]
 pub(crate) struct BinanceSpotClient {
-    pub(crate) widget: Widget,
+    pub(crate) params: Params,
     // outputs:
     //      0: SpotClient
     pub(crate) port: Port,
 }
 
 impl BinanceSpotClient {
-    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
+    pub(crate) fn try_new(params: Params) -> Result<Self> {
         let port = Port::new();
 
         // todo: 创建SpotClient
@@ -33,7 +33,7 @@ impl BinanceSpotClient {
 
         // port.add_output(0, output_slot0)?;
 
-        Ok(BinanceSpotClient { widget, port })
+        Ok(BinanceSpotClient { params, port })
     }
 }
 
@@ -73,12 +73,12 @@ impl TryFrom<workflow::Node> for BinanceSpotClient {
             "Try from workflow::Node to BinanceSpotClient failed: Invalid secret"
         ))?;
 
-        let widget = Widget::builder()
+        let params = Params::builder()
             .api_key(api_key)
             .secret_key(secret_key)
             .build();
 
-        BinanceSpotClient::try_new(widget)
+        BinanceSpotClient::try_new(params)
     }
 }
 
@@ -93,8 +93,8 @@ mod tests {
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = BinanceSpotClient::try_from(node)?;
 
-        assert_eq!(account.widget.api_key, "api_secret");
-        assert_eq!(account.widget.secret_key, "secret");
+        assert_eq!(account.params.api_key, "api_secret");
+        assert_eq!(account.params.secret_key, "secret");
 
         Ok(())
     }

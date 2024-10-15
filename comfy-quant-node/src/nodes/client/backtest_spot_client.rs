@@ -5,12 +5,13 @@ use crate::{
 use anyhow::Result;
 use bon::Builder;
 use comfy_quant_exchange::client::{
-    spot_client::mock_spot_client::MockSpotClient, spot_client_kind::SpotClientKind,
+    spot_client::mock_spot_client::BacktestSpotClient as ExchangeBacktestSpotClient,
+    spot_client_kind::SpotClientKind,
 };
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
-pub(crate) struct Widget {
+pub(crate) struct Params {
     assets: Vec<(String, f64)>, // 币种，余额
     commissions: f64,           // 手续费
 }
@@ -18,31 +19,31 @@ pub(crate) struct Widget {
 // 模拟账户，用于交易系统回测时使用
 #[derive(Debug)]
 #[allow(unused)]
-pub(crate) struct SpotClientMock {
-    pub(crate) widget: Widget,
+pub(crate) struct BacktestSpotClient {
+    pub(crate) params: Params,
     // outputs:
     //      0: SpotClient
     pub(crate) port: Port,
 }
 
-impl SpotClientMock {
-    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
+impl BacktestSpotClient {
+    pub(crate) fn try_new(params: Params) -> Result<Self> {
         let mut port = Port::new();
 
-        let client = MockSpotClient::builder()
-            .assets(widget.assets.clone())
-            .commissions(widget.commissions)
+        let client = ExchangeBacktestSpotClient::builder()
+            .assets(params.assets.clone())
+            .commissions(params.commissions)
             .build();
 
         let client_slot = Slot::<SpotClientKind>::new(client.into());
 
         port.add_output(0, client_slot)?;
 
-        Ok(SpotClientMock { widget, port })
+        Ok(BacktestSpotClient { params, port })
     }
 }
 
-impl PortAccessor for SpotClientMock {
+impl PortAccessor for BacktestSpotClient {
     fn get_port(&self) -> Result<&Port> {
         Ok(&self.port)
     }
@@ -52,32 +53,34 @@ impl PortAccessor for SpotClientMock {
     }
 }
 
-impl Executable for SpotClientMock {
+impl Executable for BacktestSpotClient {
     async fn execute(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
-impl TryFrom<workflow::Node> for SpotClientMock {
+impl TryFrom<workflow::Node> for BacktestSpotClient {
     type Error = anyhow::Error;
 
     fn try_from(node: workflow::Node) -> Result<Self> {
-        if node.properties.prop_type != "client.SpotClientMock" {
-            anyhow::bail!("Try from workflow::Node to SpotClientMock failed: Invalid prop_type");
+        if node.properties.prop_type != "client.BacktestSpotClient" {
+            anyhow::bail!(
+                "Try from workflow::Node to BacktestSpotClient failed: Invalid prop_type"
+            );
         }
 
         let [commissions, assets] = node.properties.params.as_slice() else {
-            anyhow::bail!("Try from workflow::Node to SpotClientMock failed: Invalid params");
+            anyhow::bail!("Try from workflow::Node to BacktestSpotClient failed: Invalid params");
         };
 
         let commissions = commissions.as_f64().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to SpotClientMock failed: Invalid commissions"
+            "Try from workflow::Node to BacktestSpotClient failed: Invalid commissions"
         ))?;
 
         let assets = assets
             .as_array()
             .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to SpotClientMock failed: Invalid assets"
+                "Try from workflow::Node to BacktestSpotClient failed: Invalid assets"
             ))?
             .into_iter()
             .filter_map(|asset| {
@@ -88,42 +91,42 @@ impl TryFrom<workflow::Node> for SpotClientMock {
             })
             .collect::<Vec<(String, f64)>>();
 
-        let widget = Widget::builder()
+        let params = Params::builder()
             .assets(assets)
             .commissions(commissions)
             .build();
 
-        SpotClientMock::try_new(widget)
+        BacktestSpotClient::try_new(params)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use comfy_quant_exchange::client::spot_client_kind::SpotExchangeClient;
+    use comfy_quant_exchange::client::spot_client_kind::SpotClientExecutable;
 
     #[test]
     fn test_try_from_node_to_mock_account() -> anyhow::Result<()> {
-        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.SpotClientMock","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = SpotClientMock::try_from(node)?;
+        let account = BacktestSpotClient::try_from(node)?;
 
         assert_eq!(
-            account.widget.assets,
+            account.params.assets,
             vec![("BTC".to_string(), 10.0), ("USDT".to_string(), 10000.0)]
         );
-        assert_eq!(account.widget.commissions, 0.001);
+        assert_eq!(account.params.commissions, 0.001);
 
         Ok(())
     }
 
     #[tokio::test]
     async fn test_mock_account_execute() -> anyhow::Result<()> {
-        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.SpotClientMock","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = SpotClientMock::try_from(node)?;
+        let account = BacktestSpotClient::try_from(node)?;
 
         let client = account.port.get_output::<SpotClientKind>(0)?;
 

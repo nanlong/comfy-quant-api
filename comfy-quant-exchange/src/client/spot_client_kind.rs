@@ -3,12 +3,12 @@ use enum_dispatch::enum_dispatch;
 
 use super::spot_client::{
     base::{AccountInformation, Balance, Order, SymbolInformation},
-    mock_spot_client::MockSpotClient,
+    mock_spot_client::BacktestSpotClient,
 };
 
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
-pub trait SpotExchangeClient {
+pub trait SpotClientExecutable {
     // 获取账户信息，手续费
     async fn get_account(&self) -> Result<AccountInformation>;
 
@@ -50,9 +50,9 @@ pub trait SpotExchangeClient {
 }
 
 #[derive(Debug, Clone)]
-#[enum_dispatch(SpotExchangeClient)]
+#[enum_dispatch(SpotClientExecutable)]
 pub enum SpotClientKind {
-    MockSpotClient(MockSpotClient),
+    BacktestSpotClient(BacktestSpotClient),
 }
 
 #[cfg(test)]
@@ -61,7 +61,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_spot_client_enum() -> Result<()> {
-        let client: SpotClientKind = MockSpotClient::builder()
+        let client: SpotClientKind = BacktestSpotClient::builder()
             .assets(vec![("BTC".to_string(), 1.), ("USDT".to_string(), 1000.)])
             .build()
             .into();

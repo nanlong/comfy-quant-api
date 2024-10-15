@@ -8,27 +8,28 @@ use bon::Builder;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
-pub(crate) struct Widget {
+pub(crate) struct Params {
     base_asset: String,
     quote_asset: String,
 }
 
+/// 币安现货行情
+/// outputs:
+///      0: SpotPairInfo
+///      1: TickStream
 #[allow(unused)]
 pub(crate) struct BinanceSpotTicker {
-    pub(crate) widget: Widget,
-    // outputs:
-    //      0: SpotPairInfo
-    //      1: TickStream
+    pub(crate) params: Params,
     pub(crate) port: Port,
 }
 
 impl BinanceSpotTicker {
-    pub(crate) fn try_new(widget: Widget) -> Result<Self> {
+    pub(crate) fn try_new(params: Params) -> Result<Self> {
         let mut port = Port::new();
 
         let pair_info = SpotPairInfo::builder()
-            .base_asset(&widget.base_asset)
-            .quote_asset(&widget.quote_asset)
+            .base_asset(&params.base_asset)
+            .quote_asset(&params.quote_asset)
             .build();
 
         let pair_info_slot = Slot::<SpotPairInfo>::new(pair_info);
@@ -37,7 +38,7 @@ impl BinanceSpotTicker {
         port.add_output(0, pair_info_slot)?;
         // port.add_output(1, output_slot1)?;
 
-        Ok(BinanceSpotTicker { widget, port })
+        Ok(BinanceSpotTicker { params, port })
     }
 
     async fn output1(&self) -> Result<()> {
@@ -45,8 +46,8 @@ impl BinanceSpotTicker {
 
         // let symbol = format!(
         //     "{}{}@ticker",
-        //     self.widget.base_asset.to_lowercase(),
-        //     self.widget.quote_asset.to_lowercase()
+        //     self.params.base_asset.to_lowercase(),
+        //     self.params.quote_asset.to_lowercase()
         // );
 
         // todo: 从数据库推送中获取行情
@@ -107,12 +108,12 @@ impl TryFrom<workflow::Node> for BinanceSpotTicker {
             "Try from workflow::Node to binanceSpotTicker failed: Invalid quote_asset"
         ))?;
 
-        let widget = Widget::builder()
+        let params = Params::builder()
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .build();
 
-        BinanceSpotTicker::try_new(widget)
+        BinanceSpotTicker::try_new(params)
     }
 }
 
@@ -127,8 +128,8 @@ mod tests {
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let binance_spot_ticker = BinanceSpotTicker::try_from(node)?;
 
-        assert_eq!(binance_spot_ticker.widget.base_asset, "BTC");
-        assert_eq!(binance_spot_ticker.widget.quote_asset, "USDT");
+        assert_eq!(binance_spot_ticker.params.base_asset, "BTC");
+        assert_eq!(binance_spot_ticker.params.quote_asset, "USDT");
         Ok(())
     }
 }

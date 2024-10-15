@@ -8,7 +8,7 @@ use anyhow::Result;
 use bon::{bon, Builder};
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, OrderSide},
-    spot_client_kind::{SpotClientKind, SpotExchangeClient},
+    spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
@@ -17,7 +17,7 @@ const PRICE_TOLERANCE: f64 = 0.005; // 0.5% 价格容忍度
 
 #[derive(Builder, Debug, Clone)]
 #[allow(unused)]
-pub(crate) struct Widget {
+pub(crate) struct Params {
     mode: Mode,                 // 网格模式
     lower_price: f64,           // 网格下界
     upper_price: f64,           // 网格上界
@@ -37,7 +37,7 @@ pub(crate) struct Widget {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct SpotGrid {
-    widget: Widget,                   // 前端配置
+    params: Params,                   // 前端配置
     port: Port,                       // 输入输出
     grid: Option<Arc<Mutex<Grid>>>,   // 网格
     initialized: bool,                // 是否初始化
@@ -46,14 +46,14 @@ pub(crate) struct SpotGrid {
 }
 
 impl SpotGrid {
-    pub(crate) fn new(widget: Widget) -> Result<Self> {
+    pub(crate) fn new(params: Params) -> Result<Self> {
         let port = Port::new();
         let grid = None;
         let initialized = false;
         let (shutdown_tx, shutdown_rx) = flume::bounded(1);
 
         Ok(SpotGrid {
-            widget,
+            params,
             port,
             grid,
             initialized,
@@ -74,7 +74,7 @@ impl SpotGrid {
 
         let balance = client.get_balance(&pair_info.quote_asset).await?;
 
-        if balance.free.parse::<f64>()? < self.widget.investment {
+        if balance.free.parse::<f64>()? < self.params.investment {
             anyhow::bail!("Insufficient free balance");
         }
 
@@ -88,16 +88,16 @@ impl SpotGrid {
 
         // 计算网格价格
         let grid_prices = calc_grid_prices(
-            &self.widget.mode,
-            self.widget.lower_price,
-            self.widget.upper_price,
-            self.widget.grid_rows,
+            &self.params.mode,
+            self.params.lower_price,
+            self.params.upper_price,
+            self.params.grid_rows,
             quote_asset_precision,
         );
 
         // 创建网格
         let grid = Grid::builder()
-            .investment(self.widget.investment)
+            .investment(self.params.investment)
             .grid_prices(grid_prices)
             .current_price(current_price)
             .base_asset_precision(base_asset_precision)
@@ -136,13 +136,13 @@ impl Executable for SpotGrid {
         self.initialize(&pair_info, &client, current_price).await?;
 
         let shutdown_rx = self.shutdown_rx.clone();
-        let widget = self.widget.clone();
+        let params = self.params.clone();
         let grid = self.grid.clone().expect("Grid not initialized");
         let tick_rx = tick_stream.subscribe();
 
         tokio::spawn(async move {
             tokio::select! {
-                _ = spot_grid_execute(&widget, &pair_info, &client, &grid, &tick_rx) => {}
+                _ = spot_grid_execute(&params, &pair_info, &client, &grid, &tick_rx) => {}
                 _ = shutdown_rx.recv_async() => {
                     tracing::info!("SpotGrid shutdown");
                 }
@@ -154,7 +154,7 @@ impl Executable for SpotGrid {
 }
 
 async fn spot_grid_execute(
-    widget: &Widget,
+    params: &Params,
     pair_info: &SpotPairInfo,
     client: &SpotClientKind,
     grid: &Arc<Mutex<Grid>>,
@@ -162,7 +162,7 @@ async fn spot_grid_execute(
 ) -> Result<()> {
     while let Ok(tick) = tick_rx.recv_async().await {
         let mut grid_guard = grid.lock().await;
-        let signal = grid_guard.evaluate_with_price(&widget, tick.price);
+        let signal = grid_guard.evaluate_with_price(&params, tick.price);
 
         if let Some(signal) = signal {
             match signal {
@@ -265,7 +265,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
 
         let sell_all_on_stop = sell_all_on_stop.as_bool().unwrap_or(true);
 
-        let widget = Widget::builder()
+        let params = Params::builder()
             .mode(mode)
             .lower_price(lower_price)
             .upper_price(upper_price)
@@ -277,7 +277,7 @@ impl TryFrom<workflow::Node> for SpotGrid {
             .sell_all_on_stop(sell_all_on_stop)
             .build();
 
-        SpotGrid::new(widget)
+        SpotGrid::new(params)
     }
 }
 
@@ -383,7 +383,7 @@ impl Grid {
     }
 
     /// 根据当前价格，获取交易信号
-    fn evaluate_with_price(&mut self, widget: &Widget, current_price: f64) -> Option<TradeSignal> {
+    fn evaluate_with_price(&mut self, params: &Params, current_price: f64) -> Option<TradeSignal> {
         // 如果未运行或锁定，则不进行操作
         if !self.starting || self.locked {
             return None;
@@ -391,7 +391,7 @@ impl Grid {
 
         if !self.running {
             // 如果设置了触发价格，则根据触发价格决定是否运行
-            if let Some(trigger_price) = widget.trigger_price {
+            if let Some(trigger_price) = params.trigger_price {
                 if current_price <= trigger_price {
                     self.running = true;
                 }
@@ -403,15 +403,15 @@ impl Grid {
         }
 
         // 止损
-        if let Some(stop_loss) = widget.stop_loss {
+        if let Some(stop_loss) = params.stop_loss {
             if current_price <= stop_loss {
                 self.starting = false;
-                return Some(TradeSignal::StopLoss(widget.sell_all_on_stop));
+                return Some(TradeSignal::StopLoss(params.sell_all_on_stop));
             }
         }
 
         // 止盈
-        if let Some(take_profit) = widget.take_profit {
+        if let Some(take_profit) = params.take_profit {
             if current_price >= take_profit {
                 self.starting = false;
                 return Some(TradeSignal::TakeProfit);
@@ -616,15 +616,15 @@ mod tests {
 
         let spot_grid = SpotGrid::try_from(node)?;
 
-        assert_eq!(spot_grid.widget.mode, Mode::Arithmetic);
-        assert_eq!(spot_grid.widget.lower_price, 1.0);
-        assert_eq!(spot_grid.widget.upper_price, 1.1);
-        assert_eq!(spot_grid.widget.grid_rows, 8);
-        assert_eq!(spot_grid.widget.investment, 1.0);
-        assert_eq!(spot_grid.widget.trigger_price, None);
-        assert_eq!(spot_grid.widget.stop_loss, None);
-        assert_eq!(spot_grid.widget.take_profit, None);
-        assert_eq!(spot_grid.widget.sell_all_on_stop, true);
+        assert_eq!(spot_grid.params.mode, Mode::Arithmetic);
+        assert_eq!(spot_grid.params.lower_price, 1.0);
+        assert_eq!(spot_grid.params.upper_price, 1.1);
+        assert_eq!(spot_grid.params.grid_rows, 8);
+        assert_eq!(spot_grid.params.investment, 1.0);
+        assert_eq!(spot_grid.params.trigger_price, None);
+        assert_eq!(spot_grid.params.stop_loss, None);
+        assert_eq!(spot_grid.params.take_profit, None);
+        assert_eq!(spot_grid.params.sell_all_on_stop, true);
 
         Ok(())
     }
@@ -674,7 +674,7 @@ mod tests {
 
     #[test]
     fn test_grid_logic() -> Result<()> {
-        let widget = Widget::builder()
+        let params = Params::builder()
             .mode(Mode::Geometric)
             .lower_price(4.0)
             .upper_price(20.0)
@@ -688,15 +688,15 @@ mod tests {
         let commission = 0.001;
 
         let grid_prices = calc_grid_prices(
-            &widget.mode,
-            widget.lower_price,
-            widget.upper_price,
-            widget.grid_rows,
+            &params.mode,
+            params.lower_price,
+            params.upper_price,
+            params.grid_rows,
             quote_asset_precision,
         );
 
         let mut grid = Grid::builder()
-            .investment(widget.investment)
+            .investment(params.investment)
             .grid_prices(grid_prices)
             .base_asset_precision(base_asset_precision)
             .quote_asset_precision(quote_asset_precision)
@@ -711,10 +711,10 @@ mod tests {
         assert!(!grid.running);
         assert!(!grid.locked);
 
-        let signal = grid.evaluate_with_price(&widget, 4.25);
+        let signal = grid.evaluate_with_price(&params, 4.25);
         assert_eq!(signal, None);
 
-        let signal = grid.evaluate_with_price(&widget, 4.0);
+        let signal = grid.evaluate_with_price(&params, 4.0);
         assert_eq!(signal, Some(TradeSignal::Buy(25.0)));
         assert_eq!(grid.locked, true);
 
@@ -736,10 +736,10 @@ mod tests {
         assert_eq!(grid.current_grid().buyed, true);
         assert_eq!(grid.locked, false);
 
-        let signal = grid.evaluate_with_price(&widget, 3.99);
+        let signal = grid.evaluate_with_price(&params, 3.99);
         assert_eq!(signal, None);
 
-        let signal = grid.evaluate_with_price(&widget, 4.698);
+        let signal = grid.evaluate_with_price(&params, 4.698);
         assert_eq!(signal, Some(TradeSignal::Sell(24.97)));
         assert_eq!(grid.locked, true);
 
@@ -761,22 +761,22 @@ mod tests {
         assert_eq!(grid.current_grid().sold, true);
         assert_eq!(grid.locked, false);
 
-        let signal = grid.evaluate_with_price(&widget, 5.108);
+        let signal = grid.evaluate_with_price(&params, 5.108);
         assert_eq!(signal, None);
         assert_eq!(grid.cursor, 0);
 
-        let signal = grid.evaluate_with_price(&widget, 5.109);
+        let signal = grid.evaluate_with_price(&params, 5.109);
         assert_eq!(signal, None);
         assert_eq!(grid.cursor, 1);
 
-        let signal = grid.evaluate_with_price(&widget, 4.697);
+        let signal = grid.evaluate_with_price(&params, 4.697);
         assert_eq!(signal, None);
 
-        let signal = grid.evaluate_with_price(&widget, 6.001);
+        let signal = grid.evaluate_with_price(&params, 6.001);
         assert_eq!(signal, None);
         assert_eq!(grid.cursor, 2);
 
-        let signal = grid.evaluate_with_price(&widget, 5.519);
+        let signal = grid.evaluate_with_price(&params, 5.519);
         assert_eq!(signal, Some(TradeSignal::Buy(18.11)));
 
         Ok(())

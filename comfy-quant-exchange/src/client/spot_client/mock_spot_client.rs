@@ -1,14 +1,14 @@
 use super::base::{
     AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType, SymbolInformation,
 };
-use crate::client::spot_client_kind::SpotExchangeClient;
+use crate::client::spot_client_kind::SpotClientExecutable;
 use anyhow::Result;
 use bon::bon;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
-pub struct MockSpotClientData {
+pub struct BacktestSpotClientData {
     assets: HashMap<String, Balance>,
     commissions: Option<f64>,
     order_id: u64,
@@ -16,13 +16,13 @@ pub struct MockSpotClientData {
 }
 
 #[derive(Debug, Clone)]
-pub struct MockSpotClient {
-    data: Arc<Mutex<MockSpotClientData>>,
+pub struct BacktestSpotClient {
+    data: Arc<Mutex<BacktestSpotClientData>>,
 }
 
 #[bon]
 #[allow(unused)]
-impl MockSpotClient {
+impl BacktestSpotClient {
     #[builder]
     pub fn new(assets: Vec<(String, f64)>, commissions: Option<f64>) -> Self {
         let assets = assets
@@ -38,14 +38,14 @@ impl MockSpotClient {
             })
             .collect();
 
-        let data = MockSpotClientData {
+        let data = BacktestSpotClientData {
             assets,
             commissions,
             order_id: 0,
             order_history: Vec::new(),
         };
 
-        MockSpotClient {
+        BacktestSpotClient {
             data: Arc::new(Mutex::new(data)),
         }
     }
@@ -138,7 +138,7 @@ impl MockSpotClient {
     }
 }
 
-impl SpotExchangeClient for MockSpotClient {
+impl SpotClientExecutable for BacktestSpotClient {
     async fn get_account(&self) -> Result<AccountInformation> {
         let data = self.data.lock().await;
 

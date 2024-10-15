@@ -1,6 +1,6 @@
+mod backtest_spot_ticker;
 mod binance_spot_ticker;
-mod binance_spot_ticker_mock;
 
+pub(crate) use backtest_spot_ticker::BacktestSpotTicker;
 #[allow(unused)]
 pub(crate) use binance_spot_ticker::BinanceSpotTicker;
-pub(crate) use binance_spot_ticker_mock::BinanceSpotTickerMock;
