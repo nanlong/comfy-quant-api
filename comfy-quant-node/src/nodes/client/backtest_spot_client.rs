@@ -1,8 +1,8 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Slot},
-    workflow,
+    node_core::{Executable, Port, PortAccessor, Setupable, Slot},
+    workflow::{self, WorkflowContext},
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use bon::Builder;
 use comfy_quant_exchange::client::{
     spot_client::mock_spot_client::BacktestSpotClient as ExchangeBacktestSpotClient,
@@ -24,6 +24,7 @@ pub(crate) struct BacktestSpotClient {
     // outputs:
     //      0: SpotClient
     pub(crate) port: Port,
+    context: Option<WorkflowContext>,
 }
 
 impl BacktestSpotClient {
@@ -39,7 +40,17 @@ impl BacktestSpotClient {
 
         port.add_output(0, client_slot)?;
 
-        Ok(BacktestSpotClient { params, port })
+        Ok(BacktestSpotClient {
+            params,
+            port,
+            context: None,
+        })
+    }
+}
+
+impl Setupable for BacktestSpotClient {
+    fn setup_context(&mut self, context: WorkflowContext) {
+        self.context = Some(context);
     }
 }
 
@@ -55,6 +66,12 @@ impl PortAccessor for BacktestSpotClient {
 
 impl Executable for BacktestSpotClient {
     async fn execute(&mut self) -> Result<()> {
+        self.context
+            .as_ref()
+            .ok_or_else(|| anyhow!("context not setup"))?
+            .wait()
+            .await?;
+
         Ok(())
     }
 }

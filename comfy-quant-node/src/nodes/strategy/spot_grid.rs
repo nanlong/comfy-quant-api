@@ -1,10 +1,10 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor},
+    node_core::{Executable, Port, PortAccessor, Setupable},
     node_io::{SpotPairInfo, Tick, TickStream},
     utils::{floor_to, round_to},
-    workflow,
+    workflow::{self, WorkflowContext},
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use bon::{bon, Builder};
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, OrderSide},
@@ -37,8 +37,9 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct SpotGrid {
-    params: Params,                   // 前端配置
-    port: Port,                       // 输入输出
+    params: Params, // 前端配置
+    port: Port,     // 输入输出
+    context: Option<WorkflowContext>,
     grid: Option<Arc<Mutex<Grid>>>,   // 网格
     initialized: bool,                // 是否初始化
     shutdown_tx: flume::Sender<()>,   // 关闭信号
@@ -55,6 +56,7 @@ impl SpotGrid {
         Ok(SpotGrid {
             params,
             port,
+            context: None,
             grid,
             initialized,
             shutdown_tx,
@@ -113,6 +115,12 @@ impl SpotGrid {
     }
 }
 
+impl Setupable for SpotGrid {
+    fn setup_context(&mut self, context: WorkflowContext) {
+        self.context = Some(context);
+    }
+}
+
 impl PortAccessor for SpotGrid {
     fn get_port(&self) -> Result<&Port> {
         Ok(&self.port)
@@ -127,6 +135,12 @@ impl PortAccessor for SpotGrid {
 #[allow(unused)]
 impl Executable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
+        self.context
+            .as_ref()
+            .ok_or_else(|| anyhow!("context not setup"))?
+            .wait()
+            .await?;
+
         // 获取输入
         let pair_info = self.port.get_input::<SpotPairInfo>(0)?;
         let client = self.port.get_input::<SpotClientKind>(1)?;
@@ -135,9 +149,14 @@ impl Executable for SpotGrid {
         let current_price = tick_stream.subscribe().recv_async().await?.price;
         self.initialize(&pair_info, &client, current_price).await?;
 
-        let shutdown_rx = self.shutdown_rx.clone();
         let params = self.params.clone();
-        let grid = self.grid.clone().expect("Grid not initialized");
+        let grid = Arc::clone(
+            self.grid
+                .as_ref()
+                .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))?,
+        );
+        let shutdown_rx = self.shutdown_rx.clone();
+
         let tick_rx = tick_stream.subscribe();
 
         tokio::spawn(async move {
@@ -147,6 +166,8 @@ impl Executable for SpotGrid {
                     tracing::info!("SpotGrid shutdown");
                 }
             }
+
+            Ok::<(), anyhow::Error>(())
         });
 
         Ok(())

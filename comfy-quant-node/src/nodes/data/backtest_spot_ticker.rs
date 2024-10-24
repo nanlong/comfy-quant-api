@@ -1,13 +1,12 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Slot},
+    node_core::{Executable, Port, PortAccessor, Setupable, Slot},
     node_io::{SpotPairInfo, Tick, TickStream},
     utils::add_utc_offset,
-    workflow,
+    workflow::{self, WorkflowContext},
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use bon::Builder;
 use chrono::{DateTime, Utc};
-use comfy_quant_config::app_context::APP_CONTEXT;
 use comfy_quant_database::kline;
 use comfy_quant_task::{
     task_core::{status::TaskStatus, traits::Executable as _},
@@ -38,6 +37,7 @@ pub(crate) struct Params {
 pub(crate) struct BacktestSpotTicker {
     pub(crate) params: Params,
     pub(crate) port: Port,
+    context: Option<WorkflowContext>,
     barrier: Arc<Barrier>,
     shutdown_tx: flume::Sender<()>,
     shutdown_rx: flume::Receiver<()>,
@@ -65,6 +65,7 @@ impl BacktestSpotTicker {
         Ok(BacktestSpotTicker {
             params,
             port,
+            context: None,
             barrier,
             shutdown_tx,
             shutdown_rx,
@@ -78,6 +79,13 @@ impl BacktestSpotTicker {
         let symbol_cloned = symbol.clone();
         let start_timestamp = self.params.start_datetime.timestamp();
         let end_timestamp = self.params.end_datetime.timestamp();
+
+        let context = self
+            .context
+            .as_ref()
+            .ok_or_else(|| anyhow!("context not setup"))?;
+        let task1_db = context.db()?;
+        let task2_db = context.db()?;
         let task1_barrier = Arc::clone(&self.barrier);
         let task2_barrier = Arc::clone(&self.barrier);
         let task1_shutdown_rx = self.shutdown_rx.clone();
@@ -89,7 +97,7 @@ impl BacktestSpotTicker {
                     // 等待数据同步完成，如果出错，重试3次
                     'retry: for i in 0..3 {
                         let task = BinanceKlinesTask::builder()
-                            .db(Arc::clone(&APP_CONTEXT.db))
+                            .db(Arc::clone(&task1_db))
                             .market(MARKET)
                             .symbol(&symbol)
                             .interval(INTERVAL)
@@ -133,7 +141,7 @@ impl BacktestSpotTicker {
                     task2_barrier.wait().await;
 
                     let mut klines_stream = kline::time_range_klines_stream(
-                        &APP_CONTEXT.db,
+                        &task2_db,
                         EXCHANGE,
                         MARKET,
                         &symbol_cloned,
@@ -143,12 +151,14 @@ impl BacktestSpotTicker {
                     );
 
                     while let Some(Ok(kline)) = klines_stream.next().await {
-                        let ticker = Tick::builder()
+                        let tick = Tick::builder()
                             .timestamp(kline.open_time / 1000)
                             .price(kline.close_price.to_string().parse::<f64>()?)
                             .build();
 
-                        slot1.send(ticker).await?;
+                        tracing::info!("BacktestSpotTicker send tick: {:?}", tick);
+
+                        slot1.send(tick).await?;
                     }
 
                     Ok::<(), anyhow::Error>(())
@@ -160,6 +170,12 @@ impl BacktestSpotTicker {
         });
 
         Ok(())
+    }
+}
+
+impl Setupable for BacktestSpotTicker {
+    fn setup_context(&mut self, context: WorkflowContext) {
+        self.context = Some(context);
     }
 }
 
@@ -175,6 +191,11 @@ impl PortAccessor for BacktestSpotTicker {
 
 impl Executable for BacktestSpotTicker {
     async fn execute(&mut self) -> Result<()> {
+        self.context
+            .as_ref()
+            .ok_or_else(|| anyhow!("context not setup"))?
+            .wait()
+            .await?;
         self.output1().await?;
         Ok(())
     }

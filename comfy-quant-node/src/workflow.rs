@@ -1,12 +1,14 @@
 use crate::{
-    node_core::{Connectable, Executable},
+    node_core::{Connectable, Executable, Setupable},
     node_io::{SpotPairInfo, TickStream},
     nodes::node_kind::NodeKind,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
 use serde::{Deserialize, Serialize};
-use std::{cell::RefCell, collections::HashMap};
+use sqlx::PgPool;
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::{Barrier, Mutex};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Workflow {
@@ -19,10 +21,19 @@ pub struct Workflow {
     extra: HashMap<String, String>,
     version: f32,
     #[serde(skip)]
-    deserialized_nodes: HashMap<u32, RefCell<NodeKind>>,
+    context: WorkflowContext,
+    #[serde(skip)]
+    deserialized_nodes: HashMap<u32, Arc<Mutex<NodeKind>>>, // 反序列化节点 <id, node>
 }
 
 impl Workflow {
+    pub fn initialize(&mut self, db: Arc<PgPool>) {
+        let barrier = Arc::new(Barrier::new(self.nodes.len()));
+
+        self.context.setup_db(db);
+        self.context.setup_barrier(barrier);
+    }
+
     // 按照 order 排序
     fn sorted_nodes(&self) -> Vec<&Node> {
         let mut nodes_vec = self.nodes.iter().collect::<Vec<_>>();
@@ -31,25 +42,29 @@ impl Workflow {
     }
 
     // 建立连接
-    fn make_connection(
+    async fn make_connection(
         &self,
-        origin_node: &RefCell<NodeKind>,
-        target_node: &RefCell<NodeKind>,
+        origin_node: &Arc<Mutex<NodeKind>>,
+        target_node: &Arc<Mutex<NodeKind>>,
         link: &Link,
     ) -> Result<()> {
-        let origin = origin_node.borrow();
-        let target = &mut *target_node.borrow_mut();
+        let origin = origin_node.lock().await;
+        let mut target = target_node.lock().await;
 
         match link.link_type.as_str() {
-            "SpotPairInfo" => {
-                origin.connection::<SpotPairInfo>(target, link.origin_slot, link.target_slot)?
-            }
+            "SpotPairInfo" => origin.connection::<SpotPairInfo>(
+                &mut *target,
+                link.origin_slot,
+                link.target_slot,
+            )?,
             "TickStream" => {
-                origin.connection::<TickStream>(target, link.origin_slot, link.target_slot)?
+                origin.connection::<TickStream>(&mut *target, link.origin_slot, link.target_slot)?
             }
-            "SpotClient" => {
-                origin.connection::<SpotClientKind>(target, link.origin_slot, link.target_slot)?
-            }
+            "SpotClient" => origin.connection::<SpotClientKind>(
+                &mut *target,
+                link.origin_slot,
+                link.target_slot,
+            )?,
             _ => anyhow::bail!("Invalid link type: {}", link.link_type),
         }
 
@@ -62,10 +77,18 @@ impl Executable for Workflow {
         // 反序列化节点
         for node in self.nodes.clone() {
             let node_id = node.id;
-            let node_kind = NodeKind::try_from(node)?;
+            let mut node_kind = NodeKind::try_from(node)?;
+
+            // 初始化上下文
+            // context 内部字段都由 Arc 智能指针包裹，克隆的代价很小
+            node_kind.setup_context(self.context.clone());
+
+            // 插入反序列化节点
             self.deserialized_nodes
-                .insert(node_id, RefCell::new(node_kind));
+                .insert(node_id, Arc::new(Mutex::new(node_kind)));
         }
+
+        tracing::info!("Workflow deserialized nodes finished");
 
         // 建立连接
         for link in &self.links {
@@ -79,18 +102,30 @@ impl Executable for Workflow {
                 .get(&link.target_id)
                 .ok_or_else(|| anyhow::anyhow!("Target node not found: {}", link.target_id))?;
 
-            self.make_connection(&origin_node, &target_node, &link)?;
-        }
-
-        // 执行节点
-        for node in self.sorted_nodes().iter().rev() {
-            self.deserialized_nodes
-                .get(&node.id)
-                .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node.id))?
-                .borrow_mut()
-                .execute()
+            self.make_connection(&origin_node, &target_node, &link)
                 .await?;
         }
+
+        tracing::info!("Workflow make connection finished");
+
+        // 按顺序从前至后执行节点
+        for node in self.sorted_nodes().into_iter() {
+            let node = Arc::clone(
+                self.deserialized_nodes
+                    .get(&node.id)
+                    .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node.id))?,
+            );
+
+            let join_handle = tokio::spawn(async move {
+                let mut node = node.lock().await;
+                node.execute().await?;
+                Ok::<(), anyhow::Error>(())
+            });
+
+            join_handle.await??;
+        }
+
+        tracing::info!("Workflow nodes execute finished");
 
         Ok(())
     }
@@ -143,6 +178,37 @@ pub struct Properties {
     #[serde(rename = "type", default)]
     pub(crate) prop_type: String,
     pub(crate) params: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct WorkflowContext {
+    db: Option<Arc<PgPool>>,
+    barrier: Option<Arc<Barrier>>,
+}
+
+impl WorkflowContext {
+    fn setup_db(&mut self, db: Arc<PgPool>) {
+        self.db = Some(db);
+    }
+
+    fn setup_barrier(&mut self, barrier: Arc<Barrier>) {
+        self.barrier = Some(barrier);
+    }
+
+    pub(crate) fn db(&self) -> Result<Arc<PgPool>> {
+        let db = self.db.as_ref().ok_or_else(|| anyhow!("db not setup"))?;
+        Ok(Arc::clone(db))
+    }
+
+    pub(crate) async fn wait(&self) -> Result<()> {
+        let barrier = self
+            .barrier
+            .as_ref()
+            .ok_or_else(|| anyhow!("barrier not setup"))?;
+
+        barrier.wait().await;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

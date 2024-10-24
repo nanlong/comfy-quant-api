@@ -1,14 +1,14 @@
 use super::client::BacktestSpotClient;
 use crate::{
-    node_core::{Executable, Port, PortAccessor},
+    node_core::{Executable, Port, PortAccessor, Setupable},
     nodes::{data::BacktestSpotTicker, strategy::SpotGrid},
-    workflow,
+    workflow::{self, WorkflowContext},
 };
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
 
 #[derive(Debug)]
-#[enum_dispatch(PortAccessor, Executable)]
+#[enum_dispatch(Setupable, PortAccessor, Executable)]
 pub enum NodeKind {
     // data
     BacktestSpotTicker(BacktestSpotTicker),

@@ -450,7 +450,6 @@ dependencies = [
  "anyhow",
  "config",
  "dotenvy",
- "once_cell",
  "serde",
  "sqlx",
  "tokio",

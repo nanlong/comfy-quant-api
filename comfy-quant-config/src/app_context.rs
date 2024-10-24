@@ -1,11 +1,7 @@
 use crate::setting::Setting;
 use anyhow::Result;
-use once_cell::sync::Lazy;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::sync::Arc;
-
-pub static APP_CONTEXT: Lazy<AppContext> =
-    Lazy::new(|| AppContext::try_new().expect("Failed to create AppContext"));
 
 #[derive(Debug)]
 pub struct AppContext {

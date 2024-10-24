@@ -1,3 +1,4 @@
+mod log_kind;
 mod spot_pair_info;
 mod tick_stream;
 

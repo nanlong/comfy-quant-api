@@ -1,6 +1,11 @@
-use crate::node_core::Port;
+use crate::{node_core::Port, workflow::WorkflowContext};
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
+
+#[enum_dispatch]
+pub trait Setupable {
+    fn setup_context(&mut self, context: WorkflowContext);
+}
 
 // 节点执行
 #[enum_dispatch]
