@@ -79,9 +79,11 @@ impl BacktestSpotTicker {
             .context
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))?;
+        let controller = context.controller_cloned();
         let db = context.db()?;
         let shutdown_rx = self.shutdown_rx.clone();
 
+        // 使用 context.control_pause_resume().await 来暂停和恢复
         tokio::spawn(async move {
             tokio::select! {
                 _ = async {
@@ -127,6 +129,8 @@ impl BacktestSpotTicker {
                     );
 
                     while let Some(Ok(kline)) = klines_stream.next().await {
+                        controller.control_pause_resume().await;
+
                         let tick = Tick::builder()
                             .timestamp(kline.open_time / 1000)
                             .price(kline.close_price.to_string().parse::<f64>()?)
@@ -168,11 +172,13 @@ impl PortAccessor for BacktestSpotTicker {
 
 impl Executable for BacktestSpotTicker {
     async fn execute(&mut self) -> Result<()> {
+        // 同步等待其他节点
         self.context
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))?
             .wait()
             .await?;
+
         self.output1().await?;
         Ok(())
     }

@@ -7,8 +7,15 @@ use anyhow::{anyhow, Result};
 use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Barrier, Mutex};
+use std::{
+    collections::HashMap,
+    ops::Deref,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
+use tokio::sync::{Barrier, Mutex, Notify};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Workflow {
@@ -31,9 +38,21 @@ impl Workflow {
     // 初始化上下文
     pub fn initialize(&mut self, db: Arc<PgPool>) {
         let barrier = Arc::new(Barrier::new(self.nodes.len()));
+        let controller = WorkflowController(Arc::new((AtomicBool::new(false), Notify::new())));
 
         self.context.setup_db(db);
         self.context.setup_barrier(barrier);
+        self.context.setup_controller(controller);
+    }
+
+    // 暂停工作流
+    pub async fn pause(&self) {
+        self.context.controller.pause().await;
+    }
+
+    // 恢复工作流
+    pub async fn resume(&self) {
+        self.context.controller.resume().await;
     }
 
     // 按照 order 排序
@@ -186,6 +205,7 @@ pub struct Properties {
 pub struct WorkflowContext {
     db: Option<Arc<PgPool>>,
     barrier: Option<Arc<Barrier>>,
+    controller: WorkflowController,
 }
 
 impl WorkflowContext {
@@ -197,9 +217,17 @@ impl WorkflowContext {
         self.barrier = Some(barrier);
     }
 
+    fn setup_controller(&mut self, controller: WorkflowController) {
+        self.controller = controller;
+    }
+
     pub(crate) fn db(&self) -> Result<Arc<PgPool>> {
         let db = self.db.as_ref().ok_or_else(|| anyhow!("db not setup"))?;
         Ok(Arc::clone(db))
+    }
+
+    pub(crate) fn controller_cloned(&self) -> WorkflowController {
+        self.controller.clone()
     }
 
     pub(crate) async fn wait(&self) -> Result<()> {
@@ -210,6 +238,37 @@ impl WorkflowContext {
 
         barrier.wait().await;
         Ok(())
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct WorkflowController(Arc<(AtomicBool, Notify)>);
+
+impl Deref for WorkflowController {
+    type Target = Arc<(AtomicBool, Notify)>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl WorkflowController {
+    pub async fn pause(&self) {
+        let (lock, _) = &*self.0;
+        lock.store(true, Ordering::SeqCst);
+    }
+
+    pub async fn resume(&self) {
+        let (lock, notify) = &*self.0;
+        lock.store(false, Ordering::SeqCst);
+        notify.notify_waiters();
+    }
+
+    pub async fn control_pause_resume(&self) {
+        let (lock, notify) = &*self.0;
+        if lock.load(Ordering::SeqCst) {
+            notify.notified().await;
+        }
     }
 }
 

@@ -2,7 +2,7 @@ use crate::{
     node_core::{Executable, Port, PortAccessor, Setupable},
     node_io::{SpotPairInfo, Tick, TickStream},
     utils::{floor_to, round_to},
-    workflow::{self, WorkflowContext},
+    workflow::{self, WorkflowContext, WorkflowController},
 };
 use anyhow::{anyhow, Result};
 use bon::{bon, Builder};
@@ -135,11 +135,14 @@ impl PortAccessor for SpotGrid {
 #[allow(unused)]
 impl Executable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
-        self.context
+        let context = self
+            .context
             .as_ref()
-            .ok_or_else(|| anyhow!("context not setup"))?
-            .wait()
-            .await?;
+            .ok_or_else(|| anyhow!("context not setup"))?;
+
+        // 等待其他节点
+        context.wait().await?;
+        let controller = context.controller_cloned();
 
         // 获取输入
         let pair_info = self.port.get_input::<SpotPairInfo>(0)?;
@@ -161,7 +164,7 @@ impl Executable for SpotGrid {
 
         tokio::spawn(async move {
             tokio::select! {
-                _ = spot_grid_execute(&params, &pair_info, &client, &grid, &tick_rx) => {}
+                _ = spot_grid_execute(&controller, &params, &pair_info, &client, &grid, &tick_rx) => {}
                 _ = shutdown_rx.recv_async() => {
                     tracing::info!("SpotGrid shutdown");
                 }
@@ -175,6 +178,7 @@ impl Executable for SpotGrid {
 }
 
 async fn spot_grid_execute(
+    controller: &WorkflowController,
     params: &Params,
     pair_info: &SpotPairInfo,
     client: &SpotClientKind,
@@ -182,6 +186,8 @@ async fn spot_grid_execute(
     tick_rx: &flume::Receiver<Tick>,
 ) -> Result<()> {
     while let Ok(tick) = tick_rx.recv_async().await {
+        controller.control_pause_resume().await;
+
         let mut grid_guard = grid.lock().await;
         let signal = grid_guard.evaluate_with_price(&params, tick.price);
 
