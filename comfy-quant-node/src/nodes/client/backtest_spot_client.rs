@@ -76,10 +76,10 @@ impl Executable for BacktestSpotClient {
     }
 }
 
-impl TryFrom<workflow::Node> for BacktestSpotClient {
+impl TryFrom<&workflow::Node> for BacktestSpotClient {
     type Error = anyhow::Error;
 
-    fn try_from(node: workflow::Node) -> Result<Self> {
+    fn try_from(node: &workflow::Node) -> Result<Self> {
         if node.properties.prop_type != "client.BacktestSpotClient" {
             anyhow::bail!(
                 "Try from workflow::Node to BacktestSpotClient failed: Invalid prop_type"
@@ -127,7 +127,7 @@ mod tests {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = BacktestSpotClient::try_from(node)?;
+        let account = BacktestSpotClient::try_from(&node)?;
 
         assert_eq!(
             account.params.assets,
@@ -143,7 +143,7 @@ mod tests {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = BacktestSpotClient::try_from(node)?;
+        let account = BacktestSpotClient::try_from(&node)?;
 
         let client = account.port.get_output::<SpotClientKind>(0)?;
 

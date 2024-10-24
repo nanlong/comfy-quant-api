@@ -20,13 +20,15 @@ pub struct Workflow {
     config: HashMap<String, String>,
     extra: HashMap<String, String>,
     version: f32,
+
     #[serde(skip)]
     context: WorkflowContext,
     #[serde(skip)]
-    deserialized_nodes: HashMap<u32, Arc<Mutex<NodeKind>>>, // 反序列化节点 <id, node>
+    deserialized_nodes: HashMap<u32, Arc<Mutex<NodeKind>>>,
 }
 
 impl Workflow {
+    // 初始化上下文
     pub fn initialize(&mut self, db: Arc<PgPool>) {
         let barrier = Arc::new(Barrier::new(self.nodes.len()));
 
@@ -75,15 +77,15 @@ impl Workflow {
 impl Executable for Workflow {
     async fn execute(&mut self) -> Result<()> {
         // 反序列化节点
-        for node in self.nodes.clone() {
+        for node in &self.nodes {
             let node_id = node.id;
             let mut node_kind = NodeKind::try_from(node)?;
 
-            // 初始化上下文
+            // 为节点初始化上下文
             // context 内部字段都由 Arc 智能指针包裹，克隆的代价很小
             node_kind.setup_context(self.context.clone());
 
-            // 插入反序列化节点
+            // 存储反序列化节点
             self.deserialized_nodes
                 .insert(node_id, Arc::new(Mutex::new(node_kind)));
         }
@@ -116,13 +118,13 @@ impl Executable for Workflow {
                     .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node.id))?,
             );
 
-            let join_handle = tokio::spawn(async move {
+            // 在单独的线程中执行节点
+            // todo: 关闭节点、暂停节点、恢复节点
+            tokio::spawn(async move {
                 let mut node = node.lock().await;
                 node.execute().await?;
                 Ok::<(), anyhow::Error>(())
             });
-
-            join_handle.await??;
         }
 
         tracing::info!("Workflow nodes execute finished");

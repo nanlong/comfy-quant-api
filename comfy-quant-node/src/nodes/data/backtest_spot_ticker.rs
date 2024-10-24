@@ -14,7 +14,6 @@ use comfy_quant_task::{
 };
 use futures::StreamExt;
 use std::sync::Arc;
-use tokio::sync::Barrier;
 
 const EXCHANGE: &str = "binance";
 const MARKET: &str = "spot";
@@ -38,7 +37,6 @@ pub(crate) struct BacktestSpotTicker {
     pub(crate) params: Params,
     pub(crate) port: Port,
     context: Option<WorkflowContext>,
-    barrier: Arc<Barrier>,
     shutdown_tx: flume::Sender<()>,
     shutdown_rx: flume::Receiver<()>,
 }
@@ -56,7 +54,6 @@ impl BacktestSpotTicker {
         let pair_info_slot = Slot::<SpotPairInfo>::new(pair_info);
         let tick_stream_slot = Slot::<TickStream>::new(tick_stream);
 
-        let barrier = Arc::new(Barrier::new(2));
         let (shutdown_tx, shutdown_rx) = flume::bounded(1);
 
         port.add_output(0, pair_info_slot)?;
@@ -66,7 +63,6 @@ impl BacktestSpotTicker {
             params,
             port,
             context: None,
-            barrier,
             shutdown_tx,
             shutdown_rx,
         })
@@ -76,7 +72,6 @@ impl BacktestSpotTicker {
         let slot1 = self.port.get_output::<TickStream>(1)?;
         let symbol =
             format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
-        let symbol_cloned = symbol.clone();
         let start_timestamp = self.params.start_datetime.timestamp();
         let end_timestamp = self.params.end_datetime.timestamp();
 
@@ -84,12 +79,8 @@ impl BacktestSpotTicker {
             .context
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))?;
-        let task1_db = context.db()?;
-        let task2_db = context.db()?;
-        let task1_barrier = Arc::clone(&self.barrier);
-        let task2_barrier = Arc::clone(&self.barrier);
-        let task1_shutdown_rx = self.shutdown_rx.clone();
-        let task2_shutdown_rx = self.shutdown_rx.clone();
+        let db = context.db()?;
+        let shutdown_rx = self.shutdown_rx.clone();
 
         tokio::spawn(async move {
             tokio::select! {
@@ -97,7 +88,7 @@ impl BacktestSpotTicker {
                     // 等待数据同步完成，如果出错，重试3次
                     'retry: for i in 0..3 {
                         let task = BinanceKlinesTask::builder()
-                            .db(Arc::clone(&task1_db))
+                            .db(Arc::clone(&db))
                             .market(MARKET)
                             .symbol(&symbol)
                             .interval(INTERVAL)
@@ -125,26 +116,11 @@ impl BacktestSpotTicker {
                         }
                     }
 
-                    task1_barrier.wait().await;
-
-                    Ok::<(), anyhow::Error>(())
-                } => {}
-                _ = task1_shutdown_rx.recv_async() => {
-                    tracing::info!("BacktestSpotTicker task1 shutdown");
-                }
-            }
-        });
-
-        tokio::spawn(async move {
-            tokio::select! {
-                _ = async {
-                    task2_barrier.wait().await;
-
                     let mut klines_stream = kline::time_range_klines_stream(
-                        &task2_db,
+                        &db,
                         EXCHANGE,
                         MARKET,
-                        &symbol_cloned,
+                        &symbol,
                         INTERVAL,
                         start_timestamp * 1000,
                         end_timestamp * 1000,
@@ -161,10 +137,11 @@ impl BacktestSpotTicker {
                         slot1.send(tick).await?;
                     }
 
+
                     Ok::<(), anyhow::Error>(())
                 } => {}
-                _ = task2_shutdown_rx.recv_async() => {
-                    tracing::info!("BacktestSpotTicker task2 shutdown");
+                _ = shutdown_rx.recv_async() => {
+                    tracing::info!("BacktestSpotTicker shutdown");
                 }
             }
         });
@@ -207,10 +184,10 @@ impl Drop for BacktestSpotTicker {
     }
 }
 
-impl TryFrom<workflow::Node> for BacktestSpotTicker {
+impl TryFrom<&workflow::Node> for BacktestSpotTicker {
     type Error = anyhow::Error;
 
-    fn try_from(node: workflow::Node) -> Result<Self> {
+    fn try_from(node: &workflow::Node) -> Result<Self> {
         if node.properties.prop_type != "data.BacktestSpotTicker" {
             anyhow::bail!(
                 "Try from workflow::Node to BacktestSpotTicker failed: Invalid prop_type"

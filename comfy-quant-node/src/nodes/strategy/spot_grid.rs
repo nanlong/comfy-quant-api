@@ -231,10 +231,10 @@ impl Drop for SpotGrid {
     }
 }
 
-impl TryFrom<workflow::Node> for SpotGrid {
+impl TryFrom<&workflow::Node> for SpotGrid {
     type Error = anyhow::Error;
 
-    fn try_from(node: workflow::Node) -> Result<Self> {
+    fn try_from(node: &workflow::Node) -> Result<Self> {
         if node.properties.prop_type != "strategy.SpotGrid" {
             anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid prop_type");
         }
@@ -635,7 +635,7 @@ mod tests {
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
 
-        let spot_grid = SpotGrid::try_from(node)?;
+        let spot_grid = SpotGrid::try_from(&node)?;
 
         assert_eq!(spot_grid.params.mode, Mode::Arithmetic);
         assert_eq!(spot_grid.params.lower_price, 1.0);
