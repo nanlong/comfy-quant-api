@@ -18,11 +18,6 @@ async fn main() -> anyhow::Result<()> {
 
     workflow.execute().await?;
 
-    workflow.pause().await;
-    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
-    workflow.resume().await;
-
     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
     Ok(())
 }

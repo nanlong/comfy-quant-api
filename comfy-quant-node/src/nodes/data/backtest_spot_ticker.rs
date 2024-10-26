@@ -79,7 +79,6 @@ impl BacktestSpotTicker {
             .context
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))?;
-        let controller = context.controller_cloned();
         let db = context.db()?;
         let shutdown_rx = self.shutdown_rx.clone();
 
@@ -98,13 +97,10 @@ impl BacktestSpotTicker {
                             .end_timestamp(end_timestamp)
                             .build();
 
-                        let receiver = task.execute().await?;
+                        let mut task_result = task.execute().await?;
 
-                        while let Ok(status) = receiver.recv_async().await {
+                        while let Some(Ok(status)) = task_result.next().await {
                             match status {
-                                TaskStatus::Running => {
-                                    tracing::info!("Binance klines task running");
-                                }
                                 TaskStatus::Finished => {
                                     tracing::info!("Binance klines task finished");
                                     break 'retry;
@@ -129,8 +125,6 @@ impl BacktestSpotTicker {
                     );
 
                     while let Some(Ok(kline)) = klines_stream.next().await {
-                        controller.control_pause_resume().await;
-
                         let tick = Tick::builder()
                             .timestamp(kline.open_time / 1000)
                             .price(kline.close_price.to_string().parse::<f64>()?)

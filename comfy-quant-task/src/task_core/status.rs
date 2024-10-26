@@ -1,7 +1,7 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TaskStatus {
+pub enum TaskStatus<T> {
     Initializing,
-    Running,
+    Running(T),
     Finished,
     Failed(String),
 }

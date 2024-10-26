@@ -1,14 +1,15 @@
+use crate::task_core::{status::TaskStatus, traits::Executable};
 use anyhow::Result;
+use async_stream::stream;
 use bon::{bon, Builder};
-use comfy_quant_database::kline;
+use comfy_quant_database::kline::{self, Kline};
 use comfy_quant_exchange::kline_stream::{calc_time_range_kline_count, BinanceKline};
-use flume::Receiver;
-use futures::StreamExt;
+use futures::{stream::BoxStream, StreamExt};
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
 
-use crate::task_core::{status::TaskStatus, traits::Executable};
+const EXCHANGE: &str = "binance";
 
 #[derive(Builder, Clone, Debug)]
 #[builder(on(String, into))]
@@ -23,9 +24,6 @@ struct TaskParams {
 pub struct BinanceKlinesTask {
     db: Arc<PgPool>,
     params: TaskParams,
-
-    shutdown_tx: flume::Sender<()>,
-    shutdown_rx: flume::Receiver<()>,
 }
 
 #[bon]
@@ -47,18 +45,13 @@ impl BinanceKlinesTask {
             .end_timestamp(end_timestamp)
             .build();
 
-        let (shutdown_tx, shutdown_rx) = flume::bounded(1);
-
-        BinanceKlinesTask {
-            db,
-            params,
-            shutdown_tx,
-            shutdown_rx,
-        }
+        BinanceKlinesTask { db, params }
     }
 }
 
 impl Executable for BinanceKlinesTask {
+    type Output = BoxStream<'static, Result<TaskStatus<Kline>>>;
+
     async fn check_data_complete(&self) -> Result<bool> {
         let store_kline_count = kline::time_range_klines_count(
             &self.db,
@@ -80,86 +73,67 @@ impl Executable for BinanceKlinesTask {
         Ok(store_kline_count == kline_count_expect)
     }
 
-    async fn execute(&self) -> Result<Receiver<TaskStatus>> {
+    async fn execute(&self) -> Result<Self::Output> {
         let is_data_complete = self.check_data_complete().await?;
         let params = self.params.clone();
         let db = Arc::clone(&self.db);
-        let shutdown_rx = self.shutdown_rx.clone();
-        let (tx, rx) = flume::bounded::<TaskStatus>(1);
 
-        tokio::spawn(async move {
-            tokio::select! {
-                _ = async {
-                    let result = async {
-                        tx.send_async(TaskStatus::Running).await?;
+        let stream = stream! {
+            yield Ok(TaskStatus::Initializing);
 
-                        if is_data_complete {
-                            tx.send_async(TaskStatus::Finished).await?;
-                            return Ok::<(), anyhow::Error>(());
-                        }
+            if is_data_complete {
+                // let mut klines_stream = kline::time_range_klines_stream(
+                //     &db,
+                //     EXCHANGE,
+                //     &params.market,
+                //     &params.symbol,
+                //     &params.interval,
+                //     params.start_timestamp * 1000,
+                //     params.end_timestamp * 1000,
+                // );
 
-                        let client = BinanceKline::new();
+                // while let Some(Ok(kline)) = klines_stream.next().await {
+                //     yield Ok(TaskStatus::Running(kline));
+                // }
+                yield Ok(TaskStatus::Finished);
+                return;
+            } else {
+                let client = BinanceKline::new();
 
-                        let mut klines_stream = client.klines_stream(
-                            &params.market,
-                            &params.symbol,
-                            &params.interval,
-                            params.start_timestamp,
-                            params.end_timestamp,
-                        );
+                let mut klines_stream = client.klines_stream(
+                    &params.market,
+                    &params.symbol,
+                    &params.interval,
+                    params.start_timestamp,
+                    params.end_timestamp,
+                );
 
-                        while let Some(kline_summary) = klines_stream.next().await {
-                            match kline_summary {
-                                Ok(kline_summary) => {
-                                    let kline_data = kline::Kline {
-                                        exchange: "binance".to_string(),
-                                        market: params.market.clone(),
-                                        symbol: params.symbol.clone(),
-                                        interval: params.interval.clone(),
-                                        open_time: kline_summary.open_time,
-                                        open_price: kline_summary.open.parse::<Decimal>()?,
-                                        high_price: kline_summary.high.parse::<Decimal>()?,
-                                        low_price: kline_summary.low.parse::<Decimal>()?,
-                                        close_price: kline_summary.close.parse::<Decimal>()?,
-                                        volume: kline_summary.volume.parse::<Decimal>()?,
-                                        ..Default::default()
-                                    };
+                while let Some(kline_summary) = klines_stream.next().await {
+                    let kline_summary = kline_summary?;
 
-                                    let result = kline::insert_or_update(&db, &kline_data).await;
-
-                                    if let Err(e) = result {
-                                        tx.send_async(TaskStatus::Failed(e.to_string())).await?;
-                                    }
-                                }
-                                Err(e) => {
-                                    tx.send_async(TaskStatus::Failed(e.to_string())).await?;
-                                }
-                            }
-                        }
-
-                        Ok::<(), anyhow::Error>(())
-                    }
-                    .await;
-
-                    match result {
-                        Ok(()) => tx.send_async(TaskStatus::Finished).await?,
-                        Err(e) => tx.send_async(TaskStatus::Failed(e.to_string())).await?,
+                    let kline_data = kline::Kline {
+                        exchange: EXCHANGE.to_string(),
+                        market: params.market.clone(),
+                        symbol: params.symbol.clone(),
+                        interval: params.interval.clone(),
+                        open_time: kline_summary.open_time,
+                        open_price: kline_summary.open.parse::<Decimal>()?,
+                        high_price: kline_summary.high.parse::<Decimal>()?,
+                        low_price: kline_summary.low.parse::<Decimal>()?,
+                        close_price: kline_summary.close.parse::<Decimal>()?,
+                        volume: kline_summary.volume.parse::<Decimal>()?,
+                        ..Default::default()
                     };
 
-                    Ok::<(), anyhow::Error>(())
-                } => {}
-                _ = shutdown_rx.recv_async() => {
-                    tracing::info!("BinanceKlinesTask shutdown");
+                    let kline = kline::insert_or_update(&db, &kline_data).await?;
+
+                    yield Ok(TaskStatus::Running(kline));
                 }
             }
-        });
 
-        Ok(rx)
-    }
-}
+            yield Ok(TaskStatus::Finished);
+        };
 
-impl Drop for BinanceKlinesTask {
-    fn drop(&mut self) {
-        let _ = self.shutdown_tx.send(());
+        Ok(Box::pin(stream))
     }
 }
