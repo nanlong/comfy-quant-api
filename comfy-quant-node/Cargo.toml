@@ -24,6 +24,7 @@ tracing = { workspace = true }
 sqlx = { workspace = true }
 flume = { workspace = true }
 enum_dispatch = { workspace = true }
+tokio-util = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

@@ -12,6 +12,7 @@ use comfy_quant_exchange::client::{
 };
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 const PRICE_TOLERANCE: f64 = 0.005; // 0.5% 价格容忍度
 
@@ -31,19 +32,24 @@ pub(crate) struct Params {
 
 /// 网格交易
 /// inputs:
-///      0: SpotPairInfo
-///      1: SpotClient
-///      2: TickStream
+///     0: SpotPairInfo
+///     1: SpotClient
+///     2: TickStream
+///
+/// outputs:
+///     0: 持仓信息
+///     1: 行情数据
+///     2: 日志信息
+///
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct SpotGrid {
-    params: Params, // 前端配置
-    port: Port,     // 输入输出
-    context: Option<WorkflowContext>,
+    params: Params,                   // 前端配置
+    port: Port,                       // 输入输出
+    context: Option<WorkflowContext>, // 工作流上下文信息
     grid: Option<Arc<Mutex<Grid>>>,   // 网格
-    initialized: bool,                // 是否初始化
-    shutdown_tx: flume::Sender<()>,   // 关闭信号
-    shutdown_rx: flume::Receiver<()>, // 关闭信号
+    initialized: bool,                // 是否已经初始化
+    cancel_token: CancellationToken,  // 取消信号
 }
 
 impl SpotGrid {
@@ -51,7 +57,7 @@ impl SpotGrid {
         let port = Port::new();
         let grid = None;
         let initialized = false;
-        let (shutdown_tx, shutdown_rx) = flume::bounded(1);
+        let cancel_token = CancellationToken::new();
 
         Ok(SpotGrid {
             params,
@@ -59,8 +65,7 @@ impl SpotGrid {
             context: None,
             grid,
             initialized,
-            shutdown_tx,
-            shutdown_rx,
+            cancel_token,
         })
     }
 
@@ -157,15 +162,14 @@ impl Executable for SpotGrid {
                 .as_ref()
                 .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))?,
         );
-        let shutdown_rx = self.shutdown_rx.clone();
-
+        let cancel_token = self.cancel_token.clone();
         let tick_rx = tick_stream.subscribe();
 
         tokio::spawn(async move {
             tokio::select! {
                 _ = spot_grid_execute(&params, &pair_info, &client, &grid, &tick_rx) => {}
-                _ = shutdown_rx.recv_async() => {
-                    tracing::info!("SpotGrid shutdown");
+                _ = cancel_token.cancelled() => {
+                    tracing::info!("SpotGrid cancelled");
                 }
             }
 
@@ -229,7 +233,7 @@ async fn spot_grid_execute(
 
 impl Drop for SpotGrid {
     fn drop(&mut self) {
-        let _ = self.shutdown_tx.send(());
+        let _ = self.cancel_token.cancel();
     }
 }
 

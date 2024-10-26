@@ -14,6 +14,7 @@ use comfy_quant_task::{
 };
 use futures::StreamExt;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 const EXCHANGE: &str = "binance";
 const MARKET: &str = "spot";
@@ -37,8 +38,7 @@ pub(crate) struct BacktestSpotTicker {
     pub(crate) params: Params,
     pub(crate) port: Port,
     context: Option<WorkflowContext>,
-    shutdown_tx: flume::Sender<()>,
-    shutdown_rx: flume::Receiver<()>,
+    cancel_token: CancellationToken,
 }
 
 impl BacktestSpotTicker {
@@ -53,8 +53,7 @@ impl BacktestSpotTicker {
 
         let pair_info_slot = Slot::<SpotPairInfo>::new(pair_info);
         let tick_stream_slot = Slot::<TickStream>::new(tick_stream);
-
-        let (shutdown_tx, shutdown_rx) = flume::bounded(1);
+        let cancel_token = CancellationToken::new();
 
         port.add_output(0, pair_info_slot)?;
         port.add_output(1, tick_stream_slot)?;
@@ -63,8 +62,7 @@ impl BacktestSpotTicker {
             params,
             port,
             context: None,
-            shutdown_tx,
-            shutdown_rx,
+            cancel_token,
         })
     }
 
@@ -80,7 +78,7 @@ impl BacktestSpotTicker {
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))?;
         let db = context.db()?;
-        let shutdown_rx = self.shutdown_rx.clone();
+        let cancel_token = self.cancel_token.clone();
 
         // 使用 context.control_pause_resume().await 来暂停和恢复
         tokio::spawn(async move {
@@ -138,8 +136,8 @@ impl BacktestSpotTicker {
 
                     Ok::<(), anyhow::Error>(())
                 } => {}
-                _ = shutdown_rx.recv_async() => {
-                    tracing::info!("BacktestSpotTicker shutdown");
+                _ = cancel_token.cancelled() => {
+                    tracing::info!("BacktestSpotTicker cancelled");
                 }
             }
         });
@@ -180,7 +178,7 @@ impl Executable for BacktestSpotTicker {
 
 impl Drop for BacktestSpotTicker {
     fn drop(&mut self) {
-        let _ = self.shutdown_tx.send(());
+        let _ = self.cancel_token.cancel();
     }
 }
 

@@ -194,12 +194,46 @@ impl SpotClientExecutable for BacktestSpotClient {
         Ok(order)
     }
 
-    async fn market_buy(&self, _base_asset: &str, _quote_asset: &str, _qty: f64) -> Result<Order> {
-        unimplemented!()
+    async fn market_buy(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
+        let symbol = Self::to_symbol(base_asset, quote_asset);
+        let mut data = self.data.lock().await;
+        data.order_id += 1;
+
+        let order = Order::builder()
+            .symbol(symbol)
+            .id(data.order_id.to_string())
+            .price("0".to_string())
+            .orig_qty(qty.to_string())
+            .executed_qty("0")
+            .r#type(OrderType::Limit)
+            .side(OrderSide::Buy)
+            .status(OrderStatus::Filled)
+            .time(0)
+            .update_time(0)
+            .build();
+
+        Ok(order)
     }
 
-    async fn market_sell(&self, _base_asset: &str, _quote_asset: &str, _qty: f64) -> Result<Order> {
-        unimplemented!()
+    async fn market_sell(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
+        let symbol = Self::to_symbol(base_asset, quote_asset);
+        let mut data = self.data.lock().await;
+        data.order_id += 1;
+
+        let order = Order::builder()
+            .symbol(symbol)
+            .id(data.order_id.to_string())
+            .price("0".to_string())
+            .orig_qty(qty.to_string())
+            .executed_qty("0")
+            .r#type(OrderType::Limit)
+            .side(OrderSide::Sell)
+            .status(OrderStatus::Filled)
+            .time(0)
+            .update_time(0)
+            .build();
+
+        Ok(order)
     }
 
     async fn limit_buy(
