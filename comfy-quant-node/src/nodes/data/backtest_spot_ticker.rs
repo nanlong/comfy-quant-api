@@ -14,7 +14,6 @@ use comfy_quant_task::{
 };
 use futures::StreamExt;
 use std::sync::Arc;
-use tokio_util::sync::CancellationToken;
 
 const EXCHANGE: &str = "binance";
 const MARKET: &str = "spot";
@@ -38,7 +37,6 @@ pub(crate) struct BacktestSpotTicker {
     pub(crate) params: Params,
     pub(crate) port: Port,
     context: Option<WorkflowContext>,
-    cancel_token: CancellationToken,
 }
 
 impl BacktestSpotTicker {
@@ -53,7 +51,6 @@ impl BacktestSpotTicker {
 
         let pair_info_slot = Slot::<SpotPairInfo>::new(pair_info);
         let tick_stream_slot = Slot::<TickStream>::new(tick_stream);
-        let cancel_token = CancellationToken::new();
 
         port.add_output(0, pair_info_slot)?;
         port.add_output(1, tick_stream_slot)?;
@@ -62,7 +59,6 @@ impl BacktestSpotTicker {
             params,
             port,
             context: None,
-            cancel_token,
         })
     }
 
@@ -78,69 +74,55 @@ impl BacktestSpotTicker {
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))?;
         let db = context.db()?;
-        let cancel_token = self.cancel_token.clone();
 
-        // 使用 context.control_pause_resume().await 来暂停和恢复
-        tokio::spawn(async move {
-            tokio::select! {
-                _ = async {
-                    // 等待数据同步完成，如果出错，重试3次
-                    'retry: for i in 0..3 {
-                        let task = BinanceKlinesTask::builder()
-                            .db(Arc::clone(&db))
-                            .market(MARKET)
-                            .symbol(&symbol)
-                            .interval(INTERVAL)
-                            .start_timestamp(start_timestamp)
-                            .end_timestamp(end_timestamp)
-                            .build();
+        // 等待数据同步完成，如果出错，重试3次
+        'retry: for i in 0..3 {
+            let task = BinanceKlinesTask::builder()
+                .db(Arc::clone(&db))
+                .market(MARKET)
+                .symbol(&symbol)
+                .interval(INTERVAL)
+                .start_timestamp(start_timestamp)
+                .end_timestamp(end_timestamp)
+                .build();
 
-                        let mut task_result = task.execute().await?;
+            let mut task_result = task.execute().await?;
 
-                        while let Some(Ok(status)) = task_result.next().await {
-                            match status {
-                                TaskStatus::Finished => {
-                                    tracing::info!("Binance klines task finished");
-                                    break 'retry;
-                                }
-                                TaskStatus::Failed(err) => {
-                                    tracing::error!("{} Binance klines task failed: {}", i + 1, err);
-                                    continue 'retry;
-                                }
-                                _ => {}
-                            }
-                        }
+            tracing::info!("Binance klines task start");
+
+            while let Some(Ok(status)) = task_result.next().await {
+                match status {
+                    TaskStatus::Finished => {
+                        tracing::info!("Binance klines task finished");
+                        break 'retry;
                     }
-
-                    let mut klines_stream = kline::time_range_klines_stream(
-                        &db,
-                        EXCHANGE,
-                        MARKET,
-                        &symbol,
-                        INTERVAL,
-                        start_timestamp * 1000,
-                        end_timestamp * 1000,
-                    );
-
-                    while let Some(Ok(kline)) = klines_stream.next().await {
-                        let tick = Tick::builder()
-                            .timestamp(kline.open_time / 1000)
-                            .price(kline.close_price.to_string().parse::<f64>()?)
-                            .build();
-
-                        tracing::info!("BacktestSpotTicker send tick: {:?}", tick);
-
-                        slot1.send(tick).await?;
+                    TaskStatus::Failed(err) => {
+                        tracing::error!("{} Binance klines task failed: {}", i + 1, err);
+                        continue 'retry;
                     }
-
-
-                    Ok::<(), anyhow::Error>(())
-                } => {}
-                _ = cancel_token.cancelled() => {
-                    tracing::info!("BacktestSpotTicker cancelled");
+                    _ => {}
                 }
             }
-        });
+        }
+
+        let mut klines_stream = kline::time_range_klines_stream(
+            &db,
+            EXCHANGE,
+            MARKET,
+            &symbol,
+            INTERVAL,
+            start_timestamp * 1000,
+            end_timestamp * 1000,
+        );
+
+        while let Some(Ok(kline)) = klines_stream.next().await {
+            let tick = Tick::builder()
+                .timestamp(kline.open_time / 1000)
+                .price(kline.close_price.to_string().parse::<f64>()?)
+                .build();
+
+            slot1.send(tick).await?;
+        }
 
         Ok(())
     }
@@ -173,12 +155,6 @@ impl Executable for BacktestSpotTicker {
 
         self.output1().await?;
         Ok(())
-    }
-}
-
-impl Drop for BacktestSpotTicker {
-    fn drop(&mut self) {
-        let _ = self.cancel_token.cancel();
     }
 }
 

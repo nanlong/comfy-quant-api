@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Barrier, Mutex};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Workflow {
@@ -24,14 +25,18 @@ pub struct Workflow {
     #[serde(skip)]
     context: WorkflowContext,
     #[serde(skip)]
+    cancel_token: CancellationToken,
+    #[serde(skip)]
     deserialized_nodes: HashMap<u32, Arc<Mutex<NodeKind>>>,
 }
 
 impl Workflow {
     // 初始化上下文
     pub fn initialize(&mut self, db: Arc<PgPool>) {
+        let cancel_token = CancellationToken::new();
         let barrier = Arc::new(Barrier::new(self.nodes.len()));
 
+        self.cancel_token = cancel_token;
         self.context.setup_db(db);
         self.context.setup_barrier(barrier);
     }
@@ -90,7 +95,7 @@ impl Executable for Workflow {
                 .insert(node_id, Arc::new(Mutex::new(node_kind)));
         }
 
-        tracing::info!("Workflow deserialized nodes finished");
+        tracing::info!("Workflow deserialized nodes");
 
         // 建立连接
         for link in &self.links {
@@ -108,28 +113,46 @@ impl Executable for Workflow {
                 .await?;
         }
 
-        tracing::info!("Workflow make connection finished");
+        tracing::info!("Workflow make connection");
 
         // 按顺序从前至后执行节点
         for node in self.sorted_nodes().into_iter() {
-            let node = Arc::clone(
+            let node_id = node.id;
+
+            let node_kind = Arc::clone(
                 self.deserialized_nodes
-                    .get(&node.id)
+                    .get(&node_id)
                     .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node.id))?,
             );
 
+            let cancel_token = self.cancel_token.clone();
+
             // 在单独的线程中执行节点
-            // todo: 关闭节点、暂停节点、恢复节点
             tokio::spawn(async move {
-                let mut node = node.lock().await;
-                node.execute().await?;
-                Ok::<(), anyhow::Error>(())
+                tokio::select! {
+                    _ = async {
+                        let mut node = node_kind.lock().await;
+                        node.execute().await?;
+                        Ok::<(), anyhow::Error>(())
+                    } => {
+                        tracing::info!("Node {} finished", node_id);
+                    },
+                    _ = cancel_token.cancelled() => {
+                        tracing::info!("Node {} cancelled", node_id);
+                    }
+                }
             });
         }
 
-        tracing::info!("Workflow nodes execute finished");
+        tracing::info!("Workflow nodes execute");
 
         Ok(())
+    }
+}
+
+impl Drop for Workflow {
+    fn drop(&mut self) {
+        self.cancel_token.cancel();
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
     node_core::{Executable, Port, PortAccessor, Setupable},
-    node_io::{SpotPairInfo, Tick, TickStream},
+    node_io::{SpotPairInfo, TickStream},
     utils::{floor_to, round_to},
     workflow::{self, WorkflowContext},
 };
@@ -10,9 +10,7 @@ use comfy_quant_exchange::client::{
     spot_client::base::{Order, OrderSide},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
-use std::{str::FromStr, sync::Arc};
-use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
+use std::str::FromStr;
 
 const PRICE_TOLERANCE: f64 = 0.005; // 0.5% 价格容忍度
 
@@ -47,9 +45,8 @@ pub(crate) struct SpotGrid {
     params: Params,                   // 前端配置
     port: Port,                       // 输入输出
     context: Option<WorkflowContext>, // 工作流上下文信息
-    grid: Option<Arc<Mutex<Grid>>>,   // 网格
+    grid: Option<Grid>,               // 网格
     initialized: bool,                // 是否已经初始化
-    cancel_token: CancellationToken,  // 取消信号
 }
 
 impl SpotGrid {
@@ -57,7 +54,6 @@ impl SpotGrid {
         let port = Port::new();
         let grid = None;
         let initialized = false;
-        let cancel_token = CancellationToken::new();
 
         Ok(SpotGrid {
             params,
@@ -65,7 +61,6 @@ impl SpotGrid {
             context: None,
             grid,
             initialized,
-            cancel_token,
         })
     }
 
@@ -112,7 +107,7 @@ impl SpotGrid {
             .commission(commission)
             .build();
 
-        self.grid = Some(Arc::new(Mutex::new(grid)));
+        self.grid = Some(grid);
 
         self.initialized = true;
 
@@ -157,83 +152,58 @@ impl Executable for SpotGrid {
         self.initialize(&pair_info, &client, current_price).await?;
 
         let params = self.params.clone();
-        let grid = Arc::clone(
-            self.grid
-                .as_ref()
-                .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))?,
-        );
-        let cancel_token = self.cancel_token.clone();
+        let grid = self
+            .grid
+            .as_mut()
+            .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))?;
         let tick_rx = tick_stream.subscribe();
 
-        tokio::spawn(async move {
-            tokio::select! {
-                _ = spot_grid_execute(&params, &pair_info, &client, &grid, &tick_rx) => {}
-                _ = cancel_token.cancelled() => {
-                    tracing::info!("SpotGrid cancelled");
-                }
-            }
+        while let Ok(tick) = tick_rx.recv_async().await {
+            let signal = grid.evaluate_with_price(&params, tick.price);
 
-            Ok::<(), anyhow::Error>(())
-        });
+            if let Some(signal) = signal {
+                match signal {
+                    TradeSignal::Buy(quantity) => {
+                        let order = client
+                            .market_buy(&pair_info.base_asset, &pair_info.quote_asset, quantity)
+                            .await?;
+                        grid.update_with_order(&signal, &order);
+                        tracing::info!("SpotGrid buy order: {:?}", order);
+                    }
+                    TradeSignal::Sell(quantity) => {
+                        let order = client
+                            .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
+                            .await?;
+                        grid.update_with_order(&signal, &order);
+                        tracing::info!("SpotGrid sell order: {:?}", order);
+                    }
+                    TradeSignal::StopLoss(sell_all) => {
+                        if !sell_all {
+                            continue;
+                        }
 
-        Ok(())
-    }
-}
-
-async fn spot_grid_execute(
-    params: &Params,
-    pair_info: &SpotPairInfo,
-    client: &SpotClientKind,
-    grid: &Arc<Mutex<Grid>>,
-    tick_rx: &flume::Receiver<Tick>,
-) -> Result<()> {
-    while let Ok(tick) = tick_rx.recv_async().await {
-        let mut grid_guard = grid.lock().await;
-        let signal = grid_guard.evaluate_with_price(&params, tick.price);
-
-        if let Some(signal) = signal {
-            match signal {
-                TradeSignal::Buy(quantity) => {
-                    let order = client
-                        .market_buy(&pair_info.base_asset, &pair_info.quote_asset, quantity)
-                        .await?;
-                    grid_guard.update_with_order(&signal, &order);
-                }
-                TradeSignal::Sell(quantity) => {
-                    let order = client
-                        .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
-                        .await?;
-                    grid_guard.update_with_order(&signal, &order);
-                }
-                TradeSignal::StopLoss(sell_all) => {
-                    if sell_all {
                         let balance = client.get_balance(&pair_info.base_asset).await?;
                         let quantity = balance.free.parse::<f64>()?;
                         let order = client
                             .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
                             .await?;
-                        grid_guard.update_with_order(&signal, &order);
+                        grid.update_with_order(&signal, &order);
+                        tracing::info!("SpotGrid sell all order: {:?}", order);
                     }
-                }
-                TradeSignal::TakeProfit => {
-                    let balance = client.get_balance(&pair_info.base_asset).await?;
-                    let quantity = balance.free.parse::<f64>()?;
-                    let order = client
-                        .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
-                        .await?;
-                    grid_guard.update_with_order(&signal, &order);
+                    TradeSignal::TakeProfit => {
+                        let balance = client.get_balance(&pair_info.base_asset).await?;
+                        let quantity = balance.free.parse::<f64>()?;
+                        let order = client
+                            .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
+                            .await?;
+                        grid.update_with_order(&signal, &order);
+                        tracing::info!("SpotGrid take profit order: {:?}", order);
+                    }
                 }
             }
         }
-    }
 
-    #[allow(unreachable_code)]
-    Ok::<(), anyhow::Error>(())
-}
-
-impl Drop for SpotGrid {
-    fn drop(&mut self) {
-        let _ = self.cancel_token.cancel();
+        Ok(())
     }
 }
 
