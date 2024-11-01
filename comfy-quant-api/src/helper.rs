@@ -13,7 +13,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-pub fn init_tracing_subscriber(server_name: String) -> anyhow::Result<OtelGuard> {
+pub fn init_tracing_subscriber(server_name: String) -> anyhow::Result<TracerProviderGuard> {
     let console = fmt::Layer::new()
         .with_span_events(FmtSpan::CLOSE)
         .pretty()
@@ -56,12 +56,12 @@ pub fn init_tracing_subscriber(server_name: String) -> anyhow::Result<OtelGuard>
         .with(opentelemetry)
         .init();
 
-    Ok(OtelGuard)
+    Ok(TracerProviderGuard)
 }
 
-pub struct OtelGuard;
+pub struct TracerProviderGuard;
 
-impl Drop for OtelGuard {
+impl Drop for TracerProviderGuard {
     fn drop(&mut self) {
         global::shutdown_tracer_provider();
     }

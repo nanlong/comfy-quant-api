@@ -1,5 +1,4 @@
 use comfy_quant_api::helper::init_tracing_subscriber;
-use opentelemetry::global;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -8,9 +7,8 @@ async fn main() -> anyhow::Result<()> {
 
     foo().await;
 
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
 
-    global::shutdown_tracer_provider();
     Ok(())
 }
 
