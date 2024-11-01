@@ -80,8 +80,8 @@ impl<'a> Spot<'a> {
     pub fn limit_buy(
         &self,
         symbol: impl Into<String>, // 交易对
-        qty: impl Into<f64>,       // 数量
-        price: f64,                // 价格
+        qty: impl Into<f32>,       // 数量
+        price: f32,                // 价格
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -95,8 +95,8 @@ impl<'a> Spot<'a> {
     pub fn limit_sell(
         &self,
         symbol: impl Into<String>,
-        qty: impl Into<f64>, // 数量
-        price: f64,          // 价格
+        qty: impl Into<f32>, // 数量
+        price: f32,          // 价格
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -110,7 +110,7 @@ impl<'a> Spot<'a> {
     pub fn market_buy(
         &self,
         symbol: impl Into<String>, // 交易对
-        qty: impl Into<f64>,       // 数量
+        qty: impl Into<f32>,       // 数量
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -124,7 +124,7 @@ impl<'a> Spot<'a> {
     pub fn market_sell(
         &self,
         symbol: impl Into<String>, // 交易对
-        qty: impl Into<f64>,       // 数量
+        qty: impl Into<f32>,       // 数量
     ) -> Result<Transaction> {
         let transaction = self
             .account()

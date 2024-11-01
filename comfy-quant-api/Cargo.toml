@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 comfy-quant-exchange = { path = "../comfy-quant-exchange" }
 comfy-quant-database = { path = "../comfy-quant-database" }
-# comfy-quant-node = { path = "../comfy-quant-node" }
+comfy-quant-node = { path = "../comfy-quant-node" }
 anyhow = { workspace = true }
 bon = { workspace = true }
 flume = { workspace = true }
@@ -17,6 +17,12 @@ futures = { workspace = true }
 sqlx = { workspace = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }
+chrono = { workspace = true }
+
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-chrono = { workspace = true }
+tracing-appender = "0.2.3"
+tracing-opentelemetry = "0.23.0"
+opentelemetry = "0.22.0"
+opentelemetry-otlp = { version = "0.15.0", features = ["tonic"] }
+opentelemetry_sdk = { version = "0.22.1", features = ["rt-tokio"] }

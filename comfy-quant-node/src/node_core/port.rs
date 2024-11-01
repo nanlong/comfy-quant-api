@@ -32,7 +32,7 @@ impl Port {
         let slot = self
             .inputs
             .get::<Arc<Slot<T>>>(index)
-            .and_then(|s| Some(Arc::clone(s)))
+            .map(Arc::clone)
             .ok_or_else(|| anyhow::anyhow!("Input slot {} is not connected", index))?;
 
         Ok(slot)
@@ -54,10 +54,16 @@ impl Port {
         let slot = self
             .outputs
             .get::<Arc<Slot<T>>>(index)
-            .and_then(|s| Some(Arc::clone(s)))
+            .map(Arc::clone)
             .ok_or_else(|| anyhow::anyhow!("Output slot {} is not connected", index))?;
 
         Ok(slot)
+    }
+}
+
+impl Default for Port {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

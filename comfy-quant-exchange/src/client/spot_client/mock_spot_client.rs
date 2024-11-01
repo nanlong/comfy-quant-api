@@ -139,6 +139,10 @@ impl BacktestSpotClient {
 }
 
 impl SpotClientExecutable for BacktestSpotClient {
+    fn platform_name(&self) -> String {
+        "Backtest".to_string()
+    }
+
     async fn get_account(&self) -> Result<AccountInformation> {
         let data = self.data.lock().await;
 

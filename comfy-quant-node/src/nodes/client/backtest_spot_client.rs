@@ -99,10 +99,10 @@ impl TryFrom<&workflow::Node> for BacktestSpotClient {
             .ok_or(anyhow::anyhow!(
                 "Try from workflow::Node to BacktestSpotClient failed: Invalid assets"
             ))?
-            .into_iter()
+            .iter()
             .filter_map(|asset| {
                 let asset_array = asset.as_array()?;
-                let asset_name = asset_array.get(0)?.as_str()?.to_string();
+                let asset_name = asset_array.first()?.as_str()?.to_string();
                 let asset_balance = asset_array.get(1)?.as_f64()?;
                 Some((asset_name, asset_balance))
             })

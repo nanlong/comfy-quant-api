@@ -1,11 +1,12 @@
 use anyhow::Result;
 use bon::Builder;
 use flume::{Receiver, Sender};
+use rust_decimal::Decimal;
 
 #[derive(Debug, Clone, Builder, PartialEq)]
 pub(crate) struct Tick {
     pub(crate) timestamp: i64,
-    pub(crate) price: f64,
+    pub(crate) price: Decimal,
 }
 
 #[derive(Debug, Clone, Builder)]
@@ -38,7 +39,7 @@ mod tests {
         let tick_stream = TickStream::new();
         let tick = Tick {
             timestamp: 1,
-            price: 100.0,
+            price: Decimal::try_from(100.0).unwrap(),
         };
 
         tick_stream.send(tick.clone()).await?;

@@ -1,3 +1,4 @@
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub(crate) enum LogKind {
     // 受益
@@ -8,6 +9,7 @@ pub(crate) enum LogKind {
     // 信息
 }
 
+#[allow(unused)]
 pub(crate) enum SystemLog {
     Startup,      // 系统启动
     Shutdown,     // 系统关闭
@@ -15,6 +17,7 @@ pub(crate) enum SystemLog {
 }
 
 /// 交易
+#[allow(unused)]
 pub(crate) enum TradeLog {
     /// 买入
     OrderPlacement {
@@ -41,12 +44,14 @@ pub(crate) enum TradeLog {
     }, // 仓位更新
 }
 
+#[allow(unused)]
 pub enum AccountLog {
     FundChange,         // 资金变动
     BalanceUpdate,      // 余额更新
     LeverageAdjustment, // 杠杆调整
 }
 
+#[allow(unused)]
 pub(crate) enum ErrorLog {
     /// 错误
     Error {

@@ -2,6 +2,7 @@ use crate::{
     node_core::{Connectable, Executable, Setupable},
     node_io::{SpotPairInfo, TickStream},
     nodes::node_kind::NodeKind,
+    utils::generate_workflow_id,
 };
 use anyhow::{anyhow, Result};
 use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
@@ -109,8 +110,7 @@ impl Executable for Workflow {
                 .get(&link.target_id)
                 .ok_or_else(|| anyhow::anyhow!("Target node not found: {}", link.target_id))?;
 
-            self.make_connection(&origin_node, &target_node, &link)
-                .await?;
+            self.make_connection(origin_node, target_node, link).await?;
         }
 
         tracing::info!("Workflow make connection");
@@ -205,10 +205,22 @@ pub struct Properties {
     pub(crate) params: Vec<serde_json::Value>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[allow(unused)]
+#[derive(Debug, Clone)]
 pub struct WorkflowContext {
+    id: String,
     db: Option<Arc<PgPool>>,
     barrier: Option<Arc<Barrier>>,
+}
+
+impl Default for WorkflowContext {
+    fn default() -> Self {
+        Self {
+            id: generate_workflow_id(),
+            db: None,
+            barrier: None,
+        }
+    }
 }
 
 impl WorkflowContext {
@@ -292,5 +304,11 @@ mod tests {
         assert_eq!(workflow.links.len(), 3);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_workflow_context_default() {
+        let context = WorkflowContext::default();
+        assert_eq!(context.id.len(), 21);
     }
 }

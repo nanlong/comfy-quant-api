@@ -9,6 +9,8 @@ use super::spot_client::{
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
 pub trait SpotClientExecutable {
+    fn platform_name(&self) -> String;
+
     // 获取账户信息，手续费
     async fn get_account(&self) -> Result<AccountInformation>;
 

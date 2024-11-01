@@ -118,7 +118,7 @@ impl BacktestSpotTicker {
         while let Some(Ok(kline)) = klines_stream.next().await {
             let tick = Tick::builder()
                 .timestamp(kline.open_time / 1000)
-                .price(kline.close_price.to_string().parse::<f64>()?)
+                .price(kline.close_price)
                 .build();
 
             slot1.send(tick).await?;
