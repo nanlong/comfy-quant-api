@@ -6,9 +6,11 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
+use dashmap::DashMap;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 use tokio::sync::{Barrier, Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -208,9 +210,10 @@ pub struct Properties {
 #[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct WorkflowContext {
-    id: String,
-    db: Option<Arc<PgPool>>,
-    barrier: Option<Arc<Barrier>>,
+    id: String,                    // 工作流ID
+    db: Option<Arc<PgPool>>,       // 数据库
+    barrier: Option<Arc<Barrier>>, // 屏障
+    assets: Arc<Assets>,           // 策略持仓情况
 }
 
 impl Default for WorkflowContext {
@@ -219,6 +222,7 @@ impl Default for WorkflowContext {
             id: generate_workflow_id(),
             db: None,
             barrier: None,
+            assets: Arc::new(Assets::new()),
         }
     }
 }
@@ -248,8 +252,42 @@ impl WorkflowContext {
     }
 }
 
+#[derive(Debug)]
+struct Assets(DashMap<String, Decimal>);
+
+#[allow(unused)]
+impl Assets {
+    fn new() -> Self {
+        Assets(DashMap::new())
+    }
+
+    fn get_value(&self, key: impl Into<String>) -> Decimal {
+        *self.entry(key.into()).or_insert(Decimal::ZERO)
+    }
+
+    fn add_value(&self, key: impl Into<String>, value: Decimal) {
+        let mut entry = self.entry(key.into()).or_insert(Decimal::ZERO);
+        *entry += value;
+    }
+
+    fn sub_value(&self, key: impl Into<String>, value: Decimal) {
+        let mut entry = self.entry(key.into()).or_insert(Decimal::ZERO);
+        *entry -= value;
+    }
+}
+
+impl Deref for Assets {
+    type Target = DashMap<String, Decimal>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use rust_decimal_macros::dec;
+
     use super::*;
 
     #[test]
@@ -310,5 +348,18 @@ mod tests {
     fn test_workflow_context_default() {
         let context = WorkflowContext::default();
         assert_eq!(context.id.len(), 21);
+    }
+
+    #[test]
+    fn test_position_should_work() {
+        let p = Assets::new();
+
+        assert_eq!(p.get_value("btc"), Decimal::ZERO);
+
+        p.add_value("btc", dec!(0.25));
+        assert_eq!(p.get_value("btc"), dec!(0.25));
+
+        p.sub_value("btc", dec!(0.22));
+        assert_eq!(p.get_value("btc"), dec!(0.03));
     }
 }
