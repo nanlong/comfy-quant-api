@@ -265,14 +265,30 @@ impl Assets {
         *self.entry(key.into()).or_insert(Decimal::ZERO)
     }
 
-    fn add_value(&self, key: impl Into<String>, value: Decimal) {
-        let mut entry = self.entry(key.into()).or_insert(Decimal::ZERO);
-        *entry += value;
+    fn add_value(&self, key: impl Into<String>, value: Decimal) -> (Decimal, Decimal) {
+        self.change_value(AssetsOp::Add, key, value)
     }
 
-    fn sub_value(&self, key: impl Into<String>, value: Decimal) {
+    fn sub_value(&self, key: impl Into<String>, value: Decimal) -> (Decimal, Decimal) {
+        self.change_value(AssetsOp::Sub, key, value)
+    }
+
+    fn change_value(
+        &self,
+        op: AssetsOp,
+        key: impl Into<String>,
+        value: Decimal,
+    ) -> (Decimal, Decimal) {
         let mut entry = self.entry(key.into()).or_insert(Decimal::ZERO);
-        *entry -= value;
+        let before = *entry;
+
+        match op {
+            AssetsOp::Add => *entry += value,
+            AssetsOp::Sub => *entry -= value,
+        }
+
+        let after = *entry;
+        (before, after)
     }
 }
 
@@ -282,6 +298,11 @@ impl Deref for Assets {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+enum AssetsOp {
+    Add,
+    Sub,
 }
 
 #[cfg(test)]
