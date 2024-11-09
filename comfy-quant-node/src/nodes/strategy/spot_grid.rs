@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Setupable},
+    node_core::{Executable, Port, PortAccessor, Setupable, SpotTradeable},
     node_io::{SpotPairInfo, TickStream},
     workflow::{self, WorkflowContext},
 };
@@ -75,6 +75,11 @@ impl SpotGrid {
             anyhow::bail!("Insufficient free balance");
         }
 
+        // 初始化策略可操作的账户金额
+        self.get_context()?
+            .assets()
+            .add_value(&pair_info.quote_asset, self.params.investment);
+
         let _platform_name = client.platform_name();
         let symbol_info = client
             .get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset)
@@ -109,11 +114,23 @@ impl SpotGrid {
 
         Ok(())
     }
+
+    fn get_grid_mut(&mut self) -> Result<&mut Grid> {
+        self.grid
+            .as_mut()
+            .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))
+    }
 }
 
 impl Setupable for SpotGrid {
     fn setup_context(&mut self, context: WorkflowContext) {
         self.context = Some(context);
+    }
+
+    fn get_context(&self) -> Result<&WorkflowContext> {
+        self.context
+            .as_ref()
+            .ok_or_else(|| anyhow!("context not setup"))
     }
 }
 
@@ -131,10 +148,7 @@ impl PortAccessor for SpotGrid {
 #[allow(unused)]
 impl Executable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
-        let context = self
-            .context
-            .as_ref()
-            .ok_or_else(|| anyhow!("context not setup"))?;
+        let context = self.get_context()?;
 
         // 等待其他节点
         context.wait().await?;
@@ -144,41 +158,42 @@ impl Executable for SpotGrid {
         let client = self.port.get_input::<SpotClientKind>(1)?;
         let tick_stream = self.port.get_input::<TickStream>(2)?;
 
-        let current_price = tick_stream.subscribe().recv_async().await?.price;
+        let tick_rx = tick_stream.subscribe();
+        let current_price = tick_rx.recv_async().await?.price;
         self.initialize(&pair_info, &client, current_price).await?;
 
         let params = self.params.clone();
-        let grid = self
-            .grid
-            .as_mut()
-            .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))?;
-        let tick_rx = tick_stream.subscribe();
 
         while let Ok(tick) = tick_rx.recv_async().await {
-            let signal = grid.evaluate_with_price(&params, tick.price);
+            let signal = self
+                .get_grid_mut()?
+                .evaluate_with_price(&params, tick.price);
 
             if let Some(signal) = signal {
                 match signal {
                     TradeSignal::Buy(quantity) => {
-                        let order = client
+                        let order = self
                             .market_buy(
+                                &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
                                 quantity.to_string().parse::<f64>()?,
                             )
                             .await?;
-                        grid.update_with_order(&signal, &order);
+
+                        self.get_grid_mut()?.update_with_order(&signal, &order);
                         tracing::info!("SpotGrid buy order: {:?}", order);
                     }
                     TradeSignal::Sell(quantity) => {
-                        let order = client
+                        let order = self
                             .market_sell(
+                                &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
                                 quantity.to_string().parse::<f64>()?,
                             )
                             .await?;
-                        grid.update_with_order(&signal, &order);
+                        self.get_grid_mut()?.update_with_order(&signal, &order);
                         tracing::info!("SpotGrid sell order: {:?}", order);
                     }
                     TradeSignal::StopLoss(sell_all) => {
@@ -188,19 +203,29 @@ impl Executable for SpotGrid {
 
                         let balance = client.get_balance(&pair_info.base_asset).await?;
                         let quantity = balance.free.parse::<f64>()?;
-                        let order = client
-                            .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
+                        let order = self
+                            .market_sell(
+                                &client,
+                                &pair_info.base_asset,
+                                &pair_info.quote_asset,
+                                quantity,
+                            )
                             .await?;
-                        grid.update_with_order(&signal, &order);
+                        self.get_grid_mut()?.update_with_order(&signal, &order);
                         tracing::info!("SpotGrid sell all order: {:?}", order);
                     }
                     TradeSignal::TakeProfit => {
                         let balance = client.get_balance(&pair_info.base_asset).await?;
                         let quantity = balance.free.parse::<f64>()?;
-                        let order = client
-                            .market_sell(&pair_info.base_asset, &pair_info.quote_asset, quantity)
+                        let order = self
+                            .market_sell(
+                                &client,
+                                &pair_info.base_asset,
+                                &pair_info.quote_asset,
+                                quantity,
+                            )
                             .await?;
-                        grid.update_with_order(&signal, &order);
+                        self.get_grid_mut()?.update_with_order(&signal, &order);
                         tracing::info!("SpotGrid take profit order: {:?}", order);
                     }
                 }

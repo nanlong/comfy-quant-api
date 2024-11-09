@@ -1,10 +1,16 @@
 use crate::{node_core::Port, workflow::WorkflowContext};
 use anyhow::Result;
+use comfy_quant_exchange::client::{
+    spot_client::base::Order,
+    spot_client_kind::{SpotClientExecutable, SpotClientKind},
+};
 use enum_dispatch::enum_dispatch;
 
 #[enum_dispatch]
 pub trait Setupable {
     fn setup_context(&mut self, context: WorkflowContext);
+
+    fn get_context(&self) -> Result<&WorkflowContext>;
 }
 
 // 节点执行
@@ -54,5 +60,65 @@ where
         target.get_port_mut()?.add_input(target_slot, slot)?;
 
         Ok(())
+    }
+}
+
+#[allow(async_fn_in_trait)]
+pub trait SpotTradeable {
+    async fn market_buy(
+        &mut self,
+        client: &SpotClientKind,
+        base_asset: &str,
+        quote_asset: &str,
+        qty: f64,
+    ) -> Result<Order>;
+
+    async fn market_sell(
+        &mut self,
+        client: &SpotClientKind,
+        base_asset: &str,
+        quote_asset: &str,
+        qty: f64,
+    ) -> Result<Order>;
+}
+
+impl<T> SpotTradeable for T
+where
+    T: Setupable,
+{
+    async fn market_buy(
+        &mut self,
+        client: &SpotClientKind,
+        base_asset: &str,
+        quote_asset: &str,
+        qty: f64,
+    ) -> Result<Order> {
+        // 提交交易
+        let order = client.market_buy(base_asset, quote_asset, qty).await?;
+
+        // 更新
+        let assets = self.get_context()?.assets();
+        assets.add_value(base_asset, order.base_asset_amount()?);
+        assets.sub_value(quote_asset, order.quote_asset_amount()?);
+
+        Ok(order)
+    }
+
+    async fn market_sell(
+        &mut self,
+        client: &SpotClientKind,
+        base_asset: &str,
+        quote_asset: &str,
+        qty: f64,
+    ) -> Result<Order> {
+        // 提交交易
+        let order = client.market_sell(base_asset, quote_asset, qty).await?;
+
+        // 更新
+        let assets = self.get_context()?.assets();
+        assets.sub_value(base_asset, order.base_asset_amount()?);
+        assets.add_value(quote_asset, order.quote_asset_amount()?);
+
+        Ok(order)
     }
 }

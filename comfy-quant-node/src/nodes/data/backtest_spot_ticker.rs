@@ -132,6 +132,12 @@ impl Setupable for BacktestSpotTicker {
     fn setup_context(&mut self, context: WorkflowContext) {
         self.context = Some(context);
     }
+
+    fn get_context(&self) -> Result<&WorkflowContext> {
+        self.context
+            .as_ref()
+            .ok_or_else(|| anyhow!("context not setup"))
+    }
 }
 
 impl PortAccessor for BacktestSpotTicker {

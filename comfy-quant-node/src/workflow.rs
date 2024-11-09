@@ -241,6 +241,10 @@ impl WorkflowContext {
         Ok(Arc::clone(db))
     }
 
+    pub(crate) fn assets(&self) -> Arc<Assets> {
+        Arc::clone(&self.assets)
+    }
+
     pub(crate) async fn wait(&self) -> Result<()> {
         let barrier = self
             .barrier
@@ -253,7 +257,7 @@ impl WorkflowContext {
 }
 
 #[derive(Debug)]
-struct Assets(DashMap<String, Decimal>);
+pub(crate) struct Assets(DashMap<String, Decimal>);
 
 #[allow(unused)]
 impl Assets {
@@ -261,15 +265,15 @@ impl Assets {
         Assets(DashMap::new())
     }
 
-    fn get_value(&self, key: impl Into<String>) -> Decimal {
+    pub(crate) fn get_value(&self, key: impl Into<String>) -> Decimal {
         *self.entry(key.into()).or_insert(Decimal::ZERO)
     }
 
-    fn add_value(&self, key: impl Into<String>, value: Decimal) -> (Decimal, Decimal) {
+    pub(crate) fn add_value(&self, key: impl Into<String>, value: Decimal) -> (Decimal, Decimal) {
         self.change_value(AssetsOp::Add, key, value)
     }
 
-    fn sub_value(&self, key: impl Into<String>, value: Decimal) -> (Decimal, Decimal) {
+    pub(crate) fn sub_value(&self, key: impl Into<String>, value: Decimal) -> (Decimal, Decimal) {
         self.change_value(AssetsOp::Sub, key, value)
     }
 

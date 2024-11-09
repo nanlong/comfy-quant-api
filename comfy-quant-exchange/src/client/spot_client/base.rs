@@ -1,4 +1,6 @@
+use anyhow::Result;
 use bon::Builder;
+use rust_decimal::Decimal;
 
 #[derive(Builder, Debug)]
 pub struct AccountInformation {
@@ -58,4 +60,16 @@ pub struct Order {
     pub status: OrderStatus,  // 订单状态
     pub time: i64,            // 创建时间
     pub update_time: i64,     // 更新时间
+}
+
+impl Order {
+    pub fn base_asset_amount(&self) -> Result<Decimal> {
+        Ok(self.executed_qty.parse::<Decimal>()?)
+    }
+
+    pub fn quote_asset_amount(&self) -> Result<Decimal> {
+        let base_asset_amount = self.base_asset_amount()?;
+        let price = self.price.parse::<Decimal>()?;
+        Ok(base_asset_amount * price)
+    }
 }
