@@ -50,16 +50,18 @@ pub enum OrderSide {
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub struct Order {
-    pub symbol: String,       // 交易对
-    pub id: String,           // 订单ID
-    pub price: String,        // 订单价格
-    pub orig_qty: String,     // 用户设置的原始订单数量
-    pub executed_qty: String, // 已执行数量
-    pub r#type: OrderType,    // 订单类型
-    pub side: OrderSide,      // 订单方向
-    pub status: OrderStatus,  // 订单状态
-    pub time: i64,            // 创建时间
-    pub update_time: i64,     // 更新时间
+    pub symbol: String,                  // 交易对
+    pub order_id: String,                // 订单ID
+    pub client_order_id: Option<String>, // 用户自己设置的ID
+    pub price: String,                   // 订单价格
+    pub orig_qty: String,                // 用户设置的原始订单数量
+    pub executed_qty: String,            // 交易的订单数量
+    pub cumulative_quote_qty: String,    // 累计交易的金额
+    pub order_type: OrderType,           // 订单类型
+    pub order_side: OrderSide,           // 订单方向
+    pub order_status: OrderStatus,       // 订单状态
+    pub time: i64,                       // 订单时间
+    pub update_time: i64,                // 最后更新时间
 }
 
 impl Order {
@@ -68,8 +70,6 @@ impl Order {
     }
 
     pub fn quote_asset_amount(&self) -> Result<Decimal> {
-        let base_asset_amount = self.base_asset_amount()?;
-        let price = self.price.parse::<Decimal>()?;
-        Ok(base_asset_amount * price)
+        Ok(self.cumulative_quote_qty.parse::<Decimal>()?)
     }
 }

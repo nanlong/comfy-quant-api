@@ -145,13 +145,10 @@ impl PortAccessor for SpotGrid {
 }
 
 // 节点执行
-#[allow(unused)]
 impl Executable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
-        let context = self.get_context()?;
-
         // 等待其他节点
-        context.wait().await?;
+        self.get_context()?.wait().await?;
 
         // 获取输入
         let pair_info = self.port.get_input::<SpotPairInfo>(0)?;
@@ -171,58 +168,60 @@ impl Executable for SpotGrid {
 
             if let Some(signal) = signal {
                 match signal {
-                    TradeSignal::Buy(quantity) => {
+                    TradeSignal::Buy(qty) => {
                         let order = self
                             .market_buy(
                                 &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
-                                quantity.to_string().parse::<f64>()?,
+                                qty.to_string().parse::<f64>()?,
                             )
                             .await?;
 
                         self.get_grid_mut()?.update_with_order(&signal, &order);
                         tracing::info!("SpotGrid buy order: {:?}", order);
                     }
-                    TradeSignal::Sell(quantity) => {
+
+                    TradeSignal::Sell(qty) => {
                         let order = self
                             .market_sell(
                                 &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
-                                quantity.to_string().parse::<f64>()?,
+                                qty.to_string().parse::<f64>()?,
                             )
                             .await?;
                         self.get_grid_mut()?.update_with_order(&signal, &order);
                         tracing::info!("SpotGrid sell order: {:?}", order);
                     }
+
                     TradeSignal::StopLoss(sell_all) => {
                         if !sell_all {
                             continue;
                         }
 
                         let balance = client.get_balance(&pair_info.base_asset).await?;
-                        let quantity = balance.free.parse::<f64>()?;
                         let order = self
                             .market_sell(
                                 &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
-                                quantity,
+                                balance.free.parse::<f64>()?,
                             )
                             .await?;
                         self.get_grid_mut()?.update_with_order(&signal, &order);
                         tracing::info!("SpotGrid sell all order: {:?}", order);
                     }
+
                     TradeSignal::TakeProfit => {
                         let balance = client.get_balance(&pair_info.base_asset).await?;
-                        let quantity = balance.free.parse::<f64>()?;
+
                         let order = self
                             .market_sell(
                                 &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
-                                quantity,
+                                balance.free.parse::<f64>()?,
                             )
                             .await?;
                         self.get_grid_mut()?.update_with_order(&signal, &order);
@@ -513,7 +512,7 @@ impl Grid {
     fn update_with_order(&mut self, signal: &TradeSignal, order: &Order) {
         let current_grid = self.current_grid_mut();
 
-        match order.side {
+        match order.order_side {
             OrderSide::Buy => {
                 current_grid.buyed = true;
                 current_grid.sold = false;
@@ -798,13 +797,14 @@ mod tests {
 
         let order = Order::builder()
             .symbol("DOTUSDT")
-            .id("1")
+            .order_id("1")
             .price("4.0")
             .orig_qty("25.0")
             .executed_qty("25.0")
-            .r#type(OrderType::Market)
-            .side(OrderSide::Buy)
-            .status(OrderStatus::Filled)
+            .cumulative_quote_qty("25.0")
+            .order_type(OrderType::Market)
+            .order_side(OrderSide::Buy)
+            .order_status(OrderStatus::Filled)
             .time(0)
             .update_time(0)
             .build();
@@ -823,13 +823,14 @@ mod tests {
 
         let order = Order::builder()
             .symbol("DOTUSDT")
-            .id("2")
+            .order_id("2")
             .price("4.698")
             .orig_qty("24.98")
             .executed_qty("24.98")
-            .r#type(OrderType::Market)
-            .side(OrderSide::Sell)
-            .status(OrderStatus::Filled)
+            .cumulative_quote_qty("24.98")
+            .order_type(OrderType::Market)
+            .order_side(OrderSide::Sell)
+            .order_status(OrderStatus::Filled)
             .time(0)
             .update_time(0)
             .build();
