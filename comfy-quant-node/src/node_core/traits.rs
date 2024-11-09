@@ -66,7 +66,7 @@ where
 #[allow(async_fn_in_trait)]
 pub trait SpotTradeable {
     async fn market_buy(
-        &mut self,
+        &self,
         client: &SpotClientKind,
         base_asset: &str,
         quote_asset: &str,
@@ -74,7 +74,7 @@ pub trait SpotTradeable {
     ) -> Result<Order>;
 
     async fn market_sell(
-        &mut self,
+        &self,
         client: &SpotClientKind,
         base_asset: &str,
         quote_asset: &str,
@@ -87,7 +87,7 @@ where
     T: Setupable,
 {
     async fn market_buy(
-        &mut self,
+        &self,
         client: &SpotClientKind,
         base_asset: &str,
         quote_asset: &str,
@@ -105,7 +105,7 @@ where
     }
 
     async fn market_sell(
-        &mut self,
+        &self,
         client: &SpotClientKind,
         base_asset: &str,
         quote_asset: &str,
