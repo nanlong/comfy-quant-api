@@ -4,6 +4,7 @@ use super::base::{
 use crate::client::spot_client_kind::SpotClientExecutable;
 use anyhow::Result;
 use bon::bon;
+use rust_decimal::{prelude::FromPrimitive, Decimal};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -145,10 +146,13 @@ impl SpotClientExecutable for BacktestSpotClient {
 
     async fn get_account(&self) -> Result<AccountInformation> {
         let data = self.data.lock().await;
+        let commissions = data.commissions.unwrap_or(0.001);
+        let commission_rate = Decimal::from_f64(commissions).unwrap();
 
         Ok(AccountInformation::builder()
-            .maker_commission(data.commissions.unwrap_or(0.001))
-            .taker_commission(data.commissions.unwrap_or(0.001))
+            .maker_commission_rate(commission_rate)
+            .taker_commission_rate(commission_rate)
+            .can_trade(true)
             .build())
     }
 
@@ -185,7 +189,12 @@ impl SpotClientExecutable for BacktestSpotClient {
         }
     }
 
-    async fn get_order(&self, order_id: &str) -> Result<Order> {
+    async fn get_order(
+        &self,
+        _base_asset: &str,
+        _quote_asset: &str,
+        order_id: &str,
+    ) -> Result<Order> {
         let data = self.data.lock().await;
 
         let order = data

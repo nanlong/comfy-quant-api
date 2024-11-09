@@ -1,10 +1,10 @@
-use anyhow::Result;
-use enum_dispatch::enum_dispatch;
-
 use super::spot_client::{
     base::{AccountInformation, Balance, Order, SymbolInformation},
+    binance_spot_client::BinanceSpotClient,
     mock_spot_client::BacktestSpotClient,
 };
+use anyhow::Result;
+use enum_dispatch::enum_dispatch;
 
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
@@ -24,7 +24,8 @@ pub trait SpotClientExecutable {
     async fn get_balance(&self, asset: &str) -> Result<Balance>;
 
     // 获取订单信息
-    async fn get_order(&self, order_id: &str) -> Result<Order>;
+    async fn get_order(&self, base_asset: &str, quote_asset: &str, order_id: &str)
+        -> Result<Order>;
 
     // 市价买单
     async fn market_buy(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order>;
@@ -55,11 +56,13 @@ pub trait SpotClientExecutable {
 #[enum_dispatch(SpotClientExecutable)]
 pub enum SpotClientKind {
     BacktestSpotClient(BacktestSpotClient),
+    BinanceSpotClient(BinanceSpotClient),
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal_macros::dec;
 
     #[tokio::test]
     async fn test_spot_client_enum() -> Result<()> {
@@ -68,8 +71,8 @@ mod tests {
             .build()
             .into();
         let account = client.get_account().await?;
-        assert_eq!(account.maker_commission, 0.001);
-        assert_eq!(account.taker_commission, 0.001);
+        assert_eq!(account.maker_commission_rate, dec!(0.001));
+        assert_eq!(account.taker_commission_rate, dec!(0.001));
         Ok(())
     }
 }

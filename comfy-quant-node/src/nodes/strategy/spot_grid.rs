@@ -87,7 +87,6 @@ impl SpotGrid {
         let account = client.get_account().await?;
         let base_asset_precision = symbol_info.base_asset_precision;
         let quote_asset_precision = symbol_info.quote_asset_precision;
-        let commission = Decimal::try_from(account.taker_commission)?;
 
         // 计算网格价格
         let grid_prices = calc_grid_prices(
@@ -105,7 +104,7 @@ impl SpotGrid {
             .current_price(current_price)
             .base_asset_precision(base_asset_precision)
             .quote_asset_precision(quote_asset_precision)
-            .commission(commission)
+            .commission_rate(account.taker_commission_rate)
             .build();
 
         self.grid = Some(grid);
@@ -368,7 +367,7 @@ impl Grid {
         current_price: Decimal,     // 当前价格
         base_asset_precision: u32,  // 基础币种小数点位数
         quote_asset_precision: u32, // 报价币种小数点位数
-        commission: Decimal,        // 手续费
+        commission_rate: Decimal,   // 手续费
     ) -> Self {
         let grid_investment = (investment / (Decimal::from(grid_prices.len()) - dec!(1)))
             .round_dp(quote_asset_precision);
@@ -379,7 +378,7 @@ impl Grid {
             .map(|(i, w)| {
                 let buy_quantity = (grid_investment / w[0]).round_dp(base_asset_precision);
                 let sell_quantity =
-                    (buy_quantity * (dec!(1) - commission)).round_dp(base_asset_precision);
+                    (buy_quantity * (dec!(1) - commission_rate)).round_dp(base_asset_precision);
 
                 GridRow::builder()
                     .index(i)
@@ -778,7 +777,7 @@ mod tests {
             .base_asset_precision(base_asset_precision)
             .quote_asset_precision(quote_asset_precision)
             .current_price(dec!(4.25))
-            .commission(commission)
+            .commission_rate(commission)
             .build();
 
         assert_eq!(grid.rows.len(), 10);

@@ -127,6 +127,7 @@ impl TryFrom<&workflow::Node> for BacktestSpotClient {
 mod tests {
     use super::*;
     use comfy_quant_exchange::client::spot_client_kind::SpotClientExecutable;
+    use rust_decimal_macros::dec;
 
     #[test]
     fn test_try_from_node_to_mock_account() -> anyhow::Result<()> {
@@ -160,8 +161,8 @@ mod tests {
         assert_eq!(balance.free, "10000");
 
         let account_information = client.get_account().await?;
-        assert_eq!(account_information.maker_commission, 0.001);
-        assert_eq!(account_information.taker_commission, 0.001);
+        assert_eq!(account_information.maker_commission_rate, dec!(0.001));
+        assert_eq!(account_information.taker_commission_rate, dec!(0.001));
 
         Ok(())
     }

@@ -12,6 +12,7 @@ tokio-stream = { workspace = true }
 sqlx = { workspace = true }
 chrono = { workspace = true }
 rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
 flume = { workspace = true }
 bon = { workspace = true }
 async-stream = { workspace = true }

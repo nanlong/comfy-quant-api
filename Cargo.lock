@@ -271,7 +271,8 @@ checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
 [[package]]
 name = "binance"
 version = "0.21.0"
-source = "git+https://github.com/wisespace-io/binance-rs.git?rev=fe58a92#fe58a927c8bae4840a55656313c4534d3a024dff"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cfc782b7f4e1ce0860867056777a2a3226144a3ae7bdc04dc334a1b011ba4a0"
 dependencies = [
  "clap",
  "error-chain",
@@ -545,6 +546,7 @@ dependencies = [
  "flume",
  "futures",
  "rust_decimal",
+ "rust_decimal_macros",
  "sqlx",
  "tokio",
  "tokio-stream",

@@ -1,4 +1,5 @@
 [default.extend-words]
+cummulative = "cummulative"
 
 [files]
 extend-exclude = ["CHANGELOG.md", "notebooks/*"]

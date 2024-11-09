@@ -6,11 +6,12 @@ use binance::{
     general::General,
     market::Market,
     model::{
-        AccountInformation, Balance, ExchangeInformation, KlineSummaries, OrderBook, Symbol,
+        AccountInformation, Balance, ExchangeInformation, KlineSummaries, Order, OrderBook, Symbol,
         SymbolPrice, Transaction,
     },
 };
 
+#[derive(Clone)]
 pub struct Spot<'a> {
     client: &'a BinanceClient,
 }
@@ -21,15 +22,35 @@ impl<'a> Spot<'a> {
     }
 
     fn account(&self) -> Account {
-        Account::new(self.client.api_key.clone(), self.client.secret_key.clone())
+        let api_key = self.client.api_key.clone();
+        let secret_key = self.client.secret_key.clone();
+
+        self.client.config.as_ref().map_or(
+            Account::new(api_key.clone(), secret_key.clone()),
+            |config| Account::new_with_config(api_key, secret_key, config),
+        )
     }
 
     fn market(&self) -> Market {
-        Market::new(self.client.api_key.clone(), self.client.secret_key.clone())
+        let api_key = self.client.api_key.clone();
+        let secret_key = self.client.secret_key.clone();
+
+        self.client
+            .config
+            .as_ref()
+            .map_or(Market::new(api_key.clone(), secret_key.clone()), |config| {
+                Market::new_with_config(api_key, secret_key, config)
+            })
     }
 
     fn general(&self) -> General {
-        General::new(self.client.api_key.clone(), self.client.secret_key.clone())
+        let api_key = self.client.api_key.clone();
+        let secret_key = self.client.secret_key.clone();
+
+        self.client.config.as_ref().map_or(
+            General::new(api_key.clone(), secret_key.clone()),
+            |config| General::new_with_config(api_key, secret_key, config),
+        )
     }
 
     pub fn ping(&self) -> Result<String> {
@@ -58,10 +79,10 @@ impl<'a> Spot<'a> {
 
     // 获取账户信息
     pub fn get_account(&self) -> Result<AccountInformation> {
-        let account_information = self
-            .account()
-            .get_account()
-            .map_err(|e| anyhow!(e.to_string()))?;
+        let account_information = self.account().get_account().map_err(|e| {
+            dbg!(&e);
+            anyhow!(e.to_string())
+        })?;
 
         Ok(account_information)
     }
@@ -80,8 +101,8 @@ impl<'a> Spot<'a> {
     pub fn limit_buy(
         &self,
         symbol: impl Into<String>, // 交易对
-        qty: impl Into<f32>,       // 数量
-        price: f32,                // 价格
+        qty: impl Into<f64>,       // 数量
+        price: f64,                // 价格
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -95,8 +116,8 @@ impl<'a> Spot<'a> {
     pub fn limit_sell(
         &self,
         symbol: impl Into<String>,
-        qty: impl Into<f32>, // 数量
-        price: f32,          // 价格
+        qty: impl Into<f64>, // 数量
+        price: f64,          // 价格
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -110,7 +131,7 @@ impl<'a> Spot<'a> {
     pub fn market_buy(
         &self,
         symbol: impl Into<String>, // 交易对
-        qty: impl Into<f32>,       // 数量
+        qty: impl Into<f64>,       // 数量
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -124,7 +145,7 @@ impl<'a> Spot<'a> {
     pub fn market_sell(
         &self,
         symbol: impl Into<String>, // 交易对
-        qty: impl Into<f32>,       // 数量
+        qty: impl Into<f64>,       // 数量
     ) -> Result<Transaction> {
         let transaction = self
             .account()
@@ -132,6 +153,15 @@ impl<'a> Spot<'a> {
             .map_err(|e| anyhow!(e.to_string()))?;
 
         Ok(transaction)
+    }
+
+    pub fn get_order(&self, symbol: impl Into<String>, order_id: u64) -> Result<Order> {
+        let order = self
+            .account()
+            .order_status(symbol, order_id)
+            .map_err(|e| anyhow!(e.to_string()))?;
+
+        Ok(order)
     }
 
     // 获取价格
