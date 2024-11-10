@@ -1,5 +1,5 @@
 use super::spot_client::{
-    base::{AccountInformation, Balance, Order, SymbolInformation},
+    base::{AccountInformation, Balance, Order, SymbolInformation, SymbolPrice},
     binance_spot_client::BinanceSpotClient,
     mock_spot_client::BacktestSpotClient,
 };
@@ -50,6 +50,9 @@ pub trait SpotClientExecutable {
         qty: f64,
         price: f64,
     ) -> Result<Order>;
+
+    // 获取价格
+    async fn get_price(&self, base_asset: &str, quote_asset: &str) -> Result<SymbolPrice>;
 }
 
 #[derive(Debug, Clone)]

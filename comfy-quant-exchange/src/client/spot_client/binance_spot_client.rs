@@ -1,4 +1,4 @@
-use super::base::{AccountInformation, Balance, Order, SymbolInformation};
+use super::base::{AccountInformation, Balance, Order, SymbolInformation, SymbolPrice};
 use crate::{client::spot_client_kind::SpotClientExecutable, exchange::binance::BinanceClient};
 use anyhow::Result;
 use binance::config::Config;
@@ -36,6 +36,12 @@ impl BinanceSpotClient {
             quote_asset.to_uppercase()
         )
     }
+
+    pub async fn ping(&self) -> Result<String> {
+        let client = self.client.clone();
+        let pong = spawn_blocking(move || client.spot().ping()).await??;
+        Ok(pong)
+    }
 }
 
 impl SpotClientExecutable for BinanceSpotClient {
@@ -59,12 +65,14 @@ impl SpotClientExecutable for BinanceSpotClient {
         let symbol = Self::symbol(base_asset, quote_asset);
         let symbol = spawn_blocking(move || client.spot().get_symbol_info(symbol)).await??;
 
+        dbg!(&symbol);
+
         Ok(symbol.into())
     }
 
     async fn get_balance(&self, asset: &str) -> Result<Balance> {
         let client = self.client.clone();
-        let asset = asset.to_string();
+        let asset = asset.to_uppercase();
         let balance = spawn_blocking(move || client.spot().get_balance(asset)).await??;
 
         Ok(balance.into())
@@ -88,7 +96,7 @@ impl SpotClientExecutable for BinanceSpotClient {
         let client = self.client.clone();
         let symbol = Self::symbol(base_asset, quote_asset);
         let tx = spawn_blocking(move || client.spot().market_buy(symbol, qty)).await??;
-
+        dbg!(&tx);
         tx.try_into()
     }
 
@@ -126,5 +134,13 @@ impl SpotClientExecutable for BinanceSpotClient {
         let tx = spawn_blocking(move || client.spot().limit_sell(symbol, qty, price)).await??;
 
         tx.try_into()
+    }
+
+    async fn get_price(&self, base_asset: &str, quote_asset: &str) -> Result<SymbolPrice> {
+        let client = self.client.clone();
+        let symbol = Self::symbol(base_asset, quote_asset);
+        let symbol_price = spawn_blocking(move || client.spot().get_price(symbol)).await??;
+
+        symbol_price.try_into()
     }
 }

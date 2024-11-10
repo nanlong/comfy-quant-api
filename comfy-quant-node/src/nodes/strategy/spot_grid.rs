@@ -80,13 +80,12 @@ impl SpotGrid {
             .assets()
             .add_value(&pair_info.quote_asset, self.params.investment);
 
-        let _platform_name = client.platform_name();
+        // 获取相关信息
+        let platform_name = client.platform_name();
         let symbol_info = client
             .get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset)
             .await?;
         let account = client.get_account().await?;
-        let base_asset_precision = symbol_info.base_asset_precision;
-        let quote_asset_precision = symbol_info.quote_asset_precision;
 
         // 计算网格价格
         let grid_prices = calc_grid_prices(
@@ -94,16 +93,17 @@ impl SpotGrid {
             self.params.lower_price,
             self.params.upper_price,
             self.params.grid_rows,
-            quote_asset_precision,
+            symbol_info.quote_asset_precision,
         );
 
         // 创建网格
         let grid = Grid::builder()
+            .platform_name(platform_name)
             .investment(self.params.investment)
             .grid_prices(grid_prices)
             .current_price(current_price)
-            .base_asset_precision(base_asset_precision)
-            .quote_asset_precision(quote_asset_precision)
+            .base_asset_precision(symbol_info.base_asset_precision)
+            .quote_asset_precision(symbol_info.quote_asset_precision)
             .commission_rate(account.taker_commission_rate)
             .build();
 
@@ -177,7 +177,7 @@ impl Executable for SpotGrid {
                             )
                             .await?;
 
-                        self.get_grid_mut()?.update_with_order(&signal, &order);
+                        self.get_grid_mut()?.update_with_order(&order);
                         tracing::info!("SpotGrid buy order: {:?}", order);
                     }
 
@@ -190,7 +190,7 @@ impl Executable for SpotGrid {
                                 qty.to_string().parse::<f64>()?,
                             )
                             .await?;
-                        self.get_grid_mut()?.update_with_order(&signal, &order);
+                        self.get_grid_mut()?.update_with_order(&order);
                         tracing::info!("SpotGrid sell order: {:?}", order);
                     }
 
@@ -208,7 +208,7 @@ impl Executable for SpotGrid {
                                 balance.free.parse::<f64>()?,
                             )
                             .await?;
-                        self.get_grid_mut()?.update_with_order(&signal, &order);
+                        self.get_grid_mut()?.update_with_order(&order);
                         tracing::info!("SpotGrid sell all order: {:?}", order);
                     }
 
@@ -223,7 +223,7 @@ impl Executable for SpotGrid {
                                 balance.free.parse::<f64>()?,
                             )
                             .await?;
-                        self.get_grid_mut()?.update_with_order(&signal, &order);
+                        self.get_grid_mut()?.update_with_order(&order);
                         tracing::info!("SpotGrid take profit order: {:?}", order);
                     }
                 }
@@ -339,7 +339,9 @@ impl FromStr for Mode {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub(crate) struct Grid {
+    platform_name: String,    // 平台名称
     rows: Vec<GridRow>,       // 网格行
     cursor: usize,            // 当前网格序号
     prev_sell_price: Decimal, // 上一次的卖出价格
@@ -357,11 +359,11 @@ pub(crate) enum TradeSignal {
     TakeProfit,     // 止盈
 }
 
-#[allow(unused)]
 #[bon]
 impl Grid {
     #[builder]
     fn new(
+        platform_name: String,      // 平台名称
         investment: Decimal,        // 投资金额
         grid_prices: Vec<Decimal>,  // 网格价格
         current_price: Decimal,     // 当前价格
@@ -404,6 +406,7 @@ impl Grid {
         let locked = false;
 
         Grid {
+            platform_name,
             rows,
             cursor,
             prev_sell_price,
@@ -508,7 +511,7 @@ impl Grid {
     }
 
     /// 更新网格状态
-    fn update_with_order(&mut self, signal: &TradeSignal, order: &Order) {
+    fn update_with_order(&mut self, order: &Order) {
         let current_grid = self.current_grid_mut();
 
         match order.order_side {
@@ -772,6 +775,7 @@ mod tests {
         );
 
         let mut grid = Grid::builder()
+            .platform_name("Test".to_string())
             .investment(params.investment)
             .grid_prices(grid_prices)
             .base_asset_precision(base_asset_precision)
@@ -798,6 +802,7 @@ mod tests {
             .symbol("DOTUSDT")
             .order_id("1")
             .price("4.0")
+            .avg_price("4.0")
             .orig_qty("25.0")
             .executed_qty("25.0")
             .cumulative_quote_qty("25.0")
@@ -808,7 +813,7 @@ mod tests {
             .update_time(0)
             .build();
 
-        grid.update_with_order(&signal.unwrap(), &order);
+        grid.update_with_order(&order);
 
         assert_eq!(grid.current_grid().buyed, true);
         assert_eq!(grid.locked, false);
@@ -824,6 +829,7 @@ mod tests {
             .symbol("DOTUSDT")
             .order_id("2")
             .price("4.698")
+            .avg_price("4.698")
             .orig_qty("24.98")
             .executed_qty("24.98")
             .cumulative_quote_qty("24.98")
@@ -834,7 +840,7 @@ mod tests {
             .update_time(0)
             .build();
 
-        grid.update_with_order(&signal.unwrap(), &order);
+        grid.update_with_order(&order);
 
         assert_eq!(grid.current_grid().sold, true);
         assert_eq!(grid.locked, false);

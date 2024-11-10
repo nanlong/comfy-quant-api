@@ -1,4 +1,3 @@
-// use binance::{api, config::Config};
 use comfy_quant_exchange::client::{
     spot_client::binance_spot_client::BinanceSpotClient, spot_client_kind::SpotClientExecutable,
 };
@@ -6,8 +5,8 @@ use std::env;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let api_key = env::var("BINANCE_API_KEY2")?;
-    let secret_key = env::var("BINANCE_SECRET_KEY2")?;
+    let api_key = env::var("BINANCE_TESTNET_API_KEY")?;
+    let secret_key = env::var("BINANCE_TESTNET_SECRET_KEY")?;
 
     dbg!(&api_key);
     dbg!(&secret_key);
@@ -15,16 +14,28 @@ async fn main() -> anyhow::Result<()> {
     let client = BinanceSpotClient::builder()
         .api_key(api_key)
         .secret_key(secret_key)
-        // .config(Config::testnet())
+        .config(binance::config::Config::testnet())
         .build();
 
-    let account = client.get_account().await?;
+    // let account = client.get_account().await?;
 
-    dbg!(&account);
+    // dbg!(&account);
 
-    // let symbol = client.get_symbol_info("btc", "usdt").await?;
+    // let balance = client.get_balance("usdt").await?;
 
-    // dbg!(symbol);
+    // dbg!(&balance);
+
+    let symbol = client.get_symbol_info("btc", "usdt").await?;
+
+    dbg!(symbol);
+
+    // let price = client.get_price("btc", "usdt").await?;
+
+    // dbg!(&price);
+
+    // let order = client.market_buy("btc", "usdt", 0.00015).await?;
+
+    // dbg!(&order);
 
     Ok(())
 }

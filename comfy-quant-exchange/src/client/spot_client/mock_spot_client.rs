@@ -1,10 +1,12 @@
 use super::base::{
     AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType, SymbolInformation,
+    SymbolPrice,
 };
 use crate::client::spot_client_kind::SpotClientExecutable;
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use bon::bon;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
+use rust_decimal_macros::dec;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -130,7 +132,7 @@ impl BacktestSpotClient {
         Ok(())
     }
 
-    fn to_symbol(base_asset: &str, quote_asset: &str) -> String {
+    fn symbol(base_asset: &str, quote_asset: &str) -> String {
         format!(
             "{}{}",
             base_asset.to_uppercase(),
@@ -208,14 +210,15 @@ impl SpotClientExecutable for BacktestSpotClient {
     }
 
     async fn market_buy(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
-        let symbol = Self::to_symbol(base_asset, quote_asset);
+        let symbol = Self::symbol(base_asset, quote_asset);
         let mut data = self.data.lock().await;
         data.order_id += 1;
 
         let order = Order::builder()
             .symbol(symbol)
             .order_id(data.order_id.to_string())
-            .price("0".to_string())
+            .price("0")
+            .avg_price("0")
             .orig_qty(qty.to_string())
             .executed_qty("0")
             .cumulative_quote_qty("0")
@@ -230,14 +233,15 @@ impl SpotClientExecutable for BacktestSpotClient {
     }
 
     async fn market_sell(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
-        let symbol = Self::to_symbol(base_asset, quote_asset);
+        let symbol = Self::symbol(base_asset, quote_asset);
         let mut data = self.data.lock().await;
         data.order_id += 1;
 
         let order = Order::builder()
             .symbol(symbol)
             .order_id(data.order_id.to_string())
-            .price("0".to_string())
+            .price("0")
+            .avg_price("0")
             .orig_qty(qty.to_string())
             .executed_qty("0")
             .cumulative_quote_qty("0")
@@ -258,7 +262,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         qty: f64,
         price: f64,
     ) -> Result<Order> {
-        let symbol = Self::to_symbol(base_asset, quote_asset);
+        let symbol = Self::symbol(base_asset, quote_asset);
         let mut data = self.data.lock().await;
         data.order_id += 1;
 
@@ -266,6 +270,7 @@ impl SpotClientExecutable for BacktestSpotClient {
             .symbol(symbol)
             .order_id(data.order_id.to_string())
             .price(price.to_string())
+            .avg_price(price.to_string())
             .orig_qty(qty.to_string())
             .executed_qty("0")
             .cumulative_quote_qty("0")
@@ -286,7 +291,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         qty: f64,
         price: f64,
     ) -> Result<Order> {
-        let symbol = Self::to_symbol(base_asset, quote_asset);
+        let symbol = Self::symbol(base_asset, quote_asset);
         let mut data = self.data.lock().await;
         data.order_id += 1;
 
@@ -294,6 +299,7 @@ impl SpotClientExecutable for BacktestSpotClient {
             .symbol(symbol)
             .order_id(data.order_id.to_string())
             .price(price.to_string())
+            .avg_price(price.to_string())
             .orig_qty(qty.to_string())
             .executed_qty("0")
             .cumulative_quote_qty("0")
@@ -305,5 +311,10 @@ impl SpotClientExecutable for BacktestSpotClient {
             .build();
 
         Ok(order)
+    }
+
+    async fn get_price(&self, base_asset: &str, quote_asset: &str) -> Result<SymbolPrice> {
+        let symbol = Self::symbol(base_asset, quote_asset);
+        Ok(SymbolPrice::builder().symbol(symbol).price(dec!(0)).build())
     }
 }

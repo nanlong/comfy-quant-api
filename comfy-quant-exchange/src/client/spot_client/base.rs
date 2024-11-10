@@ -3,7 +3,8 @@ use std::str::FromStr;
 use anyhow::{anyhow, Result};
 use binance::model::{
     AccountInformation as BinanceAccountInformation, Balance as BinaceBalance,
-    Order as BinanceOrder, Symbol as BinaceSymbolInformation, Transaction as BinanceTransaction,
+    Order as BinanceOrder, Symbol as BinaceSymbolInformation, SymbolPrice as BinanceSymbolPrice,
+    Transaction as BinanceTransaction,
 };
 use bon::Builder;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
@@ -42,16 +43,25 @@ pub struct SymbolInformation {
     pub quote_asset: String,
     pub base_asset_precision: u32,
     pub quote_asset_precision: u32,
+    pub min_notional: Option<Decimal>,
 }
 
 impl From<BinaceSymbolInformation> for SymbolInformation {
     fn from(value: BinaceSymbolInformation) -> Self {
+        let min_notional = value.filters.iter().find_map(|filter| match filter {
+            binance::model::Filters::Notional { min_notional, .. } => min_notional
+                .as_ref()
+                .and_then(|val| val.parse::<Decimal>().ok()),
+            _ => None,
+        });
+
         SymbolInformation::builder()
             .symbol(value.symbol)
             .base_asset(value.base_asset)
             .quote_asset(value.quote_asset)
             .base_asset_precision(value.base_asset_precision as u32)
             .quote_asset_precision(value.quote_precision as u32)
+            .maybe_min_notional(min_notional)
             .build()
     }
 }
@@ -89,12 +99,12 @@ impl FromStr for OrderStatus {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "new" => Ok(OrderStatus::New),
-            "partially_filled" => Ok(OrderStatus::PartiallyFilled),
-            "filled" => Ok(OrderStatus::Filled),
-            "canceled" => Ok(OrderStatus::Canceled),
-            "pending_cancel" => Ok(OrderStatus::PendingCancel),
-            "rejected" => Ok(OrderStatus::Rejected),
+            "NEW" => Ok(OrderStatus::New),
+            "PARTIALLY_FILLED" => Ok(OrderStatus::PartiallyFilled),
+            "FILLED" => Ok(OrderStatus::Filled),
+            "CANCELED" => Ok(OrderStatus::Canceled),
+            "PENDING_CANCEL" => Ok(OrderStatus::PendingCancel),
+            "REJECTED" => Ok(OrderStatus::Rejected),
             _ => anyhow::bail!("OrderStatus parse failed. value: {}", s),
         }
     }
@@ -111,8 +121,8 @@ impl FromStr for OrderType {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "market" => Ok(OrderType::Market),
-            "limit" => Ok(OrderType::Limit),
+            "MARKET" => Ok(OrderType::Market),
+            "LIMIT" => Ok(OrderType::Limit),
             _ => anyhow::bail!("OrderType parse failed. value: {}", s),
         }
     }
@@ -129,9 +139,9 @@ impl FromStr for OrderSide {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "buy" => Ok(OrderSide::Buy),
-            "sell" => Ok(OrderSide::Sell),
-            _ => anyhow::bail!("OrderSize parse failed. value: {}", s),
+            "BUY" => Ok(OrderSide::Buy),
+            "SELL" => Ok(OrderSide::Sell),
+            _ => anyhow::bail!("OrderSide parse failed. value: {}", s),
         }
     }
 }
@@ -143,6 +153,7 @@ pub struct Order {
     pub order_id: String,                // 订单ID
     pub client_order_id: Option<String>, // 用户自己设置的ID
     pub price: String,                   // 订单价格
+    pub avg_price: String,               // 平均成交价格
     pub orig_qty: String,                // 用户设置的原始订单数量
     pub executed_qty: String,            // 交易的订单数量
     pub cumulative_quote_qty: String,    // 累计交易的金额
@@ -171,11 +182,16 @@ impl TryFrom<BinanceOrder> for Order {
         let order_side = value.side.parse::<OrderSide>()?;
         let order_status = value.status.parse::<OrderStatus>()?;
 
+        let amount = value.cummulative_quote_qty.parse::<Decimal>()?;
+        let qty = value.executed_qty.parse::<Decimal>()?;
+        let avg_price = amount / qty;
+
         let order = Order::builder()
             .symbol(value.symbol)
             .order_id(value.order_id.to_string())
             .client_order_id(value.client_order_id)
             .price(value.price.to_string())
+            .avg_price(avg_price.to_string())
             .orig_qty(value.orig_qty)
             .executed_qty(value.executed_qty)
             .cumulative_quote_qty(value.cummulative_quote_qty)
@@ -198,11 +214,19 @@ impl TryFrom<BinanceTransaction> for Order {
         let order_side = value.side.parse::<OrderSide>()?;
         let order_status = value.status.parse::<OrderStatus>()?;
 
+        let amount = Decimal::from_f64(value.cummulative_quote_qty).ok_or_else(|| {
+            anyhow!("binance transaction cummulative quote qty convert decimal failed")
+        })?;
+        let qty = Decimal::from_f64(value.executed_qty)
+            .ok_or_else(|| anyhow!("binance transaction executed qty convert decimal failed"))?;
+        let avg_price = amount / qty;
+
         let order = Order::builder()
             .symbol(value.symbol)
             .order_id(value.order_id.to_string())
             .client_order_id(value.client_order_id)
             .price(value.price.to_string())
+            .avg_price(avg_price.to_string())
             .orig_qty(value.orig_qty.to_string())
             .executed_qty(value.executed_qty.to_string())
             .cumulative_quote_qty(value.cummulative_quote_qty.to_string())
@@ -214,5 +238,26 @@ impl TryFrom<BinanceTransaction> for Order {
             .build();
 
         Ok(order)
+    }
+}
+
+#[derive(Builder, Debug, Clone)]
+#[builder(on(String, into))]
+pub struct SymbolPrice {
+    pub symbol: String,
+    pub price: Decimal,
+}
+
+impl TryFrom<BinanceSymbolPrice> for SymbolPrice {
+    type Error = anyhow::Error;
+
+    fn try_from(value: BinanceSymbolPrice) -> std::result::Result<Self, Self::Error> {
+        let price = Decimal::from_f64(value.price)
+            .ok_or_else(|| anyhow!("binance symbol price convert decimal failed"))?;
+
+        Ok(SymbolPrice::builder()
+            .symbol(value.symbol)
+            .price(price)
+            .build())
     }
 }
