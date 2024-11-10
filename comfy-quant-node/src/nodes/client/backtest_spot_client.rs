@@ -5,8 +5,7 @@ use crate::{
 use anyhow::{anyhow, Result};
 use bon::Builder;
 use comfy_quant_exchange::client::{
-    spot_client::mock_spot_client::BacktestSpotClient as ExchangeBacktestSpotClient,
-    spot_client_kind::SpotClientKind,
+    spot_client::mock_spot_client::BacktestSpotClient as Client, spot_client_kind::SpotClientKind,
 };
 
 #[derive(Builder, Debug, Clone)]
@@ -31,8 +30,8 @@ impl BacktestSpotClient {
     pub(crate) fn try_new(params: Params) -> Result<Self> {
         let mut port = Port::new();
 
-        let client = ExchangeBacktestSpotClient::builder()
-            .assets(params.assets.clone())
+        let client = Client::builder()
+            .assets(&params.assets[..])
             .commissions(params.commissions)
             .build();
 

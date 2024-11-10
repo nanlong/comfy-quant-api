@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use anyhow::{anyhow, Result};
 use binance::model::{
     AccountInformation as BinanceAccountInformation, Balance as BinaceBalance,
@@ -9,6 +7,7 @@ use binance::model::{
 use bon::Builder;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use rust_decimal_macros::dec;
+use std::str::FromStr;
 
 #[derive(Builder, Debug)]
 pub struct AccountInformation {
@@ -21,16 +20,20 @@ impl TryFrom<BinanceAccountInformation> for AccountInformation {
     type Error = anyhow::Error;
 
     fn try_from(value: BinanceAccountInformation) -> std::result::Result<Self, Self::Error> {
-        let maker_commission = Decimal::from_f32(value.maker_commission)
-            .ok_or_else(|| anyhow!("binance account maker commission convert decimal failed"))?;
-        let taker_commission = Decimal::from_f32(value.taker_commission)
-            .ok_or_else(|| anyhow!("binance account taker commission convert decimal failed"))?;
-        let maker_commission_rate = maker_commission / dec!(10000);
-        let taker_commission_rate = taker_commission / dec!(10000);
+        let to_rate = |val: f32, commission_type: &str| {
+            Decimal::from_f32(val)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "binance account {} commission convert decimal failed",
+                        commission_type
+                    )
+                })
+                .map(|v| v / dec!(10000))
+        };
 
         Ok(AccountInformation::builder()
-            .maker_commission_rate(maker_commission_rate)
-            .taker_commission_rate(taker_commission_rate)
+            .maker_commission_rate(to_rate(value.maker_commission, "maker")?)
+            .taker_commission_rate(to_rate(value.taker_commission, "taker")?)
             .can_trade(value.can_trade)
             .build())
     }

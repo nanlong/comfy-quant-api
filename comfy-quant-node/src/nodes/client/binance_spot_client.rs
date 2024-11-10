@@ -1,12 +1,12 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor},
+    node_core::{Executable, Port, PortAccessor, Slot},
     workflow,
 };
 use anyhow::Result;
 use bon::Builder;
-// use comfy_quant_exchange::client::SpotClient;
-// use std::sync::Arc;
-// use tokio::sync::Mutex;
+use comfy_quant_exchange::client::{
+    spot_client::binance_spot_client::BinanceSpotClient as Client, spot_client_kind::SpotClientKind,
+};
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -26,12 +26,16 @@ pub(crate) struct BinanceSpotClient {
 
 impl BinanceSpotClient {
     pub(crate) fn try_new(params: Params) -> Result<Self> {
-        let port = Port::new();
+        let mut port = Port::new();
 
-        // todo: 创建SpotClient
-        // let output_slot0 = Slot::<Arc<Mutex<SpotClient>>>::builder().build();
+        let client = Client::builder()
+            .api_key(&params.api_key)
+            .secret_key(&params.secret_key)
+            .build();
 
-        // port.add_output(0, output_slot0)?;
+        let client_slot = Slot::<SpotClientKind>::new(client.into());
+
+        port.add_output(0, client_slot)?;
 
         Ok(BinanceSpotClient { params, port })
     }

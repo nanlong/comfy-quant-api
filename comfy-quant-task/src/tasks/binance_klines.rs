@@ -28,12 +28,12 @@ pub struct BinanceKlinesTask {
 
 #[bon]
 impl BinanceKlinesTask {
-    #[builder]
+    #[builder(on(String, into))]
     pub fn new(
         db: Arc<PgPool>,
-        market: impl Into<String>,
-        symbol: impl Into<String>,
-        interval: impl Into<String>,
+        market: String,
+        symbol: String,
+        interval: String,
         start_timestamp: i64,
         end_timestamp: i64,
     ) -> Self {

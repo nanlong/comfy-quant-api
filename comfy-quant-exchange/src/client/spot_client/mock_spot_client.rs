@@ -27,7 +27,7 @@ pub struct BacktestSpotClient {
 #[allow(unused)]
 impl BacktestSpotClient {
     #[builder]
-    pub fn new(assets: Vec<(String, f64)>, commissions: Option<f64>) -> Self {
+    pub fn new(#[builder(into)] assets: Vec<(String, f64)>, commissions: Option<f64>) -> Self {
         let assets = assets
             .into_iter()
             .map(|(asset, amount)| {

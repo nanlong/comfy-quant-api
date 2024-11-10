@@ -5,8 +5,11 @@ use std::env;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let api_key = env::var("BINANCE_TESTNET_API_KEY")?;
-    let secret_key = env::var("BINANCE_TESTNET_SECRET_KEY")?;
+    // let api_key = env::var("BINANCE_TESTNET_API_KEY")?;
+    // let secret_key = env::var("BINANCE_TESTNET_SECRET_KEY")?;
+
+    let api_key = env::var("BINANCE_API_KEY2")?;
+    let secret_key = env::var("BINANCE_SECRET_KEY2")?;
 
     dbg!(&api_key);
     dbg!(&secret_key);
@@ -14,18 +17,18 @@ async fn main() -> anyhow::Result<()> {
     let client = BinanceSpotClient::builder()
         .api_key(api_key)
         .secret_key(secret_key)
-        .config(binance::config::Config::testnet())
+        // .config(binance::config::Config::testnet())
         .build();
 
     // let account = client.get_account().await?;
 
     // dbg!(&account);
 
-    // let balance = client.get_balance("usdt").await?;
+    let balance = client.get_balance("dot").await?;
 
-    // dbg!(&balance);
+    dbg!(&balance);
 
-    let symbol = client.get_symbol_info("btc", "usdt").await?;
+    let symbol = client.get_symbol_info("dot", "usdt").await?;
 
     dbg!(symbol);
 

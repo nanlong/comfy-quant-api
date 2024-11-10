@@ -12,7 +12,7 @@ pub struct BinanceSpotClient {
 
 #[bon]
 impl BinanceSpotClient {
-    #[builder]
+    #[builder(on(String, into))]
     pub fn new(
         api_key: Option<String>,
         secret_key: Option<String>,
