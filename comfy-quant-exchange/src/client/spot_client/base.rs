@@ -3,8 +3,8 @@ use std::str::FromStr;
 use anyhow::{anyhow, Result};
 use binance::model::{
     AccountInformation as BinanceAccountInformation, Balance as BinaceBalance,
-    Order as BinanceOrder, Symbol as BinaceSymbolInformation, SymbolPrice as BinanceSymbolPrice,
-    Transaction as BinanceTransaction,
+    Filters as BinanceFilters, Order as BinanceOrder, Symbol as BinaceSymbolInformation,
+    SymbolPrice as BinanceSymbolPrice, Transaction as BinanceTransaction,
 };
 use bon::Builder;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
@@ -49,7 +49,7 @@ pub struct SymbolInformation {
 impl From<BinaceSymbolInformation> for SymbolInformation {
     fn from(value: BinaceSymbolInformation) -> Self {
         let min_notional = value.filters.iter().find_map(|filter| match filter {
-            binance::model::Filters::Notional { min_notional, .. } => min_notional
+            BinanceFilters::Notional { min_notional, .. } => min_notional
                 .as_ref()
                 .and_then(|val| val.parse::<Decimal>().ok()),
             _ => None,
