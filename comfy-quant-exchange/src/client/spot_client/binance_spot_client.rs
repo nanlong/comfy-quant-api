@@ -24,8 +24,6 @@ impl BinanceSpotClient {
             .maybe_config(config)
             .build();
 
-        dbg!(&client);
-
         BinanceSpotClient { client }
     }
 

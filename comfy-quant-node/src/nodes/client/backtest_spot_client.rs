@@ -5,7 +5,8 @@ use crate::{
 use anyhow::{anyhow, Result};
 use bon::Builder;
 use comfy_quant_exchange::client::{
-    spot_client::mock_spot_client::BacktestSpotClient as Client, spot_client_kind::SpotClientKind,
+    spot_client::backtest_spot_client::BacktestSpotClient as Client,
+    spot_client_kind::SpotClientKind,
 };
 
 #[derive(Builder, Debug, Clone)]

@@ -1,7 +1,7 @@
 use super::spot_client::{
+    backtest_spot_client::BacktestSpotClient,
     base::{AccountInformation, Balance, Order, SymbolInformation, SymbolPrice},
     binance_spot_client::BinanceSpotClient,
-    mock_spot_client::BacktestSpotClient,
 };
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
