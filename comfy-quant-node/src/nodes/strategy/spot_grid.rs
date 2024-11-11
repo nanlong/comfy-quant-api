@@ -31,14 +31,8 @@ pub(crate) struct Params {
 /// 网格交易
 /// inputs:
 ///     0: SpotPairInfo
-///     1: SpotClient
+///     1: SpotClientKind
 ///     2: TickStream
-///
-/// outputs:
-///     0: 持仓信息
-///     1: 行情数据
-///     2: 日志信息
-///
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct SpotGrid {
@@ -187,6 +181,19 @@ impl Executable for SpotGrid {
 
         let params = self.params.clone();
 
+        // 如果出现网络错误，则跳过
+        macro_rules! client_execute_maybe_failed {
+            ($expr:expr) => {
+                match $expr {
+                    Ok(val) => val,
+                    Err(_) => {
+                        self.get_grid_mut()?.unlock();
+                        continue;
+                    }
+                }
+            };
+        }
+
         while let Ok(tick) = tick_rx.recv_async().await {
             let signal = self
                 .get_grid_mut()?
@@ -195,36 +202,30 @@ impl Executable for SpotGrid {
             if let Some(signal) = signal {
                 match signal {
                     TradeSignal::Buy(qty) => {
-                        let Ok(order) = self
-                            .market_buy(
+                        let order = client_execute_maybe_failed!(
+                            self.market_buy(
                                 &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
                                 qty.to_string().parse::<f64>()?,
                             )
                             .await
-                        else {
-                            self.get_grid_mut()?.unlock();
-                            continue;
-                        };
+                        );
 
                         self.get_grid_mut()?.update_with_order(&order);
                         tracing::info!("SpotGrid buy order: {:?}", order);
                     }
 
                     TradeSignal::Sell(qty) => {
-                        let Ok(order) = self
-                            .market_sell(
+                        let order = client_execute_maybe_failed!(
+                            self.market_sell(
                                 &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
                                 qty.to_string().parse::<f64>()?,
                             )
                             .await
-                        else {
-                            self.get_grid_mut()?.unlock();
-                            continue;
-                        };
+                        );
 
                         self.get_grid_mut()?.update_with_order(&order);
                         tracing::info!("SpotGrid sell order: {:?}", order);
@@ -235,46 +236,38 @@ impl Executable for SpotGrid {
                             continue;
                         }
 
-                        let Ok(balance) = client.get_balance(&pair_info.base_asset).await else {
-                            self.get_grid_mut()?.unlock();
-                            continue;
-                        };
+                        let balance = client_execute_maybe_failed!(
+                            client.get_balance(&pair_info.base_asset).await
+                        );
 
-                        let Ok(order) = self
-                            .market_sell(
+                        let order = client_execute_maybe_failed!(
+                            self.market_sell(
                                 &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
                                 balance.free.parse::<f64>()?,
                             )
                             .await
-                        else {
-                            self.get_grid_mut()?.unlock();
-                            continue;
-                        };
+                        );
 
                         self.get_grid_mut()?.update_with_order(&order);
                         tracing::info!("SpotGrid sell all order: {:?}", order);
                     }
 
                     TradeSignal::TakeProfit => {
-                        let Ok(balance) = client.get_balance(&pair_info.base_asset).await else {
-                            self.get_grid_mut()?.unlock();
-                            continue;
-                        };
+                        let balance = client_execute_maybe_failed!(
+                            client.get_balance(&pair_info.base_asset).await
+                        );
 
-                        let Ok(order) = self
-                            .market_sell(
+                        let order = client_execute_maybe_failed!(
+                            self.market_sell(
                                 &client,
                                 &pair_info.base_asset,
                                 &pair_info.quote_asset,
                                 balance.free.parse::<f64>()?,
                             )
                             .await
-                        else {
-                            self.get_grid_mut()?.unlock();
-                            continue;
-                        };
+                        );
 
                         self.get_grid_mut()?.update_with_order(&order);
                         tracing::info!("SpotGrid take profit order: {:?}", order);
