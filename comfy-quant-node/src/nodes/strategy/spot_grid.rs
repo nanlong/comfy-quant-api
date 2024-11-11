@@ -67,73 +67,80 @@ impl SpotGrid {
             return Ok(());
         }
 
-        let mut remaining_attempts = 3;
+        // 重试次数
+        let remaining_attempts = 3;
+        // 出错时等待3秒再重试
+        let wait_secs = 3;
 
         // 如果出现网络错误，则尝试重试
-        macro_rules! try_or_retry {
-            ($expr:expr) => {
-                match $expr {
-                    Ok(val) => val,
-                    Err(_) => {
-                        remaining_attempts -= 1;
-                        // 等待3秒后重试
-                        sleep(Duration::from_secs(3)).await;
-                        continue;
+        macro_rules! request_maybe_retry {
+            ($expr:expr) => {{
+                let mut attempts = remaining_attempts;
+
+                loop {
+                    attempts -= 1;
+
+                    match $expr {
+                        Ok(res) => break res,
+                        Err(e) => {
+                            if attempts.is_zero() {
+                                anyhow::bail!(e.to_string());
+                            }
+
+                            // 等待3秒后重试
+                            sleep(Duration::from_secs(wait_secs)).await;
+                        }
                     }
                 }
-            };
+            }};
         }
 
-        loop {
-            if remaining_attempts.is_zero() {
-                break;
-            }
+        let account = request_maybe_retry! {
+            client.get_account().await
+        };
 
-            let balance = try_or_retry!(client.get_balance(&pair_info.quote_asset).await);
+        let balance = request_maybe_retry! {
+            client.get_balance(&pair_info.quote_asset).await
+        };
 
-            if balance.free.parse::<Decimal>()? < self.params.investment {
-                anyhow::bail!("Insufficient free balance");
-            }
+        let symbol_info = request_maybe_retry! {
+            client.get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset).await
+        };
 
-            let account = try_or_retry!(client.get_account().await);
-            let symbol_info = try_or_retry!(
-                client
-                    .get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset)
-                    .await
-            );
-            let platform_name = client.platform_name();
+        let platform_name = client.platform_name();
 
-            // 初始化策略可操作的账户金额
-            self.get_context()?
-                .assets()
-                .add_value(&pair_info.quote_asset, self.params.investment);
-
-            // 计算网格价格
-            let grid_prices = calc_grid_prices(
-                &self.params.mode,
-                self.params.lower_price,
-                self.params.upper_price,
-                self.params.grid_rows,
-                symbol_info.quote_asset_precision,
-            );
-
-            // 创建网格
-            let grid = Grid::builder()
-                .platform_name(platform_name)
-                .investment(self.params.investment)
-                .grid_prices(grid_prices)
-                .current_price(current_price)
-                .base_asset_precision(symbol_info.base_asset_precision)
-                .quote_asset_precision(symbol_info.quote_asset_precision)
-                .commission_rate(account.taker_commission_rate)
-                .build();
-
-            self.grid = Some(grid);
-
-            self.initialized = true;
-
-            break;
+        if balance.free.parse::<Decimal>()? < self.params.investment {
+            anyhow::bail!("Insufficient free balance");
         }
+
+        // 初始化策略可操作的账户金额
+        self.get_context()?
+            .assets()
+            .add_value(&pair_info.quote_asset, self.params.investment);
+
+        // 计算网格价格
+        let grid_prices = calc_grid_prices(
+            &self.params.mode,
+            self.params.lower_price,
+            self.params.upper_price,
+            self.params.grid_rows,
+            symbol_info.quote_asset_precision,
+        );
+
+        // 创建网格
+        let grid = Grid::builder()
+            .platform_name(platform_name)
+            .investment(self.params.investment)
+            .grid_prices(grid_prices)
+            .current_price(current_price)
+            .base_asset_precision(symbol_info.base_asset_precision)
+            .quote_asset_precision(symbol_info.quote_asset_precision)
+            .commission_rate(account.taker_commission_rate)
+            .build();
+
+        self.grid = Some(grid);
+
+        self.initialized = true;
 
         Ok(())
     }
@@ -185,7 +192,7 @@ impl Executable for SpotGrid {
         let params = self.params.clone();
 
         // 如果出现网络错误，则跳过
-        macro_rules! client_execute_maybe_failed {
+        macro_rules! request_maybe_failed {
             ($expr:expr) => {
                 match $expr {
                     Ok(val) => val,
@@ -208,7 +215,7 @@ impl Executable for SpotGrid {
 
             match signal {
                 TradeSignal::Buy { quantity, .. } => {
-                    let order = client_execute_maybe_failed!(
+                    let order = request_maybe_failed! {
                         self.market_buy(
                             &client,
                             &pair_info.base_asset,
@@ -216,14 +223,14 @@ impl Executable for SpotGrid {
                             quantity.to_string().parse::<f64>()?,
                         )
                         .await
-                    );
+                    };
 
                     self.get_grid_mut()?.update_with_order(&signal, &order);
                     tracing::info!("SpotGrid buy order: {:?}", order);
                 }
 
                 TradeSignal::Sell { quantity, .. } => {
-                    let order = client_execute_maybe_failed!(
+                    let order = request_maybe_failed! {
                         self.market_sell(
                             &client,
                             &pair_info.base_asset,
@@ -231,7 +238,7 @@ impl Executable for SpotGrid {
                             quantity.to_string().parse::<f64>()?,
                         )
                         .await
-                    );
+                    };
 
                     self.get_grid_mut()?.update_with_order(&signal, &order);
                     tracing::info!("SpotGrid sell order: {:?}", order);
@@ -242,11 +249,11 @@ impl Executable for SpotGrid {
                         continue;
                     }
 
-                    let balance = client_execute_maybe_failed!(
+                    let balance = request_maybe_failed! {
                         client.get_balance(&pair_info.base_asset).await
-                    );
+                    };
 
-                    let order = client_execute_maybe_failed!(
+                    let order = request_maybe_failed! {
                         self.market_sell(
                             &client,
                             &pair_info.base_asset,
@@ -254,18 +261,18 @@ impl Executable for SpotGrid {
                             balance.free.parse::<f64>()?,
                         )
                         .await
-                    );
+                    };
 
                     self.get_grid_mut()?.update_with_order(&signal, &order);
                     tracing::info!("SpotGrid sell all order: {:?}", order);
                 }
 
                 TradeSignal::TakeProfit => {
-                    let balance = client_execute_maybe_failed!(
+                    let balance = request_maybe_failed! {
                         client.get_balance(&pair_info.base_asset).await
-                    );
+                    };
 
-                    let order = client_execute_maybe_failed!(
+                    let order = request_maybe_failed! {
                         self.market_sell(
                             &client,
                             &pair_info.base_asset,
@@ -273,7 +280,7 @@ impl Executable for SpotGrid {
                             balance.free.parse::<f64>()?,
                         )
                         .await
-                    );
+                    };
 
                     self.get_grid_mut()?.update_with_order(&signal, &order);
                     tracing::info!("SpotGrid take profit order: {:?}", order);
@@ -414,13 +421,13 @@ pub(crate) enum TradeSignal {
 impl Grid {
     #[builder]
     fn new(
-        platform_name: String,      // 平台名称
-        investment: Decimal,        // 投资金额
-        grid_prices: Vec<Decimal>,  // 网格价格
-        current_price: Decimal,     // 当前价格
-        base_asset_precision: u32,  // 基础币种小数点位数
-        quote_asset_precision: u32, // 报价币种小数点位数
-        commission_rate: Decimal,   // 手续费
+        #[builder(into)] platform_name: String, // 平台名称
+        investment: Decimal,                    // 投资金额
+        grid_prices: Vec<Decimal>,              // 网格价格
+        current_price: Decimal,                 // 当前价格
+        base_asset_precision: u32,              // 基础币种小数点位数
+        quote_asset_precision: u32,             // 报价币种小数点位数
+        commission_rate: Decimal,               // 手续费
     ) -> Self {
         let grid_investment = (investment / (Decimal::from(grid_prices.len()) - dec!(1)))
             .round_dp(quote_asset_precision);
@@ -862,7 +869,7 @@ mod tests {
         );
 
         let mut grid = Grid::builder()
-            .platform_name("Test".to_string())
+            .platform_name("Test")
             .investment(params.investment)
             .grid_prices(grid_prices)
             .base_asset_precision(base_asset_precision)
