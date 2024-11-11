@@ -11,7 +11,10 @@ use comfy_quant_exchange::client::{
 };
 use rust_decimal::{prelude::Zero, Decimal, MathematicalOps};
 use rust_decimal_macros::dec;
-use std::str::FromStr;
+use std::{
+    str::FromStr,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use tokio::time::{sleep, Duration};
 
 #[derive(Builder, Debug, Clone)]
@@ -186,7 +189,8 @@ impl Executable for SpotGrid {
             ($expr:expr) => {
                 match $expr {
                     Ok(val) => val,
-                    Err(_) => {
+                    Err(e) => {
+                        tracing::error!("{}", e);
                         self.get_grid_mut()?.unlock();
                         continue;
                     }
@@ -195,83 +199,84 @@ impl Executable for SpotGrid {
         }
 
         while let Ok(tick) = tick_rx.recv_async().await {
-            let signal = self
+            let Some(signal) = self
                 .get_grid_mut()?
-                .evaluate_with_price(&params, tick.price);
+                .evaluate_with_price(&params, tick.price)
+            else {
+                continue;
+            };
 
-            if let Some(signal) = signal {
-                match signal {
-                    TradeSignal::Buy(qty) => {
-                        let order = client_execute_maybe_failed!(
-                            self.market_buy(
-                                &client,
-                                &pair_info.base_asset,
-                                &pair_info.quote_asset,
-                                qty.to_string().parse::<f64>()?,
-                            )
-                            .await
-                        );
+            match signal {
+                TradeSignal::Buy { quantity, .. } => {
+                    let order = client_execute_maybe_failed!(
+                        self.market_buy(
+                            &client,
+                            &pair_info.base_asset,
+                            &pair_info.quote_asset,
+                            quantity.to_string().parse::<f64>()?,
+                        )
+                        .await
+                    );
 
-                        self.get_grid_mut()?.update_with_order(&order);
-                        tracing::info!("SpotGrid buy order: {:?}", order);
+                    self.get_grid_mut()?.update_with_order(&signal, &order);
+                    tracing::info!("SpotGrid buy order: {:?}", order);
+                }
+
+                TradeSignal::Sell { quantity, .. } => {
+                    let order = client_execute_maybe_failed!(
+                        self.market_sell(
+                            &client,
+                            &pair_info.base_asset,
+                            &pair_info.quote_asset,
+                            quantity.to_string().parse::<f64>()?,
+                        )
+                        .await
+                    );
+
+                    self.get_grid_mut()?.update_with_order(&signal, &order);
+                    tracing::info!("SpotGrid sell order: {:?}", order);
+                }
+
+                TradeSignal::StopLoss { sell_all_on_stop } => {
+                    if !sell_all_on_stop {
+                        continue;
                     }
 
-                    TradeSignal::Sell(qty) => {
-                        let order = client_execute_maybe_failed!(
-                            self.market_sell(
-                                &client,
-                                &pair_info.base_asset,
-                                &pair_info.quote_asset,
-                                qty.to_string().parse::<f64>()?,
-                            )
-                            .await
-                        );
+                    let balance = client_execute_maybe_failed!(
+                        client.get_balance(&pair_info.base_asset).await
+                    );
 
-                        self.get_grid_mut()?.update_with_order(&order);
-                        tracing::info!("SpotGrid sell order: {:?}", order);
-                    }
+                    let order = client_execute_maybe_failed!(
+                        self.market_sell(
+                            &client,
+                            &pair_info.base_asset,
+                            &pair_info.quote_asset,
+                            balance.free.parse::<f64>()?,
+                        )
+                        .await
+                    );
 
-                    TradeSignal::StopLoss(sell_all) => {
-                        if !sell_all {
-                            continue;
-                        }
+                    self.get_grid_mut()?.update_with_order(&signal, &order);
+                    tracing::info!("SpotGrid sell all order: {:?}", order);
+                }
 
-                        let balance = client_execute_maybe_failed!(
-                            client.get_balance(&pair_info.base_asset).await
-                        );
+                TradeSignal::TakeProfit => {
+                    let balance = client_execute_maybe_failed!(
+                        client.get_balance(&pair_info.base_asset).await
+                    );
 
-                        let order = client_execute_maybe_failed!(
-                            self.market_sell(
-                                &client,
-                                &pair_info.base_asset,
-                                &pair_info.quote_asset,
-                                balance.free.parse::<f64>()?,
-                            )
-                            .await
-                        );
+                    let order = client_execute_maybe_failed!(
+                        self.market_sell(
+                            &client,
+                            &pair_info.base_asset,
+                            &pair_info.quote_asset,
+                            balance.free.parse::<f64>()?,
+                        )
+                        .await
+                    );
 
-                        self.get_grid_mut()?.update_with_order(&order);
-                        tracing::info!("SpotGrid sell all order: {:?}", order);
-                    }
-
-                    TradeSignal::TakeProfit => {
-                        let balance = client_execute_maybe_failed!(
-                            client.get_balance(&pair_info.base_asset).await
-                        );
-
-                        let order = client_execute_maybe_failed!(
-                            self.market_sell(
-                                &client,
-                                &pair_info.base_asset,
-                                &pair_info.quote_asset,
-                                balance.free.parse::<f64>()?,
-                            )
-                            .await
-                        );
-
-                        self.get_grid_mut()?.update_with_order(&order);
-                        tracing::info!("SpotGrid take profit order: {:?}", order);
-                    }
+                    self.get_grid_mut()?.update_with_order(&signal, &order);
+                    tracing::info!("SpotGrid take profit order: {:?}", order);
                 }
             }
         }
@@ -391,18 +396,18 @@ pub(crate) struct Grid {
     rows: Vec<GridRow>,       // 网格行
     cursor: usize,            // 当前网格序号
     prev_sell_price: Decimal, // 上一次的卖出价格
-    starting: bool,           // 是否开始
-    running: bool,            // 是否运行
-    locked: bool,             // 是否锁定
+    starting: AtomicBool,     // 是否开始
+    running: AtomicBool,      // 是否运行
+    locked: AtomicBool,       // 是否锁定
 }
 
 #[derive(Debug, PartialEq)]
 #[allow(unused)]
 pub(crate) enum TradeSignal {
-    Buy(Decimal),   // 买入数量
-    Sell(Decimal),  // 卖出数量
-    StopLoss(bool), // 止损
-    TakeProfit,     // 止盈
+    Buy { price: Decimal, quantity: Decimal },  // 买入数量
+    Sell { price: Decimal, quantity: Decimal }, // 卖出数量
+    StopLoss { sell_all_on_stop: bool },        // 止损
+    TakeProfit,                                 // 止盈
 }
 
 #[bon]
@@ -447,9 +452,9 @@ impl Grid {
 
         let prev_sell_price = dec!(0);
 
-        let starting = true;
-        let running = false;
-        let locked = false;
+        let starting = AtomicBool::new(true);
+        let running = AtomicBool::new(false);
+        let locked = AtomicBool::new(false);
 
         Grid {
             platform_name,
@@ -459,6 +464,47 @@ impl Grid {
             starting,
             running,
             locked,
+        }
+    }
+
+    fn should_buy(&self, price: Decimal, tolerance: Decimal) -> bool {
+        let grid_row = self.current_grid_row();
+
+        !grid_row.buyed // 当前格子未买入
+            && self.prev_sell_price != grid_row.buy_price // 上一次的卖出价格不等于当前的买入价格
+            && price <= grid_row.buy_price
+            && price > grid_row.buy_price * (dec!(1) - tolerance)
+    }
+
+    fn should_sell(&self, price: Decimal, tolerane: Decimal) -> bool {
+        let grid_row = self.current_grid_row();
+
+        grid_row.buyed // 当前格子已买入
+            && !grid_row.sold // 当前格子未卖出
+            && price >= grid_row.sell_price
+            && price < grid_row.sell_price * (dec!(1) + tolerane)
+    }
+
+    fn adjust_grid_position(&mut self, price: Decimal) {
+        let grid_row = self.current_grid_row();
+
+        // 向下移动一格
+        if price < grid_row.buy_price {
+            if let Some(lower_grid) = self.lower_grid() {
+                let step = (lower_grid.sell_price - lower_grid.buy_price) / dec!(2);
+                if price <= grid_row.buy_price - step {
+                    self.cursor -= 1;
+                }
+            }
+        }
+        // 向上移动一格
+        else if price > grid_row.sell_price {
+            if let Some(upper_grid) = self.upper_grid() {
+                let step = (upper_grid.sell_price - upper_grid.buy_price) / dec!(2);
+                if price >= grid_row.sell_price + step {
+                    self.cursor += 1;
+                }
+            }
         }
     }
 
@@ -472,124 +518,110 @@ impl Grid {
         let price_tolerance = dec!(0.005);
 
         // 如果未运行或锁定，则不进行操作
-        if !self.starting || self.locked {
+        if !self.starting.load(Ordering::Relaxed) || self.locked.load(Ordering::Relaxed) {
             return None;
         }
 
-        if !self.running {
+        if !self.running.load(Ordering::Relaxed) {
             // 如果设置了触发价格，则根据触发价格决定是否运行
             if let Some(trigger_price) = params.trigger_price {
                 if current_price <= trigger_price {
-                    self.running = true;
+                    self.running.store(true, Ordering::Relaxed);
                 }
             } else {
-                self.running = true;
+                self.running.store(true, Ordering::Relaxed);
             }
 
             return None;
         }
 
+        // 买入
+        if self.should_buy(current_price, price_tolerance) {
+            let signal = TradeSignal::Buy {
+                price: self.current_grid_row().buy_price,
+                quantity: self.current_grid_row().buy_quantity,
+            };
+
+            self.lock();
+            return Some(signal);
+        }
+
+        // 卖出
+        if self.should_sell(current_price, price_tolerance) {
+            let signal = TradeSignal::Sell {
+                price: self.current_grid_row().sell_price,
+                quantity: self.current_grid_row().sell_quantity,
+            };
+
+            self.lock();
+            return Some(signal);
+        }
+
         // 止损
         if let Some(stop_loss) = params.stop_loss {
             if current_price <= stop_loss {
-                self.starting = false;
-                return Some(TradeSignal::StopLoss(params.sell_all_on_stop));
+                let signal = TradeSignal::StopLoss {
+                    sell_all_on_stop: params.sell_all_on_stop,
+                };
+
+                self.starting.store(false, Ordering::Relaxed);
+                return Some(signal);
             }
         }
 
         // 止盈
         if let Some(take_profit) = params.take_profit {
             if current_price >= take_profit {
-                self.starting = false;
-                return Some(TradeSignal::TakeProfit);
+                let signal = TradeSignal::TakeProfit;
+
+                self.starting.store(false, Ordering::Relaxed);
+                return Some(signal);
             }
         }
 
-        // 当前格子
-        let current_grid = self.current_grid();
-
-        // 买入
-        if !current_grid.buyed // 当前格子未买入
-            && self.prev_sell_price != current_grid.buy_price // 上一次的卖出价格不等于当前的买入价格
-            && current_price <= current_grid.buy_price
-            && current_price > current_grid.buy_price * (dec!(1) - price_tolerance)
-        {
-            let buy_quantity = current_grid.buy_quantity;
-            self.lock();
-            return Some(TradeSignal::Buy(buy_quantity));
-        }
-
-        // 卖出
-        if current_grid.buyed // 当前格子已买入
-            && !current_grid.sold // 当前格子未卖出
-            && current_price >= current_grid.sell_price
-            && current_price < current_grid.sell_price * (dec!(1) + price_tolerance)
-        {
-            let sell_quantity = current_grid.sell_quantity;
-            let sell_price = current_grid.sell_price;
-            self.lock();
-            self.prev_sell_price = sell_price;
-            return Some(TradeSignal::Sell(sell_quantity));
-        }
-
-        // 向下移动一格
-        if current_price < current_grid.buy_price {
-            if let Some(lower_grid) = self.lower_grid() {
-                let step = (lower_grid.sell_price - lower_grid.buy_price) / dec!(2);
-                if current_price <= current_grid.buy_price - step {
-                    self.cursor -= 1;
-                    return None;
-                }
-            }
-        }
-
-        // 向上移动一格
-        if current_price > current_grid.sell_price {
-            if let Some(upper_grid) = self.upper_grid() {
-                let step = (upper_grid.sell_price - upper_grid.buy_price) / dec!(2);
-                if current_price >= current_grid.sell_price + step {
-                    self.cursor += 1;
-                    return None;
-                }
-            }
-        }
+        // 上下移动格子
+        self.adjust_grid_position(current_price);
 
         None
     }
 
     /// 更新网格状态
-    fn update_with_order(&mut self, order: &Order) {
-        let current_grid = self.current_grid_mut();
-
+    fn update_with_order(&mut self, signal: &TradeSignal, order: &Order) {
         match order.order_side {
             OrderSide::Buy => {
-                current_grid.buyed = true;
-                current_grid.sold = false;
+                self.current_grid_row_mut().buyed = true;
+                self.current_grid_row_mut().sold = false;
             }
             OrderSide::Sell => {
-                current_grid.sold = true;
-                current_grid.buyed = false;
+                if let TradeSignal::Sell { price, .. } = signal {
+                    self.prev_sell_price = *price;
+                }
+
+                self.current_grid_row_mut().sold = true;
+                self.current_grid_row_mut().buyed = false;
             }
         }
 
         self.unlock();
     }
 
-    fn lock(&mut self) {
-        self.locked = true;
+    // 锁定
+    fn lock(&self) {
+        self.locked.store(true, Ordering::Relaxed);
     }
 
-    fn unlock(&mut self) {
-        self.locked = false;
+    // 取消锁定
+    fn unlock(&self) {
+        self.locked.store(false, Ordering::Relaxed);
     }
 
     /// 获取当前行
-    fn current_grid(&self) -> &GridRow {
+    fn current_grid_row(&self) -> &GridRow {
         &self.rows[self.cursor]
     }
 
     /// 获取当前行可变引用
-    fn current_grid_mut(&mut self) -> &mut GridRow {
+    fn current_grid_row_mut(&mut self) -> &mut GridRow {
         &mut self.rows[self.cursor]
     }
 
@@ -841,17 +873,23 @@ mod tests {
 
         assert_eq!(grid.rows.len(), 10);
         assert_eq!(grid.cursor, 0);
-        assert_eq!(grid.current_grid().buy_price, dec!(4.0));
-        assert_eq!(grid.current_grid().sell_price, dec!(4.698));
-        assert!(!grid.running);
-        assert!(!grid.locked);
+        assert_eq!(grid.current_grid_row().buy_price, dec!(4.0));
+        assert_eq!(grid.current_grid_row().sell_price, dec!(4.698));
+        assert!(!grid.running.load(Ordering::Relaxed));
+        assert!(!grid.locked.load(Ordering::Relaxed));
 
         let signal = grid.evaluate_with_price(&params, dec!(4.25));
         assert_eq!(signal, None);
 
         let signal = grid.evaluate_with_price(&params, dec!(4.0));
-        assert_eq!(signal, Some(TradeSignal::Buy(dec!(25.0))));
-        assert_eq!(grid.locked, true);
+        assert_eq!(
+            signal,
+            Some(TradeSignal::Buy {
+                price: dec!(4),
+                quantity: dec!(25.0)
+            })
+        );
+        assert_eq!(grid.locked.load(Ordering::Relaxed), true);
 
         let order = Order::builder()
             .symbol("DOTUSDT")
@@ -868,17 +906,23 @@ mod tests {
             .update_time(0)
             .build();
 
-        grid.update_with_order(&order);
+        grid.update_with_order(&signal.unwrap(), &order);
 
-        assert_eq!(grid.current_grid().buyed, true);
-        assert_eq!(grid.locked, false);
+        assert_eq!(grid.current_grid_row().buyed, true);
+        assert_eq!(grid.locked.load(Ordering::Relaxed), false);
 
         let signal = grid.evaluate_with_price(&params, dec!(3.99));
         assert_eq!(signal, None);
 
         let signal = grid.evaluate_with_price(&params, dec!(4.698));
-        assert_eq!(signal, Some(TradeSignal::Sell(dec!(24.98))));
-        assert_eq!(grid.locked, true);
+        assert_eq!(
+            signal,
+            Some(TradeSignal::Sell {
+                price: dec!(4.698),
+                quantity: dec!(24.98)
+            })
+        );
+        assert_eq!(grid.locked.load(Ordering::Relaxed), true);
 
         let order = Order::builder()
             .symbol("DOTUSDT")
@@ -895,10 +939,10 @@ mod tests {
             .update_time(0)
             .build();
 
-        grid.update_with_order(&order);
+        grid.update_with_order(&signal.unwrap(), &order);
 
-        assert_eq!(grid.current_grid().sold, true);
-        assert_eq!(grid.locked, false);
+        assert_eq!(grid.current_grid_row().sold, true);
+        assert_eq!(grid.locked.load(Ordering::Relaxed), false);
 
         let signal = grid.evaluate_with_price(&params, dec!(5.108));
         assert_eq!(signal, None);
@@ -916,7 +960,13 @@ mod tests {
         assert_eq!(grid.cursor, 2);
 
         let signal = grid.evaluate_with_price(&params, dec!(5.519));
-        assert_eq!(signal, Some(TradeSignal::Buy(dec!(18.12))));
+        assert_eq!(
+            signal,
+            Some(TradeSignal::Buy {
+                price: dec!(5.519),
+                quantity: dec!(18.12)
+            })
+        );
 
         Ok(())
     }
