@@ -68,27 +68,27 @@ impl SpotGrid {
         }
 
         // 重试次数
-        let remaining_attempts = 3;
+        let max_retries = 3;
         // 出错时等待3秒再重试
-        let wait_secs = 3;
+        let wait_time_secs = 3;
 
         // 如果出现网络错误，则尝试重试
         macro_rules! request_maybe_retry {
             ($expr:expr) => {{
-                let mut attempts = remaining_attempts;
+                let mut max_retries = max_retries;
 
                 loop {
-                    attempts -= 1;
+                    max_retries -= 1;
 
                     match $expr {
                         Ok(res) => break res,
                         Err(e) => {
-                            if attempts.is_zero() {
+                            if max_retries.is_zero() {
                                 anyhow::bail!(e.to_string());
                             }
 
                             // 等待3秒后重试
-                            sleep(Duration::from_secs(wait_secs)).await;
+                            sleep(Duration::from_secs(wait_time_secs)).await;
                         }
                     }
                 }
