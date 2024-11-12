@@ -6,9 +6,7 @@ use crate::{
 use anyhow::{anyhow, Result};
 use bon::{bon, Builder};
 use comfy_quant_exchange::client::{
-    spot_client::base::{
-        AccountInformation, Balance, Order, OrderSide, SpotClientRequest, SymbolInformation,
-    },
+    spot_client::base::{Order, OrderSide},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use rust_decimal::{Decimal, MathematicalOps};
@@ -71,37 +69,26 @@ impl SpotGrid {
         }
 
         // 创建客户端服务
-        let mut service = self.spot_client_svc(client, 3, 3, 30);
+        let mut service = SpotClientService::builder()
+            .client(client)
+            .retry_max_retries(3)
+            .retry_wait_secs(3)
+            .timeout_secs(10)
+            .build();
 
         // 获取账户信息
-        let account: AccountInformation = self
-            .spot_client_svc_call(&mut service, SpotClientRequest::get_account())
-            .await?
-            .try_into()?;
+        let account = service.get_account().await?;
 
         // 获取账户余额
-        let balance: Balance = self
-            .spot_client_svc_call(
-                &mut service,
-                SpotClientRequest::get_balance(&pair_info.quote_asset),
-            )
-            .await?
-            .try_into()?;
+        let balance = service.get_balance(&pair_info.quote_asset).await?;
 
         // 获取交易对信息
-        let symbol_info: SymbolInformation = self
-            .spot_client_svc_call(
-                &mut service,
-                SpotClientRequest::get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset),
-            )
-            .await?
-            .try_into()?;
+        let symbol_info = service
+            .get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset)
+            .await?;
 
         // 获取平台名称
-        let platform_name: String = self
-            .spot_client_svc_call(&mut service, SpotClientRequest::platform_name())
-            .await?
-            .try_into()?;
+        let platform_name = service.platform_name().await?;
 
         // 检查账户余额是否充足
         if balance.free.parse::<Decimal>()? < self.params.investment {
@@ -147,8 +134,6 @@ impl SpotGrid {
             .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))
     }
 }
-
-impl SpotClientService for SpotGrid {}
 
 impl Setupable for SpotGrid {
     fn setup_context(&mut self, context: WorkflowContext) {

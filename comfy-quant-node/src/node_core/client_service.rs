@@ -1,11 +1,17 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 use bon::bon;
 use comfy_quant_exchange::client::{
-    spot_client::base::{SpotClientRequest, SpotClientResponse},
+    spot_client::base::{
+        AccountInformation, Balance, SpotClientRequest, SpotClientResponse, SymbolInformation,
+    },
     spot_client_kind::SpotClientKind,
 };
 use futures::future;
-use std::{thread::sleep, time::Duration};
+use std::{
+    ops::{Deref, DerefMut},
+    thread::sleep,
+    time::Duration,
+};
 use tower::{retry::Policy, util::BoxService, BoxError, Service, ServiceBuilder, ServiceExt};
 
 #[derive(Clone)]
@@ -55,15 +61,33 @@ where
     }
 }
 
-#[allow(async_fn_in_trait)]
-pub trait SpotClientService {
-    fn spot_client_svc(
-        &self,
+pub struct SpotClientService {
+    inner: BoxService<SpotClientRequest, SpotClientResponse, BoxError>,
+}
+
+impl Deref for SpotClientService {
+    type Target = BoxService<SpotClientRequest, SpotClientResponse, BoxError>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for SpotClientService {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+#[bon]
+impl SpotClientService {
+    #[builder]
+    pub fn new(
         client: &SpotClientKind,
         retry_max_retries: u64,
         retry_wait_secs: u64,
         timeout_secs: u64,
-    ) -> BoxService<SpotClientRequest, SpotClientResponse, BoxError> {
+    ) -> Self {
         let svc = client.clone();
         let retry_policy = Attempts::builder()
             .max_retries(retry_max_retries)
@@ -71,19 +95,41 @@ pub trait SpotClientService {
             .build();
         let timeout_secs = Duration::from_secs(timeout_secs);
 
-        ServiceBuilder::new()
+        let inner = ServiceBuilder::new()
             .retry(retry_policy)
             .timeout(timeout_secs)
             .service(svc)
-            .boxed()
+            .boxed();
+
+        SpotClientService { inner }
     }
 
-    async fn spot_client_svc_call(
-        &self,
-        svc: &mut BoxService<SpotClientRequest, SpotClientResponse, BoxError>,
-        req: SpotClientRequest,
-    ) -> anyhow::Result<SpotClientResponse> {
-        let res = svc
+    pub async fn get_account(&mut self) -> Result<AccountInformation> {
+        let req = SpotClientRequest::get_account();
+        self.ready_call(req).await?.try_into()
+    }
+
+    pub async fn get_balance(&mut self, asset: &str) -> Result<Balance> {
+        let req = SpotClientRequest::get_balance(asset);
+        self.ready_call(req).await?.try_into()
+    }
+
+    pub async fn get_symbol_info(
+        &mut self,
+        base_asset: &str,
+        quote_asset: &str,
+    ) -> Result<SymbolInformation> {
+        let req = SpotClientRequest::get_symbol_info(base_asset, quote_asset);
+        self.ready_call(req).await?.try_into()
+    }
+
+    pub async fn platform_name(&mut self) -> Result<String> {
+        let req = SpotClientRequest::platform_name();
+        self.ready_call(req).await?.try_into()
+    }
+
+    async fn ready_call(&mut self, req: SpotClientRequest) -> Result<SpotClientResponse> {
+        let res = self
             .ready()
             .await
             .map_err(|e| anyhow!(e))?
