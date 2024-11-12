@@ -1,21 +1,23 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Setupable, SpotTradeable},
+    node_core::{Executable, Port, PortAccessor, Setupable, SpotClientService, SpotTradeable},
     node_io::{SpotPairInfo, TickStream},
     workflow::{self, WorkflowContext},
 };
 use anyhow::{anyhow, Result};
 use bon::{bon, Builder};
 use comfy_quant_exchange::client::{
-    spot_client::base::{Order, OrderSide},
+    spot_client::base::{
+        AccountInformation, Balance, Order, OrderSide, SpotClientRequest, SymbolInformation,
+    },
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
-use rust_decimal::{prelude::Zero, Decimal, MathematicalOps};
+use rust_decimal::{Decimal, MathematicalOps};
 use rust_decimal_macros::dec;
+use std::convert::Into;
 use std::{
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
 };
-use tokio::time::{sleep, Duration};
 
 #[derive(Builder, Debug, Clone)]
 #[allow(unused)]
@@ -63,52 +65,45 @@ impl SpotGrid {
         client: &SpotClientKind,
         current_price: Decimal,
     ) -> Result<()> {
+        // 如果已经初始化，则跳过
         if self.initialized {
             return Ok(());
         }
 
-        // 重试次数
-        let max_retries = 3;
-        // 出错时等待3秒再重试
-        let wait_time_secs = 3;
+        // 创建客户端服务
+        let mut service = self.spot_client_svc(client, 3, 3, 30);
 
-        // 如果出现网络错误，则尝试重试
-        macro_rules! request_maybe_retry {
-            ($expr:expr) => {{
-                let mut max_retries = max_retries;
+        // 获取账户信息
+        let account: AccountInformation = self
+            .spot_client_svc_call(&mut service, SpotClientRequest::get_account())
+            .await?
+            .try_into()?;
 
-                loop {
-                    max_retries -= 1;
+        // 获取账户余额
+        let balance: Balance = self
+            .spot_client_svc_call(
+                &mut service,
+                SpotClientRequest::get_balance(&pair_info.quote_asset),
+            )
+            .await?
+            .try_into()?;
 
-                    match $expr {
-                        Ok(res) => break res,
-                        Err(e) => {
-                            if max_retries.is_zero() {
-                                anyhow::bail!(e.to_string());
-                            }
+        // 获取交易对信息
+        let symbol_info: SymbolInformation = self
+            .spot_client_svc_call(
+                &mut service,
+                SpotClientRequest::get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset),
+            )
+            .await?
+            .try_into()?;
 
-                            // 等待3秒后重试
-                            sleep(Duration::from_secs(wait_time_secs)).await;
-                        }
-                    }
-                }
-            }};
-        }
+        // 获取平台名称
+        let platform_name: String = self
+            .spot_client_svc_call(&mut service, SpotClientRequest::platform_name())
+            .await?
+            .try_into()?;
 
-        let account = request_maybe_retry! {
-            client.get_account().await
-        };
-
-        let balance = request_maybe_retry! {
-            client.get_balance(&pair_info.quote_asset).await
-        };
-
-        let symbol_info = request_maybe_retry! {
-            client.get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset).await
-        };
-
-        let platform_name = client.platform_name();
-
+        // 检查账户余额是否充足
         if balance.free.parse::<Decimal>()? < self.params.investment {
             anyhow::bail!("Insufficient free balance");
         }
@@ -140,6 +135,7 @@ impl SpotGrid {
 
         self.grid = Some(grid);
 
+        // 初始化完成
         self.initialized = true;
 
         Ok(())
@@ -151,6 +147,8 @@ impl SpotGrid {
             .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))
     }
 }
+
+impl SpotClientService for SpotGrid {}
 
 impl Setupable for SpotGrid {
     fn setup_context(&mut self, context: WorkflowContext) {
@@ -191,19 +189,7 @@ impl Executable for SpotGrid {
 
         let params = self.params.clone();
 
-        // 如果出现网络错误，则跳过
-        macro_rules! request_maybe_failed {
-            ($expr:expr) => {
-                match $expr {
-                    Ok(val) => val,
-                    Err(e) => {
-                        tracing::error!("{}", e);
-                        self.get_grid_mut()?.unlock();
-                        continue;
-                    }
-                }
-            };
-        }
+        self.get_grid_mut()?.start();
 
         while let Ok(tick) = tick_rx.recv_async().await {
             let Some(signal) = self
@@ -214,76 +200,112 @@ impl Executable for SpotGrid {
             };
 
             match signal {
+                // 买入
                 TradeSignal::Buy { quantity, .. } => {
-                    let order = request_maybe_failed! {
-                        self.market_buy(
+                    let order_result = self
+                        .market_buy(
                             &client,
                             &pair_info.base_asset,
                             &pair_info.quote_asset,
                             quantity.to_string().parse::<f64>()?,
                         )
-                        .await
-                    };
+                        .await;
 
-                    self.get_grid_mut()?.update_with_order(&signal, &order);
-                    tracing::info!("SpotGrid buy order: {:?}", order);
+                    match order_result {
+                        Ok(order) => {
+                            self.get_grid_mut()?.update_with_order(&signal, &order);
+                            tracing::info!("SpotGrid buy order: {:?}", order);
+                        }
+                        Err(e) => {
+                            self.get_grid_mut()?.unlock();
+                            tracing::error!("SpotGrid buy order failed: {}", e);
+                        }
+                    }
                 }
 
+                // 卖出
                 TradeSignal::Sell { quantity, .. } => {
-                    let order = request_maybe_failed! {
-                        self.market_sell(
+                    let order_result = self
+                        .market_sell(
                             &client,
                             &pair_info.base_asset,
                             &pair_info.quote_asset,
                             quantity.to_string().parse::<f64>()?,
                         )
-                        .await
-                    };
+                        .await;
 
-                    self.get_grid_mut()?.update_with_order(&signal, &order);
-                    tracing::info!("SpotGrid sell order: {:?}", order);
+                    match order_result {
+                        Ok(order) => {
+                            self.get_grid_mut()?.update_with_order(&signal, &order);
+                            tracing::info!("SpotGrid sell order: {:?}", order);
+                        }
+                        Err(e) => {
+                            self.get_grid_mut()?.unlock();
+                            tracing::error!("SpotGrid sell order failed: {}", e);
+                        }
+                    }
                 }
 
+                // 止损
                 TradeSignal::StopLoss { sell_all_on_stop } => {
                     if !sell_all_on_stop {
                         continue;
                     }
 
-                    let balance = request_maybe_failed! {
-                        client.get_balance(&pair_info.base_asset).await
+                    let Ok(balance) = client.get_balance(&pair_info.base_asset).await else {
+                        self.get_grid_mut()?.unlock();
+                        continue;
                     };
 
-                    let order = request_maybe_failed! {
-                        self.market_sell(
+                    let order_result = self
+                        .market_sell(
                             &client,
                             &pair_info.base_asset,
                             &pair_info.quote_asset,
                             balance.free.parse::<f64>()?,
                         )
-                        .await
-                    };
+                        .await;
 
-                    self.get_grid_mut()?.update_with_order(&signal, &order);
-                    tracing::info!("SpotGrid sell all order: {:?}", order);
+                    match order_result {
+                        Ok(order) => {
+                            self.get_grid_mut()?.update_with_order(&signal, &order);
+                            self.get_grid_mut()?.stop();
+                            tracing::info!("SpotGrid sell all order: {:?}", order);
+                        }
+                        Err(e) => {
+                            self.get_grid_mut()?.unlock();
+                            tracing::error!("SpotGrid sell all order failed: {}", e);
+                        }
+                    }
                 }
 
+                // 止盈
                 TradeSignal::TakeProfit => {
-                    let balance = request_maybe_failed! {
-                        client.get_balance(&pair_info.base_asset).await
+                    let Ok(balance) = client.get_balance(&pair_info.base_asset).await else {
+                        self.get_grid_mut()?.unlock();
+                        continue;
                     };
 
-                    let order = request_maybe_failed! {
-                        self.market_sell(
+                    let order_result = self
+                        .market_sell(
                             &client,
                             &pair_info.base_asset,
                             &pair_info.quote_asset,
                             balance.free.parse::<f64>()?,
                         )
-                        .await
-                    };
+                        .await;
 
-                    self.get_grid_mut()?.update_with_order(&signal, &order);
-                    tracing::info!("SpotGrid take profit order: {:?}", order);
+                    match order_result {
+                        Ok(order) => {
+                            self.get_grid_mut()?.update_with_order(&signal, &order);
+                            self.get_grid_mut()?.stop();
+                            tracing::info!("SpotGrid take profit order: {:?}", order);
+                        }
+                        Err(e) => {
+                            self.get_grid_mut()?.unlock();
+                            tracing::error!("SpotGrid take profit order failed: {}", e);
+                        }
+                    }
                 }
             }
         }
@@ -459,7 +481,7 @@ impl Grid {
 
         let prev_sell_price = dec!(0);
 
-        let starting = AtomicBool::new(true);
+        let starting = AtomicBool::new(false);
         let running = AtomicBool::new(false);
         let locked = AtomicBool::new(false);
 
@@ -610,6 +632,18 @@ impl Grid {
         }
 
         self.unlock();
+    }
+
+    fn stop(&self) {
+        self.starting.store(false, Ordering::Relaxed);
+        self.running.store(false, Ordering::Relaxed);
+        self.locked.store(false, Ordering::Relaxed);
+    }
+
+    fn start(&self) {
+        self.starting.store(true, Ordering::Relaxed);
+        self.running.store(false, Ordering::Relaxed);
+        self.locked.store(false, Ordering::Relaxed);
     }
 
     // 锁定
@@ -877,6 +911,8 @@ mod tests {
             .current_price(dec!(4.25))
             .commission_rate(commission)
             .build();
+
+        grid.start();
 
         assert_eq!(grid.rows.len(), 10);
         assert_eq!(grid.cursor, 0);

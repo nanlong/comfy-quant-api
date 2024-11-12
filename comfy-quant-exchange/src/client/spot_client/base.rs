@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use binance::model::{
     AccountInformation as BinanceAccountInformation, Balance as BinaceBalance,
     Filters as BinanceFilters, Order as BinanceOrder, Symbol as BinaceSymbolInformation,
@@ -19,7 +19,7 @@ pub struct AccountInformation {
 impl TryFrom<BinanceAccountInformation> for AccountInformation {
     type Error = anyhow::Error;
 
-    fn try_from(value: BinanceAccountInformation) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: BinanceAccountInformation) -> Result<Self, Self::Error> {
         let to_rate = |val: f32, commission_type: &str| {
             Decimal::from_f32(val)
                 .ok_or_else(|| {
@@ -100,7 +100,7 @@ pub enum OrderStatus {
 impl FromStr for OrderStatus {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "NEW" => Ok(OrderStatus::New),
             "PARTIALLY_FILLED" => Ok(OrderStatus::PartiallyFilled),
@@ -122,7 +122,7 @@ pub enum OrderType {
 impl FromStr for OrderType {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "MARKET" => Ok(OrderType::Market),
             "LIMIT" => Ok(OrderType::Limit),
@@ -140,7 +140,7 @@ pub enum OrderSide {
 impl FromStr for OrderSide {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "BUY" => Ok(OrderSide::Buy),
             "SELL" => Ok(OrderSide::Sell),
@@ -168,11 +168,11 @@ pub struct Order {
 }
 
 impl Order {
-    pub fn base_asset_amount(&self) -> Result<Decimal> {
+    pub fn base_asset_amount(&self) -> anyhow::Result<Decimal> {
         Ok(self.executed_qty.parse::<Decimal>()?)
     }
 
-    pub fn quote_asset_amount(&self) -> Result<Decimal> {
+    pub fn quote_asset_amount(&self) -> anyhow::Result<Decimal> {
         Ok(self.cumulative_quote_qty.parse::<Decimal>()?)
     }
 }
@@ -180,7 +180,7 @@ impl Order {
 impl TryFrom<BinanceOrder> for Order {
     type Error = anyhow::Error;
 
-    fn try_from(value: BinanceOrder) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: BinanceOrder) -> Result<Self, Self::Error> {
         let order_type = value.type_name.parse::<OrderType>()?;
         let order_side = value.side.parse::<OrderSide>()?;
         let order_status = value.status.parse::<OrderStatus>()?;
@@ -212,7 +212,7 @@ impl TryFrom<BinanceOrder> for Order {
 impl TryFrom<BinanceTransaction> for Order {
     type Error = anyhow::Error;
 
-    fn try_from(value: BinanceTransaction) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: BinanceTransaction) -> Result<Self, Self::Error> {
         let order_type = value.type_name.parse::<OrderType>()?;
         let order_side = value.side.parse::<OrderSide>()?;
         let order_status = value.status.parse::<OrderStatus>()?;
@@ -254,7 +254,7 @@ pub struct SymbolPrice {
 impl TryFrom<BinanceSymbolPrice> for SymbolPrice {
     type Error = anyhow::Error;
 
-    fn try_from(value: BinanceSymbolPrice) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: BinanceSymbolPrice) -> Result<Self, Self::Error> {
         let price = Decimal::from_f64(value.price)
             .ok_or_else(|| anyhow!("binance symbol price convert decimal failed"))?;
 
@@ -265,6 +265,7 @@ impl TryFrom<BinanceSymbolPrice> for SymbolPrice {
     }
 }
 
+#[derive(Clone)]
 pub enum SpotClientRequest {
     PlatformName,
     GetAccount,
@@ -306,6 +307,29 @@ pub enum SpotClientRequest {
         base_asset: String,
         quote_asset: String,
     },
+}
+
+impl SpotClientRequest {
+    pub fn platform_name() -> Self {
+        SpotClientRequest::PlatformName
+    }
+
+    pub fn get_account() -> Self {
+        SpotClientRequest::GetAccount
+    }
+
+    pub fn get_symbol_info(base_asset: impl Into<String>, quote_asset: impl Into<String>) -> Self {
+        SpotClientRequest::GetSymbolInfo {
+            base_asset: base_asset.into(),
+            quote_asset: quote_asset.into(),
+        }
+    }
+
+    pub fn get_balance(asset: impl Into<String>) -> Self {
+        SpotClientRequest::GetBalance {
+            asset: asset.into(),
+        }
+    }
 }
 
 pub enum SpotClientResponse {
@@ -350,5 +374,77 @@ impl From<Order> for SpotClientResponse {
 impl From<SymbolPrice> for SpotClientResponse {
     fn from(value: SymbolPrice) -> Self {
         SpotClientResponse::SymbolPrice(value)
+    }
+}
+
+impl TryFrom<SpotClientResponse> for String {
+    type Error = anyhow::Error;
+
+    fn try_from(value: SpotClientResponse) -> Result<Self, Self::Error> {
+        let SpotClientResponse::PlatformName(platform_name) = value else {
+            anyhow::bail!("try from SpotClientResponse to String failed")
+        };
+
+        Ok(platform_name)
+    }
+}
+
+impl TryFrom<SpotClientResponse> for AccountInformation {
+    type Error = anyhow::Error;
+
+    fn try_from(value: SpotClientResponse) -> Result<Self, Self::Error> {
+        let SpotClientResponse::AccountInformation(account_information) = value else {
+            anyhow::bail!("try from SpotClientResponse to AccountInformation failed")
+        };
+
+        Ok(account_information)
+    }
+}
+
+impl TryFrom<SpotClientResponse> for SymbolInformation {
+    type Error = anyhow::Error;
+
+    fn try_from(value: SpotClientResponse) -> Result<Self, Self::Error> {
+        let SpotClientResponse::SymbolInformation(symbol_information) = value else {
+            anyhow::bail!("try from SpotClientResponse to SymbolInformation failed")
+        };
+
+        Ok(symbol_information)
+    }
+}
+
+impl TryFrom<SpotClientResponse> for Balance {
+    type Error = anyhow::Error;
+
+    fn try_from(value: SpotClientResponse) -> Result<Self, Self::Error> {
+        let SpotClientResponse::Balance(balance) = value else {
+            anyhow::bail!("try from SpotClientResponse to Balance failed")
+        };
+
+        Ok(balance)
+    }
+}
+
+impl TryFrom<SpotClientResponse> for Order {
+    type Error = anyhow::Error;
+
+    fn try_from(value: SpotClientResponse) -> Result<Self, Self::Error> {
+        let SpotClientResponse::Order(order) = value else {
+            anyhow::bail!("try from SpotClientResponse to Order failed")
+        };
+
+        Ok(order)
+    }
+}
+
+impl TryFrom<SpotClientResponse> for SymbolPrice {
+    type Error = anyhow::Error;
+
+    fn try_from(value: SpotClientResponse) -> Result<Self, Self::Error> {
+        let SpotClientResponse::SymbolPrice(symbol_price) = value else {
+            anyhow::bail!("try from SpotClientResponse to SymbolPrice failed")
+        };
+
+        Ok(symbol_price)
     }
 }
