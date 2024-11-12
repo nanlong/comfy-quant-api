@@ -264,3 +264,91 @@ impl TryFrom<BinanceSymbolPrice> for SymbolPrice {
             .build())
     }
 }
+
+pub enum SpotClientRequest {
+    PlatformName,
+    GetAccount,
+    GetSymbolInfo {
+        base_asset: String,
+        quote_asset: String,
+    },
+    GetBalance {
+        asset: String,
+    },
+    GetOrder {
+        base_asset: String,
+        quote_asset: String,
+        order_id: String,
+    },
+    MarketBuy {
+        base_asset: String,
+        quote_asset: String,
+        qty: f64,
+    },
+    MarketSell {
+        base_asset: String,
+        quote_asset: String,
+        qty: f64,
+    },
+    LimitBuy {
+        base_asset: String,
+        quote_asset: String,
+        qty: f64,
+        price: f64,
+    },
+    LimitSell {
+        base_asset: String,
+        quote_asset: String,
+        qty: f64,
+        price: f64,
+    },
+    GetPrice {
+        base_asset: String,
+        quote_asset: String,
+    },
+}
+
+pub enum SpotClientResponse {
+    PlatformName(String),
+    AccountInformation(AccountInformation),
+    SymbolInformation(SymbolInformation),
+    Balance(Balance),
+    Order(Order),
+    SymbolPrice(SymbolPrice),
+}
+
+impl From<String> for SpotClientResponse {
+    fn from(value: String) -> Self {
+        SpotClientResponse::PlatformName(value)
+    }
+}
+
+impl From<AccountInformation> for SpotClientResponse {
+    fn from(value: AccountInformation) -> Self {
+        SpotClientResponse::AccountInformation(value)
+    }
+}
+
+impl From<SymbolInformation> for SpotClientResponse {
+    fn from(value: SymbolInformation) -> Self {
+        SpotClientResponse::SymbolInformation(value)
+    }
+}
+
+impl From<Balance> for SpotClientResponse {
+    fn from(value: Balance) -> Self {
+        SpotClientResponse::Balance(value)
+    }
+}
+
+impl From<Order> for SpotClientResponse {
+    fn from(value: Order) -> Self {
+        SpotClientResponse::Order(value)
+    }
+}
+
+impl From<SymbolPrice> for SpotClientResponse {
+    fn from(value: SymbolPrice) -> Self {
+        SpotClientResponse::SymbolPrice(value)
+    }
+}
