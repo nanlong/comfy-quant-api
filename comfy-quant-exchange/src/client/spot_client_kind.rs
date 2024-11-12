@@ -1,10 +1,16 @@
 use super::spot_client::{
     backtest_spot_client::BacktestSpotClient,
-    base::{AccountInformation, Balance, Order, SymbolInformation, SymbolPrice},
+    base::{
+        AccountInformation, Balance, Order, SpotClientRequest, SpotClientResponse,
+        SymbolInformation, SymbolPrice,
+    },
     binance_spot_client::BinanceSpotClient,
 };
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
+use futures::future::BoxFuture;
+use std::task::{Context, Poll};
+use tower::Service;
 
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
@@ -60,6 +66,85 @@ pub trait SpotClientExecutable {
 pub enum SpotClientKind {
     BacktestSpotClient(BacktestSpotClient),
     BinanceSpotClient(BinanceSpotClient),
+}
+
+impl Service<SpotClientRequest> for SpotClientKind {
+    type Response = SpotClientResponse;
+    type Error = anyhow::Error;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: SpotClientRequest) -> Self::Future {
+        let client = self.clone();
+
+        let fut = async move {
+            let res = match req {
+                SpotClientRequest::PlatformName => client.platform_name().into(),
+                SpotClientRequest::GetAccount => client.get_account().await?.into(),
+                SpotClientRequest::GetSymbolInfo {
+                    base_asset,
+                    quote_asset,
+                } => client
+                    .get_symbol_info(&base_asset, &quote_asset)
+                    .await?
+                    .into(),
+                SpotClientRequest::GetBalance { asset } => client.get_balance(&asset).await?.into(),
+                SpotClientRequest::GetOrder {
+                    base_asset,
+                    quote_asset,
+                    order_id,
+                } => client
+                    .get_order(&base_asset, &quote_asset, &order_id)
+                    .await?
+                    .into(),
+                SpotClientRequest::MarketBuy {
+                    base_asset,
+                    quote_asset,
+                    qty,
+                } => client
+                    .market_buy(&base_asset, &quote_asset, qty)
+                    .await?
+                    .into(),
+                SpotClientRequest::MarketSell {
+                    base_asset,
+                    quote_asset,
+                    qty,
+                } => client
+                    .market_sell(&base_asset, &quote_asset, qty)
+                    .await?
+                    .into(),
+                SpotClientRequest::LimitBuy {
+                    base_asset,
+                    quote_asset,
+                    qty,
+                    price,
+                } => client
+                    .limit_buy(&base_asset, &quote_asset, qty, price)
+                    .await?
+                    .into(),
+                SpotClientRequest::LimitSell {
+                    base_asset,
+                    quote_asset,
+                    qty,
+                    price,
+                } => client
+                    .limit_sell(&base_asset, &quote_asset, qty, price)
+                    .await?
+                    .into(),
+                SpotClientRequest::GetPrice {
+                    base_asset,
+                    quote_asset,
+                } => client.get_price(&base_asset, &quote_asset).await?.into(),
+            };
+
+            Ok(res)
+        };
+
+        Box::pin(fut)
+    }
 }
 
 #[cfg(test)]
