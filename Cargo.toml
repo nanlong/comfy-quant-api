@@ -15,18 +15,18 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = { version = "1.0" }
 async-stream = { version = "0.3" }
-tokio = { version = "1.40", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { version = "0.7" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 chrono = { version = "0.4", features = ["serde"] }
 enum_dispatch = { version = "0.3" }
-binance = { version = "0.21.0" }
+binance = { version = "0.21" }
 futures = { version = "0.3" }
 futures-util = { version = "0.3" }
 rust_decimal = { version = "1.36", features = ["db-postgres"] }
-sqlx = { version = "0.8.2", features = [
+sqlx = { version = "0.8", features = [
     "runtime-tokio-rustls",
     "postgres",
     "derive",
@@ -35,13 +35,14 @@ sqlx = { version = "0.8.2", features = [
     "rust_decimal",
     "json",
 ] }
-bon = { version = "2.3" }
+bon = { version = "3" }
 flume = { version = "0.11" }
 async-lock = { version = "3.4" }
-tracing = { version = "0.1.40" }
+tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-nanoid = "0.4.0"
-rust_decimal_macros = "1.36.0"
-dashmap = { version = "6.1.0", features = ["serde"] }
-thiserror = "2.0.1"
-tower = { version = "0.5.1", features = ["retry", "timeout", "tracing"] }
+nanoid = "0.4"
+rust_decimal_macros = "1.36"
+dashmap = { version = "6.1", features = ["serde"] }
+thiserror = "2.0"
+tower = { version = "0.5", features = ["retry", "timeout", "tracing"] }
+hdrhistogram = "7"
