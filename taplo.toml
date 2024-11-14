@@ -1,0 +1,11 @@
+[formatting]
+reorder_keys = false
+
+[[rule]]
+include = ["**/Cargo.toml"]
+keys = ["workspace", "workspace.dependencies", "dependencies"]
+
+
+[rule.formatting]
+reorder_keys = true
+indent_string = "    "

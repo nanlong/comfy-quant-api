@@ -4,33 +4,33 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = { workspace = true }
+async-lock = { workspace = true }
+async-stream = { workspace = true }
+binance = { workspace = true }
+bon = { workspace = true }
+chrono = { workspace = true }
 comfy-quant-config = { path = "../comfy-quant-config" }
 comfy-quant-database = { path = "../comfy-quant-database" }
 comfy-quant-exchange = { path = "../comfy-quant-exchange" }
 comfy-quant-task = { path = "../comfy-quant-task" }
-anyhow = { workspace = true }
-async-stream = { workspace = true }
+dashmap = { workspace = true }
+enum_dispatch = { workspace = true }
+flume = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
-tokio = { workspace = true }
-tokio-stream = { workspace = true }
-binance = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-chrono = { workspace = true }
-bon = { workspace = true }
-async-lock = { workspace = true }
-tracing = { workspace = true }
-sqlx = { workspace = true }
-flume = { workspace = true }
-enum_dispatch = { workspace = true }
-tokio-util = { workspace = true }
+hdrhistogram = { workspace = true }
 nanoid = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
-dashmap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tokio-util = { workspace = true }
 tower = { workspace = true }
-hdrhistogram = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

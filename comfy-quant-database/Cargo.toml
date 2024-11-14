@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-comfy-quant-exchange = { path = "../comfy-quant-exchange" }
 anyhow = { workspace = true }
+binance = { workspace = true }
+bon = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
+comfy-quant-exchange = { path = "../comfy-quant-exchange" }
+flume = { workspace = true }
+futures = { workspace = true }
 rust_decimal = { workspace = true, features = ["db-postgres"] }
 sqlx = { workspace = true }
-binance = { workspace = true }
-futures = { workspace = true }
-bon = { workspace = true }
-flume = { workspace = true }
 tokio = { workspace = true }

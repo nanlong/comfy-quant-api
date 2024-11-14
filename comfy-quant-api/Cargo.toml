@@ -5,25 +5,23 @@ authors = ["Jeff <fei.code@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-comfy-quant-exchange = { path = "../comfy-quant-exchange" }
-comfy-quant-database = { path = "../comfy-quant-database" }
-comfy-quant-node = { path = "../comfy-quant-node" }
 anyhow = { workspace = true }
-bon = { workspace = true }
-flume = { workspace = true }
-tokio = { workspace = true }
 async-lock = { workspace = true }
-futures = { workspace = true }
-sqlx = { workspace = true }
-rust_decimal = { workspace = true }
-serde = { workspace = true }
+bon = { workspace = true }
 chrono = { workspace = true }
-
-# 日志
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-appender = "0.2.3"
-tracing-opentelemetry = "0.23.0"
+comfy-quant-database = { path = "../comfy-quant-database" }
+comfy-quant-exchange = { path = "../comfy-quant-exchange" }
+comfy-quant-node = { path = "../comfy-quant-node" }
+flume = { workspace = true }
+futures = { workspace = true }
 opentelemetry = "0.22.0"
 opentelemetry-otlp = { version = "0.15.0", features = ["tonic"] }
 opentelemetry_sdk = { version = "0.22.1", features = ["rt-tokio"] }
+rust_decimal = { workspace = true }
+serde = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = "0.2.3"
+tracing-opentelemetry = "0.23.0"
+tracing-subscriber = { workspace = true }

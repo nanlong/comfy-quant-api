@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { workspace = true }
-sqlx = { workspace = true }
 anyhow = { workspace = true }
 config = { version = "0.14" }
 dotenvy = { version = "0.15.7" }
 serde = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }

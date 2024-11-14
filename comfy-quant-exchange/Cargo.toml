@@ -4,23 +4,23 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-enum_dispatch = { workspace = true }
-binance = { workspace = true }
 anyhow = { workspace = true }
-tokio = { workspace = true }
-tokio-stream = { workspace = true }
-sqlx = { workspace = true }
+async-lock = { workspace = true }
+async-stream = { workspace = true }
+binance = { workspace = true }
+bon = { workspace = true }
 chrono = { workspace = true }
+enum_dispatch = { workspace = true }
+flume = { workspace = true }
+futures = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
-flume = { workspace = true }
-bon = { workspace = true }
-async-stream = { workspace = true }
-futures = { workspace = true }
-async-lock = { workspace = true }
-tracing = { workspace = true }
+sqlx = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
 tower = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

@@ -1,9 +1,9 @@
 [workspace]
 members = [
     "comfy-quant-api",
-    "comfy-quant-exchange",
     "comfy-quant-config",
     "comfy-quant-database",
+    "comfy-quant-exchange",
     "comfy-quant-node",
     "comfy-quant-task",
 ]
@@ -11,21 +11,24 @@ members = [
 default-members = ["comfy-quant-api"]
 resolver = "2"
 
-
 [workspace.dependencies]
 anyhow = { version = "1.0" }
+async-lock = { version = "3.4" }
 async-stream = { version = "0.3" }
-tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
-tokio-util = { version = "0.7" }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0" }
-chrono = { version = "0.4", features = ["serde"] }
-enum_dispatch = { version = "0.3" }
 binance = { version = "0.21" }
+bon = { version = "3" }
+chrono = { version = "0.4", features = ["serde"] }
+dashmap = { version = "6.1", features = ["serde"] }
+enum_dispatch = { version = "0.3" }
+flume = { version = "0.11" }
 futures = { version = "0.3" }
 futures-util = { version = "0.3" }
+hdrhistogram = "7"
+nanoid = "0.4"
 rust_decimal = { version = "1.36", features = ["db-postgres"] }
+rust_decimal_macros = "1.36"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
 sqlx = { version = "0.8", features = [
     "runtime-tokio-rustls",
     "postgres",
@@ -35,14 +38,10 @@ sqlx = { version = "0.8", features = [
     "rust_decimal",
     "json",
 ] }
-bon = { version = "3" }
-flume = { version = "0.11" }
-async-lock = { version = "3.4" }
+thiserror = "2.0"
+tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-util = { version = "0.7" }
+tower = { version = "0.5", features = ["retry", "timeout", "tracing"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-nanoid = "0.4"
-rust_decimal_macros = "1.36"
-dashmap = { version = "6.1", features = ["serde"] }
-thiserror = "2.0"
-tower = { version = "0.5", features = ["retry", "timeout", "tracing"] }
-hdrhistogram = "7"
