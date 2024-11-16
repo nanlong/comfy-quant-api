@@ -309,6 +309,20 @@ enum AssetsOp {
     Sub,
 }
 
+// #[derive(Debug, Default)]
+// pub struct TradeStats {
+//     total_trades: AtomicU64,       // 总交易次数
+//     buy_trades: AtomicU64,         // 买入次数
+//     sell_trades: AtomicU64,        // 卖出次数
+//     total_base_volume: AtomicF64,  // base资产交易量
+//     total_quote_volume: AtomicF64, // quote资产交易量
+//     total_commission: AtomicF64,   // 总手续费
+//     total_profit: AtomicF64,       // 总盈亏
+//     win_trades: AtomicU64,         // 盈利交易次数
+//     max_drawdown: AtomicF64,       // 最大回撤
+//     roi: AtomicF64,                // 收益率
+// }
+
 #[cfg(test)]
 mod tests {
     use rust_decimal_macros::dec;
