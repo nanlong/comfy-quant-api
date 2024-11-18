@@ -24,11 +24,11 @@ pub struct Workflow {
     version: f32,
 
     #[serde(skip)]
-    context: Option<Arc<WorkflowContext>>,
+    deserialized_nodes: HashMap<u32, Arc<Mutex<NodeKind>>>, // 反序列化节点
     #[serde(skip)]
-    cancel_token: CancellationToken,
+    context: Option<Arc<WorkflowContext>>, // 上下文
     #[serde(skip)]
-    deserialized_nodes: HashMap<u32, Arc<Mutex<NodeKind>>>,
+    token: CancellationToken, // 取消令牌
 }
 
 impl Workflow {
@@ -37,7 +37,7 @@ impl Workflow {
         let barrier = Barrier::new(self.nodes.len());
 
         self.context = Some(Arc::new(WorkflowContext::new(db, barrier)));
-        self.cancel_token = CancellationToken::new();
+        self.token = CancellationToken::new();
     }
 
     // 按照 order 排序
@@ -129,7 +129,7 @@ impl Executable for Workflow {
                     .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node.id))?,
             );
 
-            let cancel_token = self.cancel_token.clone();
+            let cloned_token = self.token.clone();
 
             // 在单独的线程中执行节点
             tokio::spawn(async move {
@@ -141,7 +141,7 @@ impl Executable for Workflow {
                     } => {
                         tracing::info!("Node {} finished", node_id);
                     },
-                    _ = cancel_token.cancelled() => {
+                    _ = cloned_token.cancelled() => {
                         tracing::info!("Node {} cancelled", node_id);
                     }
                 }
@@ -156,7 +156,7 @@ impl Executable for Workflow {
 
 impl Drop for Workflow {
     fn drop(&mut self) {
-        self.cancel_token.cancel();
+        self.token.cancel();
     }
 }
 
@@ -230,7 +230,7 @@ impl WorkflowContext {
         &self.id
     }
 
-    pub(crate) fn db_cloned(&self) -> Arc<PgPool> {
+    pub(crate) fn cloned_db(&self) -> Arc<PgPool> {
         Arc::clone(&self.db)
     }
 
@@ -301,7 +301,7 @@ mod tests {
         let context = WorkflowContext::new(pool, Barrier::new(1));
         assert_eq!(context.workflow_id().len(), 21);
 
-        let db = context.db_cloned();
+        let db = context.cloned_db();
         assert_eq!(Arc::strong_count(&db), 2);
     }
 }

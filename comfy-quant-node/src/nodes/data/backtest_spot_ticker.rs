@@ -68,7 +68,7 @@ impl BacktestSpotTicker {
             format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
         let start_timestamp = self.params.start_datetime.timestamp();
         let end_timestamp = self.params.end_datetime.timestamp();
-        let db = self.get_context()?.db_cloned();
+        let db = self.get_context()?.cloned_db();
 
         // 等待数据同步完成，如果出错，重试3次
         'retry: for i in 0..3 {
