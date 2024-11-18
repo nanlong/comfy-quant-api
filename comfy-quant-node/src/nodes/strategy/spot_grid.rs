@@ -1,9 +1,13 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Setupable, SpotClientService, SpotTradeable},
+    node_core::{
+        Executable, NodeStats, Port, PortAccessor, Setupable, SpotClientService, SpotTradeable,
+        Stats,
+    },
     node_io::{SpotPairInfo, TickStream},
     workflow::{self, WorkflowContext},
 };
 use anyhow::{anyhow, Result};
+use async_lock::Mutex;
 use bon::{bon, Builder};
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, OrderSide},
@@ -40,9 +44,10 @@ pub(crate) struct Params {
 #[allow(unused)]
 pub(crate) struct SpotGrid {
     params: Params,                        // 前端配置
-    port: Port,                            // 输入输出
+    port: Mutex<Port>,                     // 输入输出
     context: Option<Arc<WorkflowContext>>, // 工作流上下文信息
-    grid: Option<Grid>,                    // 网格
+    grid: Option<Mutex<Grid>>,             // 网格
+    stats: Mutex<Stats>,                   // 统计数据
     initialized: bool,                     // 是否已经初始化
 }
 
@@ -50,9 +55,10 @@ impl SpotGrid {
     pub(crate) fn new(params: Params) -> Result<Self> {
         Ok(SpotGrid {
             params,
-            port: Port::new(),
+            port: Mutex::new(Port::default()),
             context: None,
             grid: None,
+            stats: Mutex::new(Stats::default()),
             initialized: false,
         })
     }
@@ -120,7 +126,7 @@ impl SpotGrid {
             .commission_rate(account.taker_commission_rate)
             .build();
 
-        self.grid = Some(grid);
+        self.grid = Some(Mutex::new(grid));
 
         // 初始化完成
         self.initialized = true;
@@ -128,9 +134,9 @@ impl SpotGrid {
         Ok(())
     }
 
-    fn get_grid_mut(&mut self) -> Result<&mut Grid> {
+    fn get_grid(&self) -> Result<&Mutex<Grid>> {
         self.grid
-            .as_mut()
+            .as_ref()
             .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))
     }
 }
@@ -147,13 +153,15 @@ impl Setupable for SpotGrid {
     }
 }
 
-impl PortAccessor for SpotGrid {
-    fn get_port(&self) -> Result<&Port> {
-        Ok(&self.port)
+impl NodeStats for SpotGrid {
+    fn get_stats(&self) -> &Mutex<Stats> {
+        &self.stats
     }
+}
 
-    fn get_port_mut(&mut self) -> Result<&mut Port> {
-        Ok(&mut self.port)
+impl PortAccessor for SpotGrid {
+    fn get_port(&self) -> &Mutex<Port> {
+        &self.port
     }
 }
 
@@ -164,23 +172,24 @@ impl Executable for SpotGrid {
         self.get_context()?.wait().await;
 
         // 获取输入
-        let pair_info = self.port.get_input::<SpotPairInfo>(0)?;
-        let client = self.port.get_input::<SpotClientKind>(1)?;
-        let tick_stream = self.port.get_input::<TickStream>(2)?;
+        let port = self.get_port().lock().await;
+        let pair_info = port.get_input::<SpotPairInfo>(0)?;
+        let client = port.get_input::<SpotClientKind>(1)?;
+        let tick_stream = port.get_input::<TickStream>(2)?;
+        drop(port);
 
         let tick_rx = tick_stream.subscribe();
         let current_price = tick_rx.recv_async().await?.price;
+
         self.initialize(&pair_info, &client, current_price).await?;
 
+        let mut grid = self.get_grid()?.lock().await;
         let params = self.params.clone();
 
-        self.get_grid_mut()?.start();
+        grid.start();
 
         while let Ok(tick) = tick_rx.recv_async().await {
-            let Some(signal) = self
-                .get_grid_mut()?
-                .evaluate_with_price(&params, tick.price)
-            else {
+            let Some(signal) = grid.evaluate_with_price(&params, tick.price) else {
                 continue;
             };
 
@@ -198,11 +207,11 @@ impl Executable for SpotGrid {
 
                     match order_result {
                         Ok(order) => {
-                            self.get_grid_mut()?.update_with_order(&signal, &order);
+                            grid.update_with_order(&signal, &order);
                             tracing::info!("SpotGrid buy order: {:?}", order);
                         }
                         Err(e) => {
-                            self.get_grid_mut()?.unlock();
+                            grid.unlock();
                             tracing::error!("SpotGrid buy order failed: {}", e);
                         }
                     }
@@ -221,11 +230,11 @@ impl Executable for SpotGrid {
 
                     match order_result {
                         Ok(order) => {
-                            self.get_grid_mut()?.update_with_order(&signal, &order);
+                            grid.update_with_order(&signal, &order);
                             tracing::info!("SpotGrid sell order: {:?}", order);
                         }
                         Err(e) => {
-                            self.get_grid_mut()?.unlock();
+                            grid.unlock();
                             tracing::error!("SpotGrid sell order failed: {}", e);
                         }
                     }
@@ -238,7 +247,7 @@ impl Executable for SpotGrid {
                     }
 
                     let Ok(balance) = client.get_balance(&pair_info.base_asset).await else {
-                        self.get_grid_mut()?.unlock();
+                        grid.unlock();
                         continue;
                     };
 
@@ -253,12 +262,12 @@ impl Executable for SpotGrid {
 
                     match order_result {
                         Ok(order) => {
-                            self.get_grid_mut()?.update_with_order(&signal, &order);
-                            self.get_grid_mut()?.stop();
+                            grid.update_with_order(&signal, &order);
+                            grid.stop();
                             tracing::info!("SpotGrid sell all order: {:?}", order);
                         }
                         Err(e) => {
-                            self.get_grid_mut()?.unlock();
+                            grid.unlock();
                             tracing::error!("SpotGrid sell all order failed: {}", e);
                         }
                     }
@@ -267,7 +276,7 @@ impl Executable for SpotGrid {
                 // 止盈
                 TradeSignal::TakeProfit => {
                     let Ok(balance) = client.get_balance(&pair_info.base_asset).await else {
-                        self.get_grid_mut()?.unlock();
+                        grid.unlock();
                         continue;
                     };
 
@@ -282,12 +291,12 @@ impl Executable for SpotGrid {
 
                     match order_result {
                         Ok(order) => {
-                            self.get_grid_mut()?.update_with_order(&signal, &order);
-                            self.get_grid_mut()?.stop();
+                            grid.update_with_order(&signal, &order);
+                            grid.stop();
                             tracing::info!("SpotGrid take profit order: {:?}", order);
                         }
                         Err(e) => {
-                            self.get_grid_mut()?.unlock();
+                            grid.unlock();
                             tracing::error!("SpotGrid take profit order failed: {}", e);
                         }
                     }

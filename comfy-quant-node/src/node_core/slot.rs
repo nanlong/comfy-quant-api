@@ -1,9 +1,6 @@
-use std::{
-    fmt,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Slot<T>(pub T);
 
 impl<T> Deref for Slot<T> {
@@ -20,10 +17,7 @@ impl<T> DerefMut for Slot<T> {
     }
 }
 
-impl<T> Slot<T>
-where
-    T: Clone + fmt::Debug + Send + Sync + 'static,
-{
+impl<T> Slot<T> {
     pub fn new(data: T) -> Self {
         Slot(data)
     }

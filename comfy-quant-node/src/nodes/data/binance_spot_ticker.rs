@@ -4,6 +4,7 @@ use crate::{
     workflow,
 };
 use anyhow::Result;
+use async_lock::Mutex;
 use bon::Builder;
 
 #[derive(Builder, Debug, Clone)]
@@ -20,12 +21,12 @@ pub(crate) struct Params {
 #[allow(unused)]
 pub(crate) struct BinanceSpotTicker {
     pub(crate) params: Params,
-    pub(crate) port: Port,
+    pub(crate) port: Mutex<Port>,
 }
 
 impl BinanceSpotTicker {
     pub(crate) fn try_new(params: Params) -> Result<Self> {
-        let mut port = Port::new();
+        let mut port = Port::default();
 
         let pair_info = SpotPairInfo::builder()
             .base_asset(&params.base_asset)
@@ -38,7 +39,10 @@ impl BinanceSpotTicker {
         port.add_output(0, pair_info_slot)?;
         // port.add_output(1, output_slot1)?;
 
-        Ok(BinanceSpotTicker { params, port })
+        Ok(BinanceSpotTicker {
+            params,
+            port: Mutex::new(port),
+        })
     }
 
     async fn output1(&self) -> Result<()> {
@@ -72,12 +76,8 @@ impl BinanceSpotTicker {
 }
 
 impl PortAccessor for BinanceSpotTicker {
-    fn get_port(&self) -> Result<&Port> {
-        Ok(&self.port)
-    }
-
-    fn get_port_mut(&mut self) -> Result<&mut Port> {
-        Ok(&mut self.port)
+    fn get_port(&self) -> &Mutex<Port> {
+        &self.port
     }
 }
 

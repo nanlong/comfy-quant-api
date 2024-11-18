@@ -9,24 +9,25 @@ pub(crate) struct Tick {
     pub(crate) price: Decimal,
 }
 
-#[derive(Debug, Clone, Builder)]
+#[derive(Debug, Builder)]
 pub(crate) struct TickStream {
-    pub(crate) channel: (Sender<Tick>, Receiver<Tick>),
+    inner: (Sender<Tick>, Receiver<Tick>),
 }
 
 impl TickStream {
     pub(crate) fn new() -> Self {
-        let channel = flume::unbounded();
-        TickStream { channel }
+        TickStream {
+            inner: flume::unbounded(),
+        }
     }
 
     pub(crate) async fn send(&self, tick: Tick) -> Result<()> {
-        self.channel.0.send_async(tick).await?;
+        self.inner.0.send_async(tick).await?;
         Ok(())
     }
 
     pub(crate) fn subscribe(&self) -> Receiver<Tick> {
-        self.channel.1.clone()
+        self.inner.1.clone()
     }
 }
 

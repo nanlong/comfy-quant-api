@@ -1,6 +1,6 @@
 use bon::Builder;
 
-#[derive(Debug, Clone, Builder)]
+#[derive(Debug, Builder)]
 #[builder(on(String, into))]
 #[allow(unused)]
 pub(crate) struct SpotPairInfo {

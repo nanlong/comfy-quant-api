@@ -2,14 +2,15 @@ use anyhow::Result;
 use comfy_quant_exchange::client::spot_client::base::{Order, OrderSide};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use sqlx::PgPool;
 
 /// 节点统计数据
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 #[allow(unused)]
 pub struct Stats {
     pub initial_base_balance: Decimal,   // 初始化base资产余额
     pub initial_quote_balance: Decimal,  // 初始化quote资产余额
+    pub maker_commission_rate: Decimal,  // maker手续费率
+    pub taker_commission_rate: Decimal,  // taker手续费率
     pub base_asset_balance: Decimal,     // base资产持仓量
     pub quote_asset_balance: Decimal,    // quote资产持仓量
     pub avg_price: Decimal,              // base资产持仓均价
@@ -28,16 +29,11 @@ pub struct Stats {
 
 #[allow(unused)]
 impl Stats {
-    pub fn update_with_order(
-        &mut self,
-        _db: &PgPool,
-        order: &Order,
-        commission_rate: &Decimal,
-    ) -> Result<()> {
+    pub fn update_with_order(&mut self, order: &Order) -> Result<()> {
         let base_asset_amount = order.base_asset_amount()?;
         let quote_asset_amount = order.quote_asset_amount()?;
-        let base_commission = order.base_commission(commission_rate)?;
-        let quote_commission = order.quote_commission(commission_rate)?;
+        let base_commission = order.base_commission(&self.maker_commission_rate)?;
+        let quote_commission = order.quote_commission(&self.maker_commission_rate)?;
         let order_avg_price = order.avg_price.parse::<Decimal>()?;
 
         self.total_trades += 1;
@@ -89,9 +85,9 @@ impl Stats {
     }
 
     // 未实现盈亏
-    pub fn unrealized_pnl(&self, price: &Decimal, commission_rate: &Decimal) -> Decimal {
+    pub fn unrealized_pnl(&self, price: &Decimal) -> Decimal {
         let cost = self.base_asset_balance * self.avg_price;
-        let maybe_sell = self.base_asset_balance * price * (dec!(1) - commission_rate);
+        let maybe_sell = self.base_asset_balance * price * (dec!(1) - self.maker_commission_rate);
         maybe_sell - cost
     }
 }

@@ -2,23 +2,16 @@ use super::{slot::Slot, slots::Slots};
 use anyhow::Result;
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Port {
     inputs: Slots,
     outputs: Slots,
 }
 
 impl Port {
-    pub fn new() -> Self {
-        Self {
-            inputs: Slots::new(),
-            outputs: Slots::new(),
-        }
-    }
-
     pub fn add_input<T>(&mut self, index: usize, slot: Arc<Slot<T>>) -> Result<()>
     where
-        T: Clone + Send + Sync + 'static,
+        T: Send + Sync + 'static,
     {
         self.inputs.set(index, slot);
 
@@ -27,7 +20,7 @@ impl Port {
 
     pub fn get_input<T>(&self, index: usize) -> Result<Arc<Slot<T>>>
     where
-        T: Clone + Send + Sync + 'static,
+        T: Send + Sync + 'static,
     {
         let slot = self
             .inputs
@@ -40,7 +33,7 @@ impl Port {
 
     pub fn add_output<T>(&mut self, index: usize, slot: Slot<T>) -> Result<()>
     where
-        T: Clone + Send + Sync + 'static,
+        T: Send + Sync + 'static,
     {
         self.outputs.set(index, Arc::new(slot));
 
@@ -49,7 +42,7 @@ impl Port {
 
     pub fn get_output<T>(&self, index: usize) -> Result<Arc<Slot<T>>>
     where
-        T: Clone + Send + Sync + 'static,
+        T: Send + Sync + 'static,
     {
         let slot = self
             .outputs
@@ -61,19 +54,13 @@ impl Port {
     }
 }
 
-impl Default for Port {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_port_add_output() {
-        let mut port = Port::new();
+        let mut port = Port::default();
 
         // Add input
         let slot = Arc::new(Slot::<usize>::new(5));

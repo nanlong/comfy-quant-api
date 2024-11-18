@@ -3,6 +3,7 @@ use crate::{
     workflow::{self, WorkflowContext},
 };
 use anyhow::{anyhow, Result};
+use async_lock::Mutex;
 use bon::Builder;
 use comfy_quant_exchange::client::{
     spot_client::backtest_spot_client::BacktestSpotClient as Client,
@@ -24,13 +25,13 @@ pub(crate) struct BacktestSpotClient {
     pub(crate) params: Params,
     // outputs:
     //      0: SpotClient
-    pub(crate) port: Port,
+    pub(crate) port: Mutex<Port>,
     context: Option<Arc<WorkflowContext>>,
 }
 
 impl BacktestSpotClient {
     pub(crate) fn try_new(params: Params) -> Result<Self> {
-        let mut port = Port::new();
+        let mut port = Port::default();
 
         let client = Client::builder()
             .assets(&params.assets[..])
@@ -43,7 +44,7 @@ impl BacktestSpotClient {
 
         Ok(BacktestSpotClient {
             params,
-            port,
+            port: Mutex::new(port),
             context: None,
         })
     }
@@ -62,12 +63,8 @@ impl Setupable for BacktestSpotClient {
 }
 
 impl PortAccessor for BacktestSpotClient {
-    fn get_port(&self) -> Result<&Port> {
-        Ok(&self.port)
-    }
-
-    fn get_port_mut(&mut self) -> Result<&mut Port> {
-        Ok(&mut self.port)
+    fn get_port(&self) -> &Mutex<Port> {
+        &self.port
     }
 }
 
@@ -148,8 +145,9 @@ mod tests {
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = BacktestSpotClient::try_from(&node)?;
+        let port = account.get_port().lock().await;
 
-        let client = account.port.get_output::<SpotClientKind>(0)?;
+        let client = port.get_output::<SpotClientKind>(0)?;
 
         let balance = client.get_balance("BTC").await?;
         assert_eq!(balance.free, "10");

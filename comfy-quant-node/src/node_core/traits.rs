@@ -1,11 +1,14 @@
 use crate::{node_core::Port, workflow::WorkflowContext};
 use anyhow::Result;
+use async_lock::Mutex;
 use comfy_quant_exchange::client::{
     spot_client::base::Order,
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use enum_dispatch::enum_dispatch;
 use std::sync::Arc;
+
+use super::stats::Stats;
 
 #[enum_dispatch]
 pub trait Setupable {
@@ -24,41 +27,37 @@ pub trait Executable {
 // 节点插槽
 #[enum_dispatch]
 pub trait PortAccessor {
-    fn get_port(&self) -> Result<&Port>;
-
-    fn get_port_mut(&mut self) -> Result<&mut Port>;
+    fn get_port(&self) -> &Mutex<Port>;
 }
 
 // 节点连接
 #[enum_dispatch]
 pub trait Connectable {
-    fn connection<U>(
+    fn connection<U: Send + Sync + 'static>(
         &self,                         // 当前节点
         target: &mut dyn PortAccessor, // 目标节点
         origin_slot: usize,            // 当前节点输出槽位
         target_slot: usize,            // 目标节点输入槽位
-    ) -> Result<()>
-    where
-        U: Clone + Send + Sync + 'static;
+    ) -> Result<()>;
 }
 
 // 节点连接默认实现
-impl<T> Connectable for T
-where
-    T: PortAccessor + Send + Sync + 'static,
-{
-    fn connection<U>(
+impl<T: PortAccessor> Connectable for T {
+    fn connection<U: Send + Sync + 'static>(
         &self,                         // 当前节点
         target: &mut dyn PortAccessor, // 目标节点
         origin_slot: usize,            // 当前节点输出槽位
         target_slot: usize,            // 目标节点输入槽位
-    ) -> Result<()>
-    where
-        U: Clone + Send + Sync + 'static,
-    {
-        let origin = self.get_port()?;
-        let slot = origin.get_output::<U>(origin_slot)?;
-        target.get_port_mut()?.add_input(target_slot, slot)?;
+    ) -> Result<()> {
+        let slot = self
+            .get_port()
+            .lock_blocking()
+            .get_output::<U>(origin_slot)?;
+
+        target
+            .get_port()
+            .lock_blocking()
+            .add_input(target_slot, slot)?;
 
         Ok(())
     }
@@ -83,10 +82,15 @@ pub trait SpotTradeable {
     ) -> Result<Order>;
 }
 
-impl<T> SpotTradeable for T
-where
-    T: Setupable,
-{
+pub trait NodeStats {
+    fn get_stats(&self) -> &Mutex<Stats>;
+
+    fn update_stats_with_order(&self, order: &Order) -> Result<()> {
+        self.get_stats().lock_blocking().update_with_order(order)
+    }
+}
+
+impl<T: Setupable + NodeStats> SpotTradeable for T {
     async fn market_buy(
         &self,
         client: &SpotClientKind,
@@ -98,7 +102,15 @@ where
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
 
         // 更新
-        // self.get_context()?.update_stats_with_order(&order)?;
+        self.update_stats_with_order(&order)?;
+
+        // 更新数据库
+        let _workflow_id = self.get_context()?.workflow_id();
+        let _cloned_db = self.get_context()?.cloned_db();
+        let _stats = self.get_stats().lock().await;
+
+        // save to db
+        // save_stats(&cloned_db, workflow_id, &stats)?;
 
         Ok(order)
     }
@@ -114,7 +126,7 @@ where
         let order = client.market_sell(base_asset, quote_asset, qty).await?;
 
         // 更新
-        // self.get_context()?.update_stats_with_order(&order)?;
+        self.update_stats_with_order(&order)?;
 
         Ok(order)
     }
