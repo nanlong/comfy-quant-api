@@ -217,12 +217,17 @@ pub struct WorkflowContext {
     barrier: Barrier, // 屏障
 }
 
+#[allow(unused)]
 impl WorkflowContext {
     fn new(db: PgPool, barrier: Barrier) -> Self {
         let id = generate_workflow_id();
         let db = Arc::new(db);
 
         Self { id, db, barrier }
+    }
+
+    pub(crate) fn workflow_id(&self) -> &str {
+        &self.id
     }
 
     pub(crate) fn db_cloned(&self) -> Arc<PgPool> {
@@ -289,5 +294,14 @@ mod tests {
         assert_eq!(workflow.links.len(), 3);
 
         Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_workflow_context(pool: PgPool) {
+        let context = WorkflowContext::new(pool, Barrier::new(1));
+        assert_eq!(context.workflow_id().len(), 21);
+
+        let db = context.db_cloned();
+        assert_eq!(Arc::strong_count(&db), 2);
     }
 }
