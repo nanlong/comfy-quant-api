@@ -6,13 +6,7 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use async_lock::{Barrier, Mutex};
-use comfy_quant_exchange::client::{
-    spot_client::base::{AccountInformation, Order, OrderSide, Symbol},
-    spot_client_kind::SpotClientKind,
-};
-use dashmap::DashMap;
-use rust_decimal::Decimal;
-use rust_decimal_macros::dec;
+use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::{collections::HashMap, sync::Arc};
@@ -30,7 +24,7 @@ pub struct Workflow {
     version: f32,
 
     #[serde(skip)]
-    context: WorkflowContext,
+    context: Option<Arc<WorkflowContext>>,
     #[serde(skip)]
     cancel_token: CancellationToken,
     #[serde(skip)]
@@ -39,13 +33,11 @@ pub struct Workflow {
 
 impl Workflow {
     // 初始化上下文
-    pub fn initialize(&mut self, db: Arc<PgPool>) {
-        let cancel_token = CancellationToken::new();
-        let barrier = Arc::new(Barrier::new(self.nodes.len()));
+    pub fn initialize(&mut self, db: PgPool) {
+        let barrier = Barrier::new(self.nodes.len());
 
-        self.cancel_token = cancel_token;
-        self.context.setup_db(db);
-        self.context.setup_barrier(barrier);
+        self.context = Some(Arc::new(WorkflowContext::new(db, barrier)));
+        self.cancel_token = CancellationToken::new();
     }
 
     // 按照 order 排序
@@ -85,6 +77,12 @@ impl Workflow {
 
 impl Executable for Workflow {
     async fn execute(&mut self) -> Result<()> {
+        // 获取上下文
+        let context = self
+            .context
+            .as_ref()
+            .ok_or_else(|| anyhow!("context not setup"))?;
+
         // 反序列化节点
         for node in &self.nodes {
             let node_id = node.id;
@@ -92,7 +90,7 @@ impl Executable for Workflow {
 
             // 为节点初始化上下文
             // context 内部字段都由 Arc 智能指针包裹，克隆的代价很小
-            node_kind.setup_context(self.context.clone());
+            node_kind.setup_context(Arc::clone(context));
 
             // 存储反序列化节点
             self.deserialized_nodes
@@ -212,179 +210,30 @@ pub struct Properties {
 }
 
 #[allow(unused)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WorkflowContext {
-    id: String,                    // 工作流ID
-    db: Option<Arc<PgPool>>,       // 数据库
-    barrier: Option<Arc<Barrier>>, // 屏障
-    data: Arc<Data>,               // 统计数据
-}
-
-impl Default for WorkflowContext {
-    fn default() -> Self {
-        Self {
-            id: generate_workflow_id(),
-            db: None,
-            barrier: None,
-            data: Arc::new(Data::new()),
-        }
-    }
+    id: String,       // 工作流ID
+    db: Arc<PgPool>,  // 数据库
+    barrier: Barrier, // 屏障
 }
 
 impl WorkflowContext {
-    fn setup_db(&mut self, db: Arc<PgPool>) {
-        self.db = Some(db);
-    }
-
-    fn setup_barrier(&mut self, barrier: Arc<Barrier>) {
-        self.barrier = Some(barrier);
-    }
-
-    pub(crate) fn db(&self) -> Result<Arc<PgPool>> {
-        let db = self.db.as_ref().ok_or_else(|| anyhow!("db not setup"))?;
-        Ok(Arc::clone(db))
-    }
-
-    pub(crate) async fn wait(&self) -> Result<()> {
-        let barrier = self
-            .barrier
-            .as_ref()
-            .ok_or_else(|| anyhow!("barrier not setup"))?;
-
-        barrier.wait().await;
-        Ok(())
-    }
-
-    pub fn update_stats_with_order(&self, order: &Order) -> Result<()> {
-        let db = self.db.as_ref().ok_or_else(|| anyhow!(""))?;
-        self.data.update_stats_with_order(db, order)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Data {
-    account_info: Arc<Mutex<AccountInformation>>,
-    stats: DashMap<Symbol, SymbolStats>,
-}
-
-impl Default for Data {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Data {
-    pub fn new() -> Self {
-        Data {
-            account_info: Arc::new(Mutex::new(AccountInformation::default())),
-            stats: DashMap::new(),
+    fn new(db: PgPool, barrier: Barrier) -> Self {
+        Self {
+            id: generate_workflow_id(),
+            db: Arc::new(db),
+            barrier,
         }
     }
 
-    pub fn update_account_info(&mut self, account_info: AccountInformation) {
-        *self.account_info.lock_arc_blocking() = account_info;
+    pub(crate) fn db(&self) -> Arc<PgPool> {
+        Arc::clone(&self.db)
     }
 
-    pub fn update_stats_with_order(&self, db: &PgPool, order: &Order) -> Result<()> {
-        let commission_rate = &self.account_info.lock_arc_blocking().maker_commission_rate;
-
-        self.stats
-            .entry(order.symbol.clone())
-            .or_default()
-            .value_mut()
-            .update_with_order(db, order, commission_rate)
+    pub(crate) async fn wait(&self) {
+        self.barrier.wait().await;
     }
 }
-
-#[derive(Debug, Default, Clone)]
-pub struct SymbolStats {
-    pub base_asset_balance: Decimal,     // base资产持仓量
-    pub quote_asset_balance: Decimal,    // quote资产持仓量
-    pub base_asset_avg_price: Decimal,   // base资产持仓均价
-    pub total_trades: u64,               // 总交易次数
-    pub buy_trades: u64,                 // 买入次数
-    pub sell_trades: u64,                // 卖出次数
-    pub total_base_volume: Decimal,      // base资产交易量
-    pub total_quote_volume: Decimal,     // quote资产交易量
-    pub total_base_commission: Decimal,  // 总手续费
-    pub total_quote_commission: Decimal, // 总手续费
-    pub realized_pnl: Decimal,           // 已实现盈亏
-    pub win_trades: u64,                 // 盈利交易次数
-    pub max_drawdown: Decimal,           // 最大回撤
-    pub roi: Decimal,                    // 收益率
-}
-
-impl SymbolStats {
-    pub fn update_with_order(
-        &mut self,
-        _db: &PgPool,
-        order: &Order,
-        commission_rate: &Decimal,
-    ) -> Result<()> {
-        let base_asset_amount = order.base_asset_amount()?;
-        let quote_asset_amount = order.quote_asset_amount()?;
-        let base_commission = order.base_commission(commission_rate)?;
-        let quote_commission = order.quote_commission(commission_rate)?;
-        let order_avg_price = order.avg_price.parse::<Decimal>()?;
-
-        self.total_trades += 1;
-        self.total_base_volume += base_asset_amount;
-        self.total_quote_volume += quote_asset_amount;
-
-        match order.order_side {
-            OrderSide::Buy => {
-                // 扣除手续费后实际获得
-                let base_amount = base_asset_amount - base_commission;
-                // 持仓均价
-                let avg_price = (self.base_asset_balance * self.base_asset_avg_price
-                    + base_amount * order_avg_price)
-                    / (self.base_asset_balance + base_amount);
-
-                self.buy_trades += 1;
-                self.base_asset_balance += base_amount;
-                self.base_asset_avg_price = avg_price;
-                self.quote_asset_balance -= quote_asset_amount;
-                self.total_base_commission += base_commission;
-            }
-            OrderSide::Sell => {
-                // 扣除手续费后实际获得
-                let quote_amount = quote_asset_amount - quote_commission;
-                // 成本
-                let cost = base_asset_amount * self.base_asset_avg_price;
-
-                self.sell_trades += 1;
-                self.base_asset_balance -= base_asset_amount;
-                self.quote_asset_balance += quote_amount;
-                self.total_quote_commission += quote_commission;
-
-                // 卖出所得大于成本，则确定为一次盈利交易
-                if quote_amount > cost {
-                    self.win_trades += 1;
-                }
-
-                // 已实现总盈亏
-                self.realized_pnl += quote_amount - cost;
-            }
-        }
-
-        Ok(())
-    }
-
-    // 已实现盈亏
-    pub fn realized_pnl(&self) -> Decimal {
-        self.realized_pnl
-    }
-
-    // 未实现盈亏
-    pub fn unrealized_pnl(&self, price: &Decimal, commission_rate: &Decimal) -> Decimal {
-        let cost = self.base_asset_balance * self.base_asset_avg_price;
-        let maybe_sell = self.base_asset_balance * price * (dec!(1) - commission_rate);
-        maybe_sell - cost
-    }
-
-    // fn calc_avg_price(&self) -> Decimal {}
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -441,11 +290,5 @@ mod tests {
         assert_eq!(workflow.links.len(), 3);
 
         Ok(())
-    }
-
-    #[test]
-    fn test_workflow_context_default() {
-        let context = WorkflowContext::default();
-        assert_eq!(context.id.len(), 21);
     }
 }

@@ -1,6 +1,5 @@
 use comfy_quant_node::{node_core::Executable, workflow::Workflow};
 use sqlx::postgres::PgPoolOptions;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -14,7 +13,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut workflow: Workflow = serde_json::from_str(json_str)?;
 
-    workflow.initialize(Arc::new(db));
+    workflow.initialize(db);
 
     workflow.execute().await?;
 

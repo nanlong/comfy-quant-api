@@ -2,6 +2,7 @@ mod client_service;
 mod port;
 mod slot;
 mod slots;
+mod stats;
 mod traits;
 
 pub use client_service::SpotClientService;

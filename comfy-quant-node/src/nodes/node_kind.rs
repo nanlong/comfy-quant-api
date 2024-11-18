@@ -6,6 +6,7 @@ use crate::{
 };
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
+use std::sync::Arc;
 
 #[derive(Debug)]
 #[enum_dispatch(Setupable, PortAccessor, Executable)]

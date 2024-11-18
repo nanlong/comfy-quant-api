@@ -11,7 +11,7 @@ use comfy_quant_exchange::client::{
 };
 use rust_decimal::{Decimal, MathematicalOps};
 use rust_decimal_macros::dec;
-use std::convert::Into;
+use std::{convert::Into, sync::Arc};
 use std::{
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
@@ -39,11 +39,11 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct SpotGrid {
-    params: Params,                   // 前端配置
-    port: Port,                       // 输入输出
-    context: Option<WorkflowContext>, // 工作流上下文信息
-    grid: Option<Grid>,               // 网格
-    initialized: bool,                // 是否已经初始化
+    params: Params,                        // 前端配置
+    port: Port,                            // 输入输出
+    context: Option<Arc<WorkflowContext>>, // 工作流上下文信息
+    grid: Option<Grid>,                    // 网格
+    initialized: bool,                     // 是否已经初始化
 }
 
 impl SpotGrid {
@@ -136,11 +136,11 @@ impl SpotGrid {
 }
 
 impl Setupable for SpotGrid {
-    fn setup_context(&mut self, context: WorkflowContext) {
+    fn setup_context(&mut self, context: Arc<WorkflowContext>) {
         self.context = Some(context);
     }
 
-    fn get_context(&self) -> Result<&WorkflowContext> {
+    fn get_context(&self) -> Result<&Arc<WorkflowContext>> {
         self.context
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))
@@ -161,7 +161,7 @@ impl PortAccessor for SpotGrid {
 impl Executable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
         // 等待其他节点
-        self.get_context()?.wait().await?;
+        self.get_context()?.wait().await;
 
         // 获取输入
         let pair_info = self.port.get_input::<SpotPairInfo>(0)?;

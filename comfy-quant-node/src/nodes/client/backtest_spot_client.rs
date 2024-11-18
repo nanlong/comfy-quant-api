@@ -8,6 +8,7 @@ use comfy_quant_exchange::client::{
     spot_client::backtest_spot_client::BacktestSpotClient as Client,
     spot_client_kind::SpotClientKind,
 };
+use std::sync::Arc;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -24,7 +25,7 @@ pub(crate) struct BacktestSpotClient {
     // outputs:
     //      0: SpotClient
     pub(crate) port: Port,
-    context: Option<WorkflowContext>,
+    context: Option<Arc<WorkflowContext>>,
 }
 
 impl BacktestSpotClient {
@@ -49,11 +50,11 @@ impl BacktestSpotClient {
 }
 
 impl Setupable for BacktestSpotClient {
-    fn setup_context(&mut self, context: WorkflowContext) {
+    fn setup_context(&mut self, context: Arc<WorkflowContext>) {
         self.context = Some(context);
     }
 
-    fn get_context(&self) -> Result<&WorkflowContext> {
+    fn get_context(&self) -> Result<&Arc<WorkflowContext>> {
         self.context
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))
@@ -72,11 +73,7 @@ impl PortAccessor for BacktestSpotClient {
 
 impl Executable for BacktestSpotClient {
     async fn execute(&mut self) -> Result<()> {
-        self.context
-            .as_ref()
-            .ok_or_else(|| anyhow!("context not setup"))?
-            .wait()
-            .await?;
+        self.get_context()?.wait().await;
 
         Ok(())
     }

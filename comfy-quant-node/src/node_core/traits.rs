@@ -5,12 +5,13 @@ use comfy_quant_exchange::client::{
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use enum_dispatch::enum_dispatch;
+use std::sync::Arc;
 
 #[enum_dispatch]
 pub trait Setupable {
-    fn setup_context(&mut self, context: WorkflowContext);
+    fn setup_context(&mut self, context: Arc<WorkflowContext>);
 
-    fn get_context(&self) -> Result<&WorkflowContext>;
+    fn get_context(&self) -> Result<&Arc<WorkflowContext>>;
 }
 
 // 节点执行
@@ -97,7 +98,7 @@ where
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
 
         // 更新
-        self.get_context()?.update_stats_with_order(&order)?;
+        // self.get_context()?.update_stats_with_order(&order)?;
 
         Ok(order)
     }
@@ -113,7 +114,7 @@ where
         let order = client.market_sell(base_asset, quote_asset, qty).await?;
 
         // 更新
-        self.get_context()?.update_stats_with_order(&order)?;
+        // self.get_context()?.update_stats_with_order(&order)?;
 
         Ok(order)
     }

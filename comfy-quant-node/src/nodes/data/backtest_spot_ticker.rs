@@ -36,7 +36,7 @@ pub(crate) struct Params {
 pub(crate) struct BacktestSpotTicker {
     pub(crate) params: Params,
     pub(crate) port: Port,
-    context: Option<WorkflowContext>,
+    context: Option<Arc<WorkflowContext>>,
 }
 
 impl BacktestSpotTicker {
@@ -73,7 +73,7 @@ impl BacktestSpotTicker {
             .context
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))?;
-        let db = context.db()?;
+        let db = context.db();
 
         // 等待数据同步完成，如果出错，重试3次
         'retry: for i in 0..3 {
@@ -129,11 +129,11 @@ impl BacktestSpotTicker {
 }
 
 impl Setupable for BacktestSpotTicker {
-    fn setup_context(&mut self, context: WorkflowContext) {
+    fn setup_context(&mut self, context: Arc<WorkflowContext>) {
         self.context = Some(context);
     }
 
-    fn get_context(&self) -> Result<&WorkflowContext> {
+    fn get_context(&self) -> Result<&Arc<WorkflowContext>> {
         self.context
             .as_ref()
             .ok_or_else(|| anyhow!("context not setup"))
@@ -153,11 +153,7 @@ impl PortAccessor for BacktestSpotTicker {
 impl Executable for BacktestSpotTicker {
     async fn execute(&mut self) -> Result<()> {
         // 同步等待其他节点
-        self.context
-            .as_ref()
-            .ok_or_else(|| anyhow!("context not setup"))?
-            .wait()
-            .await?;
+        self.get_context()?.wait().await;
 
         self.output1().await?;
         Ok(())
