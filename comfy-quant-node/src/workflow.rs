@@ -219,14 +219,13 @@ pub struct WorkflowContext {
 
 impl WorkflowContext {
     fn new(db: PgPool, barrier: Barrier) -> Self {
-        Self {
-            id: generate_workflow_id(),
-            db: Arc::new(db),
-            barrier,
-        }
+        let id = generate_workflow_id();
+        let db = Arc::new(db);
+
+        Self { id, db, barrier }
     }
 
-    pub(crate) fn db(&self) -> Arc<PgPool> {
+    pub(crate) fn db_cloned(&self) -> Arc<PgPool> {
         Arc::clone(&self.db)
     }
 
