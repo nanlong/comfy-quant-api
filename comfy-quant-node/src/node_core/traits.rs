@@ -97,9 +97,7 @@ where
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
 
         // 更新
-        let assets = self.get_context()?.assets();
-        assets.add_value(base_asset, order.base_asset_amount()?);
-        assets.sub_value(quote_asset, order.quote_asset_amount()?);
+        self.get_context()?.update_stats_with_order(&order)?;
 
         Ok(order)
     }
@@ -115,9 +113,7 @@ where
         let order = client.market_sell(base_asset, quote_asset, qty).await?;
 
         // 更新
-        let assets = self.get_context()?.assets();
-        assets.sub_value(base_asset, order.base_asset_amount()?);
-        assets.add_value(quote_asset, order.quote_asset_amount()?);
+        self.get_context()?.update_stats_with_order(&order)?;
 
         Ok(order)
     }

@@ -1,4 +1,7 @@
-use super::base::{AccountInformation, Balance, Order, SymbolInformation, SymbolPrice};
+use super::base::{
+    AccountInformation, Balance, BinanceOrder, BinanceTransaction, Order, SymbolInformation,
+    SymbolPrice,
+};
 use crate::{client::spot_client_kind::SpotClientExecutable, exchange::binance::BinanceClient};
 use anyhow::Result;
 use binance::config::Config;
@@ -87,6 +90,12 @@ impl SpotClientExecutable for BinanceSpotClient {
         let order_id = order_id.parse::<u64>()?;
         let order = spawn_blocking(move || client.spot().get_order(symbol, order_id)).await??;
 
+        let order = BinanceOrder::builder()
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
+            .order(order)
+            .build();
+
         order.try_into()
     }
 
@@ -94,7 +103,13 @@ impl SpotClientExecutable for BinanceSpotClient {
         let client = self.client.clone();
         let symbol = Self::symbol(base_asset, quote_asset);
         let tx = spawn_blocking(move || client.spot().market_buy(symbol, qty)).await??;
-        dbg!(&tx);
+
+        let tx = BinanceTransaction::builder()
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
+            .transaction(tx)
+            .build();
+
         tx.try_into()
     }
 
@@ -102,6 +117,12 @@ impl SpotClientExecutable for BinanceSpotClient {
         let client = self.client.clone();
         let symbol = Self::symbol(base_asset, quote_asset);
         let tx = spawn_blocking(move || client.spot().market_sell(symbol, qty)).await??;
+
+        let tx = BinanceTransaction::builder()
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
+            .transaction(tx)
+            .build();
 
         tx.try_into()
     }
@@ -117,6 +138,12 @@ impl SpotClientExecutable for BinanceSpotClient {
         let symbol = Self::symbol(base_asset, quote_asset);
         let tx = spawn_blocking(move || client.spot().limit_buy(symbol, qty, price)).await??;
 
+        let tx = BinanceTransaction::builder()
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
+            .transaction(tx)
+            .build();
+
         tx.try_into()
     }
 
@@ -130,6 +157,12 @@ impl SpotClientExecutable for BinanceSpotClient {
         let client = self.client.clone();
         let symbol = Self::symbol(base_asset, quote_asset);
         let tx = spawn_blocking(move || client.spot().limit_sell(symbol, qty, price)).await??;
+
+        let tx = BinanceTransaction::builder()
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
+            .transaction(tx)
+            .build();
 
         tx.try_into()
     }

@@ -5,13 +5,17 @@ use crate::{
     utils::generate_workflow_id,
 };
 use anyhow::{anyhow, Result};
-use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
+use async_lock::{Barrier, Mutex};
+use comfy_quant_exchange::client::{
+    spot_client::base::{AccountInformation, Order, OrderSide, Symbol},
+    spot_client_kind::SpotClientKind,
+};
 use dashmap::DashMap;
 use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::{collections::HashMap, ops::Deref, sync::Arc};
-use tokio::sync::{Barrier, Mutex};
+use std::{collections::HashMap, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -54,13 +58,10 @@ impl Workflow {
     // 建立连接
     async fn make_connection(
         &self,
-        origin_node: &Arc<Mutex<NodeKind>>,
-        target_node: &Arc<Mutex<NodeKind>>,
+        origin: &NodeKind,
+        target: &mut NodeKind,
         link: &Link,
     ) -> Result<()> {
-        let origin = origin_node.lock().await;
-        let mut target = target_node.lock().await;
-
         match link.link_type.as_str() {
             "SpotPairInfo" => origin.connection::<SpotPairInfo>(
                 &mut *target,
@@ -105,14 +106,17 @@ impl Executable for Workflow {
             let origin_node = self
                 .deserialized_nodes
                 .get(&link.origin_id)
-                .ok_or_else(|| anyhow::anyhow!("Origin node not found: {}", link.origin_id))?;
+                .ok_or_else(|| anyhow::anyhow!("Origin node not found: {}", link.origin_id))?
+                .lock_arc_blocking();
 
-            let target_node = self
+            let mut target_node = self
                 .deserialized_nodes
                 .get(&link.target_id)
-                .ok_or_else(|| anyhow::anyhow!("Target node not found: {}", link.target_id))?;
+                .ok_or_else(|| anyhow::anyhow!("Target node not found: {}", link.target_id))?
+                .lock_arc_blocking();
 
-            self.make_connection(origin_node, target_node, link).await?;
+            self.make_connection(&origin_node, &mut target_node, link)
+                .await?;
         }
 
         tracing::info!("Workflow make connection");
@@ -213,7 +217,7 @@ pub struct WorkflowContext {
     id: String,                    // 工作流ID
     db: Option<Arc<PgPool>>,       // 数据库
     barrier: Option<Arc<Barrier>>, // 屏障
-    assets: Arc<Assets>,           // 策略持仓情况
+    data: Arc<Data>,               // 统计数据
 }
 
 impl Default for WorkflowContext {
@@ -222,7 +226,7 @@ impl Default for WorkflowContext {
             id: generate_workflow_id(),
             db: None,
             barrier: None,
-            assets: Arc::new(Assets::new()),
+            data: Arc::new(Data::new()),
         }
     }
 }
@@ -241,10 +245,6 @@ impl WorkflowContext {
         Ok(Arc::clone(db))
     }
 
-    pub(crate) fn assets(&self) -> Arc<Assets> {
-        Arc::clone(&self.assets)
-    }
-
     pub(crate) async fn wait(&self) -> Result<()> {
         let barrier = self
             .barrier
@@ -254,79 +254,139 @@ impl WorkflowContext {
         barrier.wait().await;
         Ok(())
     }
+
+    pub fn update_stats_with_order(&self, order: &Order) -> Result<()> {
+        let db = self.db.as_ref().ok_or_else(|| anyhow!(""))?;
+        self.data.update_stats_with_order(db, order)
+    }
 }
 
-#[derive(Debug)]
-pub(crate) struct Assets(DashMap<String, Decimal>);
+#[derive(Debug, Clone)]
+pub struct Data {
+    account_info: Arc<Mutex<AccountInformation>>,
+    stats: DashMap<Symbol, SymbolStats>,
+}
 
-#[allow(unused)]
-impl Assets {
-    fn new() -> Self {
-        Assets(DashMap::new())
+impl Default for Data {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Data {
+    pub fn new() -> Self {
+        Data {
+            account_info: Arc::new(Mutex::new(AccountInformation::default())),
+            stats: DashMap::new(),
+        }
     }
 
-    pub(crate) fn get_value(&self, key: impl Into<String>) -> Decimal {
-        *self.entry(key.into()).or_insert(Decimal::ZERO)
+    pub fn update_account_info(&mut self, account_info: AccountInformation) {
+        *self.account_info.lock_arc_blocking() = account_info;
     }
 
-    pub(crate) fn add_value(&self, key: impl Into<String>, value: Decimal) -> (Decimal, Decimal) {
-        self.change_value(AssetsOp::Add, key, value)
+    pub fn update_stats_with_order(&self, db: &PgPool, order: &Order) -> Result<()> {
+        let commission_rate = &self.account_info.lock_arc_blocking().maker_commission_rate;
+
+        self.stats
+            .entry(order.symbol.clone())
+            .or_default()
+            .value_mut()
+            .update_with_order(db, order, commission_rate)
     }
+}
 
-    pub(crate) fn sub_value(&self, key: impl Into<String>, value: Decimal) -> (Decimal, Decimal) {
-        self.change_value(AssetsOp::Sub, key, value)
-    }
+#[derive(Debug, Default, Clone)]
+pub struct SymbolStats {
+    pub base_asset_balance: Decimal,     // base资产持仓量
+    pub quote_asset_balance: Decimal,    // quote资产持仓量
+    pub base_asset_avg_price: Decimal,   // base资产持仓均价
+    pub total_trades: u64,               // 总交易次数
+    pub buy_trades: u64,                 // 买入次数
+    pub sell_trades: u64,                // 卖出次数
+    pub total_base_volume: Decimal,      // base资产交易量
+    pub total_quote_volume: Decimal,     // quote资产交易量
+    pub total_base_commission: Decimal,  // 总手续费
+    pub total_quote_commission: Decimal, // 总手续费
+    pub realized_pnl: Decimal,           // 已实现盈亏
+    pub win_trades: u64,                 // 盈利交易次数
+    pub max_drawdown: Decimal,           // 最大回撤
+    pub roi: Decimal,                    // 收益率
+}
 
-    fn change_value(
-        &self,
-        op: AssetsOp,
-        key: impl Into<String>,
-        value: Decimal,
-    ) -> (Decimal, Decimal) {
-        let mut entry = self.entry(key.into()).or_insert(Decimal::ZERO);
-        let before = *entry;
+impl SymbolStats {
+    pub fn update_with_order(
+        &mut self,
+        _db: &PgPool,
+        order: &Order,
+        commission_rate: &Decimal,
+    ) -> Result<()> {
+        let base_asset_amount = order.base_asset_amount()?;
+        let quote_asset_amount = order.quote_asset_amount()?;
+        let base_commission = order.base_commission(commission_rate)?;
+        let quote_commission = order.quote_commission(commission_rate)?;
+        let order_avg_price = order.avg_price.parse::<Decimal>()?;
 
-        match op {
-            AssetsOp::Add => *entry += value,
-            AssetsOp::Sub => *entry -= value,
+        self.total_trades += 1;
+        self.total_base_volume += base_asset_amount;
+        self.total_quote_volume += quote_asset_amount;
+
+        match order.order_side {
+            OrderSide::Buy => {
+                // 扣除手续费后实际获得
+                let base_amount = base_asset_amount - base_commission;
+                // 持仓均价
+                let avg_price = (self.base_asset_balance * self.base_asset_avg_price
+                    + base_amount * order_avg_price)
+                    / (self.base_asset_balance + base_amount);
+
+                self.buy_trades += 1;
+                self.base_asset_balance += base_amount;
+                self.base_asset_avg_price = avg_price;
+                self.quote_asset_balance -= quote_asset_amount;
+                self.total_base_commission += base_commission;
+            }
+            OrderSide::Sell => {
+                // 扣除手续费后实际获得
+                let quote_amount = quote_asset_amount - quote_commission;
+                // 成本
+                let cost = base_asset_amount * self.base_asset_avg_price;
+
+                self.sell_trades += 1;
+                self.base_asset_balance -= base_asset_amount;
+                self.quote_asset_balance += quote_amount;
+                self.total_quote_commission += quote_commission;
+
+                // 卖出所得大于成本，则确定为一次盈利交易
+                if quote_amount > cost {
+                    self.win_trades += 1;
+                }
+
+                // 已实现总盈亏
+                self.realized_pnl += quote_amount - cost;
+            }
         }
 
-        let after = *entry;
-        (before, after)
+        Ok(())
     }
-}
 
-impl Deref for Assets {
-    type Target = DashMap<String, Decimal>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    // 已实现盈亏
+    pub fn realized_pnl(&self) -> Decimal {
+        self.realized_pnl
     }
-}
 
-enum AssetsOp {
-    Add,
-    Sub,
-}
+    // 未实现盈亏
+    pub fn unrealized_pnl(&self, price: &Decimal, commission_rate: &Decimal) -> Decimal {
+        let cost = self.base_asset_balance * self.base_asset_avg_price;
+        let maybe_sell = self.base_asset_balance * price * (dec!(1) - commission_rate);
+        maybe_sell - cost
+    }
 
-// #[derive(Debug, Default)]
-// pub struct TradeStats {
-//     total_trades: AtomicU64,       // 总交易次数
-//     buy_trades: AtomicU64,         // 买入次数
-//     sell_trades: AtomicU64,        // 卖出次数
-//     total_base_volume: AtomicF64,  // base资产交易量
-//     total_quote_volume: AtomicF64, // quote资产交易量
-//     total_commission: AtomicF64,   // 总手续费
-//     total_profit: AtomicF64,       // 总盈亏
-//     win_trades: AtomicU64,         // 盈利交易次数
-//     max_drawdown: AtomicF64,       // 最大回撤
-//     roi: AtomicF64,                // 收益率
-// }
+    // fn calc_avg_price(&self) -> Decimal {}
+}
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal_macros::dec;
-
     use super::*;
 
     #[test]
@@ -387,18 +447,5 @@ mod tests {
     fn test_workflow_context_default() {
         let context = WorkflowContext::default();
         assert_eq!(context.id.len(), 21);
-    }
-
-    #[test]
-    fn test_position_should_work() {
-        let p = Assets::new();
-
-        assert_eq!(p.get_value("btc"), Decimal::ZERO);
-
-        p.add_value("btc", dec!(0.25));
-        assert_eq!(p.get_value("btc"), dec!(0.25));
-
-        p.sub_value("btc", dec!(0.22));
-        assert_eq!(p.get_value("btc"), dec!(0.03));
     }
 }

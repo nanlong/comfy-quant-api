@@ -96,9 +96,9 @@ impl SpotGrid {
         }
 
         // 初始化策略可操作的账户金额
-        self.get_context()?
-            .assets()
-            .add_value(&pair_info.quote_asset, self.params.investment);
+        // self.get_context()?
+        //     .assets()
+        //     .add_value(&pair_info.quote_asset, self.params.investment);
 
         // 计算网格价格
         let grid_prices = calc_grid_prices(
@@ -920,6 +920,9 @@ mod tests {
         assert_eq!(grid.locked.load(Ordering::Relaxed), true);
 
         let order = Order::builder()
+            .exchange("Binace")
+            .base_asset("DOT")
+            .quote_asset("USDT")
             .symbol("DOTUSDT")
             .order_id("1")
             .price("4.0")
@@ -953,6 +956,9 @@ mod tests {
         assert_eq!(grid.locked.load(Ordering::Relaxed), true);
 
         let order = Order::builder()
+            .exchange("Binace")
+            .base_asset("DOT")
+            .quote_asset("USDT")
             .symbol("DOTUSDT")
             .order_id("2")
             .price("4.698")

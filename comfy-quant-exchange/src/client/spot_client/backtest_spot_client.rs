@@ -10,6 +10,8 @@ use rust_decimal_macros::dec;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
+const EXCHANGE_NAME: &str = "Binance";
+
 #[derive(Debug)]
 pub struct BacktestSpotClientData {
     assets: HashMap<String, Balance>,
@@ -215,6 +217,9 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
+            .exchange(EXCHANGE_NAME)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
             .symbol(symbol)
             .order_id(data.order_id.to_string())
             .price("0")
@@ -238,6 +243,9 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
+            .exchange(EXCHANGE_NAME)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
             .symbol(symbol)
             .order_id(data.order_id.to_string())
             .price("0")
@@ -267,6 +275,9 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
+            .exchange(EXCHANGE_NAME)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
             .symbol(symbol)
             .order_id(data.order_id.to_string())
             .price(price.to_string())
@@ -296,6 +307,9 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
+            .exchange(EXCHANGE_NAME)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
             .symbol(symbol)
             .order_id(data.order_id.to_string())
             .price(price.to_string())

@@ -20,25 +20,112 @@ async fn main() -> anyhow::Result<()> {
         // .config(binance::config::Config::testnet())
         .build();
 
-    // let account = client.get_account().await?;
+    let account = client.get_account().await?;
 
-    // dbg!(&account);
+    dbg!(&account);
 
-    let balance = client.get_balance("dot").await?;
+    // [comfy-quant-exchange/examples/binance_client.rs:25:5] &account = AccountInformation {
+    //     maker_commission_rate: 0.001,
+    //     taker_commission_rate: 0.001,
+    //     can_trade: true,
+    // }
 
-    dbg!(&balance);
+    // let balance = client.get_balance("dot").await?;
 
-    let symbol = client.get_symbol_info("dot", "usdt").await?;
+    // dbg!(&balance);
 
-    dbg!(symbol);
+    // let symbol = client.get_symbol_info("dot", "usdt").await?;
+
+    // dbg!(symbol);
 
     // let price = client.get_price("btc", "usdt").await?;
 
     // dbg!(&price);
 
-    // let order = client.market_buy("btc", "usdt", 0.00015).await?;
+    // let order = client.market_buy("dot", "usdt", 1.).await?;
 
     // dbg!(&order);
 
+    // let balance = client.get_balance("dot").await?;
+
+    // dbg!(&balance);
+
     Ok(())
 }
+
+// &order = Order {
+//     symbol: Symbol(
+//         "DOTUSDT",
+//     ),
+//     order_id: "4545425503",
+//     client_order_id: Some(
+//         "rjpFppW6rW70yLMRilDQJ9",
+//     ),
+//     price: "0",
+//     avg_price: "5.68",
+//     orig_qty: "1",
+//     executed_qty: "1",
+//     cumulative_quote_qty: "5.68",
+//     order_type: Market,
+//     order_side: Sell,
+//     order_status: Filled,
+//     time: 0,
+//     update_time: 0,
+// }
+
+// &balance = Balance {
+//     asset: "USDT",
+//     free: "5.85521829",
+//     locked: "0.00000000",
+// }
+
+// &balance = Balance {
+//     asset: "USDT",
+//     free: "11.53952829",
+//     locked: "0.00000000",
+// }
+
+// [comfy-quant-exchange/examples/binance_client.rs:41:5] &order = Order {
+//     symbol: Symbol(
+//         "DOTUSDT",
+//     ),
+//     order_id: "4545442857",
+//     client_order_id: Some(
+//         "RJVi3a54eRxghDUnexrdrL",
+//     ),
+//     price: "0",
+//     avg_price: "5.69",
+//     orig_qty: "1",
+//     executed_qty: "1",
+//     cumulative_quote_qty: "5.69",
+//     order_type: Market,
+//     order_side: Sell,
+//     order_status: Filled,
+//     time: 0,
+//     update_time: 0,
+// }
+
+// [comfy-quant-exchange/examples/binance_client.rs:41:5] &order = Order {
+//     symbol: Symbol(
+//         "DOTUSDT",
+//     ),
+//     order_id: "4545473317",
+//     client_order_id: Some(
+//         "ajgPsjQslSMpaE5pRsMD2I",
+//     ),
+//     price: "0",
+//     avg_price: "5.653",
+//     orig_qty: "1",
+//     executed_qty: "1",
+//     cumulative_quote_qty: "5.653",
+//     order_type: Market,
+//     order_side: Buy,
+//     order_status: Filled,
+//     time: 0,
+//     update_time: 0,
+// }
+// [comfy-quant-exchange/examples/binance_client.rs:45:5] &balance = Balance {
+//     asset: "DOT",
+//     free: "1.99900000",
+//     locked: "0.00000000",
+// }

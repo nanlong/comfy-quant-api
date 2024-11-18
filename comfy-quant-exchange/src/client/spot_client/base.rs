@@ -1,19 +1,47 @@
 use anyhow::anyhow;
 use binance::model::{
     AccountInformation as BinanceAccountInformation, Balance as BinaceBalance,
-    Filters as BinanceFilters, Order as BinanceOrder, Symbol as BinaceSymbolInformation,
-    SymbolPrice as BinanceSymbolPrice, Transaction as BinanceTransaction,
+    Filters as BinanceFilters, Symbol as BinaceSymbolInformation,
+    SymbolPrice as BinanceSymbolPrice,
 };
 use bon::Builder;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use rust_decimal_macros::dec;
 use std::str::FromStr;
 
-#[derive(Builder, Debug)]
+const BINANCE_EXCHANGE_NAME: &str = "Binance";
+
+#[derive(Builder)]
+#[builder(on(String, into))]
+pub struct BinanceOrder {
+    base_asset: String,
+    quote_asset: String,
+    order: binance::model::Order,
+}
+
+#[derive(Builder)]
+#[builder(on(String, into))]
+pub struct BinanceTransaction {
+    base_asset: String,
+    quote_asset: String,
+    transaction: binance::model::Transaction,
+}
+
+#[derive(Builder, Debug, Clone)]
 pub struct AccountInformation {
     pub maker_commission_rate: Decimal,
     pub taker_commission_rate: Decimal,
     pub can_trade: bool,
+}
+
+impl Default for AccountInformation {
+    fn default() -> Self {
+        AccountInformation {
+            maker_commission_rate: dec!(0),
+            taker_commission_rate: dec!(0),
+            can_trade: false,
+        }
+    }
 }
 
 impl TryFrom<BinanceAccountInformation> for AccountInformation {
@@ -149,25 +177,62 @@ impl FromStr for OrderSide {
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub struct Symbol(String);
+
+impl Symbol {
+    fn new(s: impl Into<String>) -> Self {
+        Symbol(s.into())
+    }
+}
+
+impl From<String> for Symbol {
+    fn from(value: String) -> Self {
+        Symbol::new(value)
+    }
+}
+
+impl From<&str> for Symbol {
+    fn from(value: &str) -> Self {
+        Symbol::new(value)
+    }
+}
+
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub struct Order {
-    pub symbol: String,                  // 交易对
-    pub order_id: String,                // 订单ID
+    pub exchange: String,            // 交易所
+    pub base_asset: Option<String>,  // 基础货币
+    pub quote_asset: Option<String>, // 计价货币
+    #[builder(into)]
+    pub symbol: Symbol, // 交易对
+    pub order_id: String,            // 订单ID
     pub client_order_id: Option<String>, // 用户自己设置的ID
-    pub price: String,                   // 订单价格
-    pub avg_price: String,               // 平均成交价格
-    pub orig_qty: String,                // 用户设置的原始订单数量
-    pub executed_qty: String,            // 交易的订单数量
-    pub cumulative_quote_qty: String,    // 累计交易的金额
-    pub order_type: OrderType,           // 订单类型
-    pub order_side: OrderSide,           // 订单方向
-    pub order_status: OrderStatus,       // 订单状态
-    pub time: i64,                       // 订单时间
-    pub update_time: i64,                // 最后更新时间
+    pub price: String,               // 订单价格
+    pub avg_price: String,           // 平均成交价格
+    pub orig_qty: String,            // 用户设置的原始订单数量
+    pub executed_qty: String,        // 交易的订单数量
+    pub cumulative_quote_qty: String, // 累计交易的金额
+    pub order_type: OrderType,       // 订单类型
+    pub order_side: OrderSide,       // 订单方向
+    pub order_status: OrderStatus,   // 订单状态
+    pub time: i64,                   // 订单时间
+    pub update_time: i64,            // 最后更新时间
 }
 
 impl Order {
+    pub fn base_asset(&self) -> anyhow::Result<&String> {
+        self.base_asset
+            .as_ref()
+            .ok_or_else(|| anyhow!("base asset not set"))
+    }
+
+    pub fn quote_asset(&self) -> anyhow::Result<&String> {
+        self.quote_asset
+            .as_ref()
+            .ok_or_else(|| anyhow!("quote asset not set"))
+    }
+
     pub fn base_asset_amount(&self) -> anyhow::Result<Decimal> {
         Ok(self.executed_qty.parse::<Decimal>()?)
     }
@@ -175,34 +240,55 @@ impl Order {
     pub fn quote_asset_amount(&self) -> anyhow::Result<Decimal> {
         Ok(self.cumulative_quote_qty.parse::<Decimal>()?)
     }
+
+    pub fn base_commission(&self, commission_rate: &Decimal) -> anyhow::Result<Decimal> {
+        let commission = match self.order_side {
+            OrderSide::Buy => self.base_asset_amount()? * commission_rate,
+            OrderSide::Sell => dec!(0),
+        };
+
+        Ok(commission)
+    }
+
+    pub fn quote_commission(&self, commission_rate: &Decimal) -> anyhow::Result<Decimal> {
+        let commission = match self.order_side {
+            OrderSide::Buy => dec!(0),
+            OrderSide::Sell => self.quote_asset_amount()? * commission_rate,
+        };
+
+        Ok(commission)
+    }
 }
 
 impl TryFrom<BinanceOrder> for Order {
     type Error = anyhow::Error;
 
     fn try_from(value: BinanceOrder) -> Result<Self, Self::Error> {
-        let order_type = value.type_name.parse::<OrderType>()?;
-        let order_side = value.side.parse::<OrderSide>()?;
-        let order_status = value.status.parse::<OrderStatus>()?;
+        let order_type = value.order.type_name.parse::<OrderType>()?;
+        let order_side = value.order.side.parse::<OrderSide>()?;
+        let order_status = value.order.status.parse::<OrderStatus>()?;
 
-        let amount = value.cummulative_quote_qty.parse::<Decimal>()?;
-        let qty = value.executed_qty.parse::<Decimal>()?;
+        let amount = value.order.cummulative_quote_qty.parse::<Decimal>()?;
+        let qty = value.order.executed_qty.parse::<Decimal>()?;
         let avg_price = amount / qty;
 
         let order = Order::builder()
-            .symbol(value.symbol)
-            .order_id(value.order_id.to_string())
-            .client_order_id(value.client_order_id)
-            .price(value.price.to_string())
+            .exchange(BINANCE_EXCHANGE_NAME)
+            .base_asset(value.base_asset)
+            .quote_asset(value.quote_asset)
+            .symbol(value.order.symbol)
+            .order_id(value.order.order_id.to_string())
+            .client_order_id(value.order.client_order_id)
+            .price(value.order.price.to_string())
             .avg_price(avg_price.to_string())
-            .orig_qty(value.orig_qty)
-            .executed_qty(value.executed_qty)
-            .cumulative_quote_qty(value.cummulative_quote_qty)
+            .orig_qty(value.order.orig_qty)
+            .executed_qty(value.order.executed_qty)
+            .cumulative_quote_qty(value.order.cummulative_quote_qty)
             .order_type(order_type)
             .order_side(order_side)
             .order_status(order_status)
-            .time(value.time as i64)
-            .update_time(value.update_time as i64)
+            .time(value.order.time as i64)
+            .update_time(value.order.update_time as i64)
             .build();
 
         Ok(order)
@@ -213,26 +299,30 @@ impl TryFrom<BinanceTransaction> for Order {
     type Error = anyhow::Error;
 
     fn try_from(value: BinanceTransaction) -> Result<Self, Self::Error> {
-        let order_type = value.type_name.parse::<OrderType>()?;
-        let order_side = value.side.parse::<OrderSide>()?;
-        let order_status = value.status.parse::<OrderStatus>()?;
+        let order_type = value.transaction.type_name.parse::<OrderType>()?;
+        let order_side = value.transaction.side.parse::<OrderSide>()?;
+        let order_status = value.transaction.status.parse::<OrderStatus>()?;
 
-        let amount = Decimal::from_f64(value.cummulative_quote_qty).ok_or_else(|| {
-            anyhow!("binance transaction cummulative quote qty convert decimal failed")
-        })?;
-        let qty = Decimal::from_f64(value.executed_qty)
+        let amount =
+            Decimal::from_f64(value.transaction.cummulative_quote_qty).ok_or_else(|| {
+                anyhow!("binance transaction cummulative quote qty convert decimal failed")
+            })?;
+        let qty = Decimal::from_f64(value.transaction.executed_qty)
             .ok_or_else(|| anyhow!("binance transaction executed qty convert decimal failed"))?;
         let avg_price = amount / qty;
 
         let order = Order::builder()
-            .symbol(value.symbol)
-            .order_id(value.order_id.to_string())
-            .client_order_id(value.client_order_id)
-            .price(value.price.to_string())
+            .exchange(BINANCE_EXCHANGE_NAME)
+            .base_asset(value.base_asset)
+            .quote_asset(value.quote_asset)
+            .symbol(value.transaction.symbol)
+            .order_id(value.transaction.order_id.to_string())
+            .client_order_id(value.transaction.client_order_id)
+            .price(value.transaction.price.to_string())
             .avg_price(avg_price.to_string())
-            .orig_qty(value.orig_qty.to_string())
-            .executed_qty(value.executed_qty.to_string())
-            .cumulative_quote_qty(value.cummulative_quote_qty.to_string())
+            .orig_qty(value.transaction.orig_qty.to_string())
+            .executed_qty(value.transaction.executed_qty.to_string())
+            .cumulative_quote_qty(value.transaction.cummulative_quote_qty.to_string())
             .order_type(order_type)
             .order_side(order_side)
             .order_status(order_status)
