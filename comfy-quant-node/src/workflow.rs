@@ -55,19 +55,15 @@ impl Workflow {
         link: &Link,
     ) -> Result<()> {
         match link.link_type.as_str() {
-            "SpotPairInfo" => origin.connection::<SpotPairInfo>(
-                &mut *target,
-                link.origin_slot,
-                link.target_slot,
-            )?,
-            "TickStream" => {
-                origin.connection::<TickStream>(&mut *target, link.origin_slot, link.target_slot)?
+            "SpotPairInfo" => {
+                origin.connection::<SpotPairInfo>(target, link.origin_slot, link.target_slot)?
             }
-            "SpotClient" => origin.connection::<SpotClientKind>(
-                &mut *target,
-                link.origin_slot,
-                link.target_slot,
-            )?,
+            "TickStream" => {
+                origin.connection::<TickStream>(target, link.origin_slot, link.target_slot)?
+            }
+            "SpotClient" => {
+                origin.connection::<SpotClientKind>(target, link.origin_slot, link.target_slot)?
+            }
             _ => anyhow::bail!("Invalid link type: {}", link.link_type),
         }
 
@@ -89,7 +85,6 @@ impl Executable for Workflow {
             let mut node_kind = NodeKind::try_from(node)?;
 
             // 为节点初始化上下文
-            // context 内部字段都由 Arc 智能指针包裹，克隆的代价很小
             node_kind.setup_context(Arc::clone(context));
 
             // 存储反序列化节点
@@ -105,13 +100,15 @@ impl Executable for Workflow {
                 .deserialized_nodes
                 .get(&link.origin_id)
                 .ok_or_else(|| anyhow::anyhow!("Origin node not found: {}", link.origin_id))?
-                .lock_arc_blocking();
+                .lock()
+                .await;
 
             let mut target_node = self
                 .deserialized_nodes
                 .get(&link.target_id)
                 .ok_or_else(|| anyhow::anyhow!("Target node not found: {}", link.target_id))?
-                .lock_arc_blocking();
+                .lock()
+                .await;
 
             self.make_connection(&origin_node, &mut target_node, link)
                 .await?;
@@ -123,11 +120,12 @@ impl Executable for Workflow {
         for node in self.sorted_nodes().into_iter() {
             let node_id = node.id;
 
-            let node_kind = Arc::clone(
-                self.deserialized_nodes
-                    .get(&node_id)
-                    .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node.id))?,
-            );
+            let mut node_kind = self
+                .deserialized_nodes
+                .get(&node_id)
+                .ok_or_else(|| anyhow::anyhow!("Node not found: {}", node_id))?
+                .lock_arc()
+                .await;
 
             let cloned_token = self.token.clone();
 
@@ -135,8 +133,7 @@ impl Executable for Workflow {
             tokio::spawn(async move {
                 tokio::select! {
                     _ = async {
-                        let mut node = node_kind.lock().await;
-                        node.execute().await?;
+                        node_kind.execute().await?;
                         Ok::<(), anyhow::Error>(())
                     } => {
                         tracing::info!("Node {} finished", node_id);
