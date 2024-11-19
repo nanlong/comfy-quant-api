@@ -6,9 +6,8 @@ use crate::{
 };
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
-#[derive(Debug)]
 #[enum_dispatch(Setupable, PortAccessor, Executable)]
 pub enum NodeKind {
     // data
@@ -19,6 +18,22 @@ pub enum NodeKind {
 
     // strategy
     SpotGrid(SpotGrid),
+}
+
+impl NodeKind {
+    fn struct_name(&self) -> &str {
+        match self {
+            NodeKind::BacktestSpotTicker(_) => "BacktestSpotTicker",
+            NodeKind::BacktestSpotClient(_) => "BacktestSpotClient",
+            NodeKind::SpotGrid(_) => "SpotGrid",
+        }
+    }
+}
+
+impl fmt::Debug for NodeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct(self.struct_name()).finish()
+    }
 }
 
 impl TryFrom<&workflow::Node> for NodeKind {
