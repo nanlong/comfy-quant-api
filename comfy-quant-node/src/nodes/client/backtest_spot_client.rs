@@ -3,7 +3,6 @@ use crate::{
     workflow::{self, WorkflowContext},
 };
 use anyhow::{anyhow, Result};
-use async_lock::Mutex;
 use bon::Builder;
 use comfy_quant_exchange::client::{
     spot_client::backtest_spot_client::BacktestSpotClient as Client,
@@ -25,7 +24,7 @@ pub(crate) struct BacktestSpotClient {
     pub(crate) params: Params,
     // outputs:
     //      0: SpotClient
-    pub(crate) port: Mutex<Port>,
+    pub(crate) port: Port,
     context: Option<Arc<WorkflowContext>>,
 }
 
@@ -44,7 +43,7 @@ impl BacktestSpotClient {
 
         Ok(BacktestSpotClient {
             params,
-            port: Mutex::new(port),
+            port,
             context: None,
         })
     }
@@ -63,8 +62,12 @@ impl Setupable for BacktestSpotClient {
 }
 
 impl PortAccessor for BacktestSpotClient {
-    fn get_port(&self) -> &Mutex<Port> {
+    fn get_port(&self) -> &Port {
         &self.port
+    }
+
+    fn get_port_mut(&mut self) -> &mut Port {
+        &mut self.port
     }
 }
 
@@ -145,7 +148,7 @@ mod tests {
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let account = BacktestSpotClient::try_from(&node)?;
-        let port = account.get_port().lock().await;
+        let port = account.get_port();
 
         let client = port.get_output::<SpotClientKind>(0)?;
 

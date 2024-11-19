@@ -3,7 +3,7 @@ use super::base::{
     SymbolPrice,
 };
 use crate::client::spot_client_kind::SpotClientExecutable;
-use anyhow::{Ok, Result};
+use anyhow::{anyhow, Result};
 use bon::bon;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use rust_decimal_macros::dec;
@@ -18,6 +18,7 @@ pub struct BacktestSpotClientData {
     commissions: Option<f64>,
     order_id: u64,
     order_history: Vec<Order>,
+    price: Decimal,
 }
 
 #[derive(Debug, Clone)]
@@ -48,11 +49,17 @@ impl BacktestSpotClient {
             commissions,
             order_id: 0,
             order_history: Vec::new(),
+            price: dec!(0),
         };
 
         BacktestSpotClient {
             data: Arc::new(Mutex::new(data)),
         }
+    }
+
+    pub async fn save_price(&self, price: Decimal) {
+        let mut data = self.data.lock().await;
+        data.price = price;
     }
 
     async fn add_asset(&mut self, asset: &str, amount: f64) -> Result<()> {
@@ -133,19 +140,19 @@ impl BacktestSpotClient {
 
         Ok(())
     }
-
-    fn symbol(base_asset: &str, quote_asset: &str) -> String {
-        format!(
-            "{}{}",
-            base_asset.to_uppercase(),
-            quote_asset.to_uppercase()
-        )
-    }
 }
 
 impl SpotClientExecutable for BacktestSpotClient {
     fn platform_name(&self) -> String {
         "Backtest".to_string()
+    }
+
+    fn symbol(&self, base_asset: &str, quote_asset: &str) -> String {
+        format!(
+            "{}{}",
+            base_asset.to_uppercase(),
+            quote_asset.to_uppercase()
+        )
     }
 
     async fn get_account(&self) -> Result<AccountInformation> {
@@ -212,23 +219,25 @@ impl SpotClientExecutable for BacktestSpotClient {
     }
 
     async fn market_buy(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
-        let symbol = Self::symbol(base_asset, quote_asset);
+        let symbol = self.symbol(base_asset, quote_asset);
+        let qty = Decimal::from_f64(qty).ok_or_else(|| anyhow!("Invalid quantity"))?;
         let mut data = self.data.lock().await;
+        let price = data.price;
+
         data.order_id += 1;
 
-        // todo: 去掉0值
         let order = Order::builder()
             .exchange(EXCHANGE_NAME)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
             .order_id(data.order_id.to_string())
-            .price("0")
-            .avg_price("0")
+            .price(price.to_string())
+            .avg_price(price.to_string())
             .orig_qty(qty.to_string())
-            .executed_qty("0")
-            .cumulative_quote_qty("0")
-            .order_type(OrderType::Limit)
+            .executed_qty(qty.to_string())
+            .cumulative_quote_qty((qty * price).to_string())
+            .order_type(OrderType::Market)
             .order_side(OrderSide::Buy)
             .order_status(OrderStatus::Filled)
             .time(0)
@@ -239,8 +248,11 @@ impl SpotClientExecutable for BacktestSpotClient {
     }
 
     async fn market_sell(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
-        let symbol = Self::symbol(base_asset, quote_asset);
+        let symbol = self.symbol(base_asset, quote_asset);
+        let qty = Decimal::from_f64(qty).ok_or_else(|| anyhow!("Invalid quantity"))?;
         let mut data = self.data.lock().await;
+        let price = data.price;
+
         data.order_id += 1;
 
         let order = Order::builder()
@@ -249,12 +261,12 @@ impl SpotClientExecutable for BacktestSpotClient {
             .quote_asset(quote_asset)
             .symbol(symbol)
             .order_id(data.order_id.to_string())
-            .price("0")
-            .avg_price("0")
+            .price(price.to_string())
+            .avg_price(price.to_string())
             .orig_qty(qty.to_string())
-            .executed_qty("0")
-            .cumulative_quote_qty("0")
-            .order_type(OrderType::Limit)
+            .executed_qty(qty.to_string())
+            .cumulative_quote_qty((qty * price).to_string())
+            .order_type(OrderType::Market)
             .order_side(OrderSide::Sell)
             .order_status(OrderStatus::Filled)
             .time(0)
@@ -271,7 +283,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         qty: f64,
         price: f64,
     ) -> Result<Order> {
-        let symbol = Self::symbol(base_asset, quote_asset);
+        let symbol = self.symbol(base_asset, quote_asset);
         let mut data = self.data.lock().await;
         data.order_id += 1;
 
@@ -303,7 +315,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         qty: f64,
         price: f64,
     ) -> Result<Order> {
-        let symbol = Self::symbol(base_asset, quote_asset);
+        let symbol = self.symbol(base_asset, quote_asset);
         let mut data = self.data.lock().await;
         data.order_id += 1;
 
@@ -329,7 +341,7 @@ impl SpotClientExecutable for BacktestSpotClient {
     }
 
     async fn get_price(&self, base_asset: &str, quote_asset: &str) -> Result<SymbolPrice> {
-        let symbol = Self::symbol(base_asset, quote_asset);
+        let symbol = self.symbol(base_asset, quote_asset);
         Ok(SymbolPrice::builder().symbol(symbol).price(dec!(0)).build())
     }
 }

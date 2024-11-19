@@ -334,7 +334,7 @@ impl TryFrom<BinanceTransaction> for Order {
     }
 }
 
-#[derive(Builder, Debug, Clone)]
+#[derive(Builder, Debug, Clone, PartialEq, Eq)]
 #[builder(on(String, into))]
 pub struct SymbolPrice {
     pub symbol: String,
@@ -358,6 +358,10 @@ impl TryFrom<BinanceSymbolPrice> for SymbolPrice {
 #[derive(Clone)]
 pub enum SpotClientRequest {
     PlatformName,
+    Symbol {
+        base_asset: String,
+        quote_asset: String,
+    },
     GetAccount,
     GetSymbolInfo {
         base_asset: String,
@@ -424,6 +428,7 @@ impl SpotClientRequest {
 
 pub enum SpotClientResponse {
     PlatformName(String),
+    Symbol(String),
     AccountInformation(AccountInformation),
     SymbolInformation(SymbolInformation),
     Balance(Balance),

@@ -1,10 +1,10 @@
-use std::sync::Arc;
-
-use crate::node_core::{Tick, TickStore};
+use crate::node_core::{SymbolPriceStorable, Tick};
 use anyhow::Result;
-use async_lock::Mutex;
+use async_lock::RwLock;
 use bon::Builder;
+use comfy_quant_exchange::client::spot_client::base::SymbolPrice;
 use flume::{Receiver, Sender};
+use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Builder)]
@@ -31,7 +31,10 @@ impl TickStream {
     }
 
     #[allow(unused)]
-    pub(crate) async fn save_price(&self, store: Arc<Mutex<dyn TickStore>>) -> Result<()> {
+    pub(crate) async fn save_price(
+        &self,
+        store: Arc<RwLock<dyn SymbolPriceStorable>>,
+    ) -> Result<()> {
         let rx = self.subscribe();
         let cloned_token = self.token.clone();
 
@@ -39,7 +42,12 @@ impl TickStream {
             tokio::select! {
                 tick = rx.recv_async() => {
                     if let Ok(tick) = tick {
-                        store.lock().await.save_price(tick)?;
+                        let price = SymbolPrice::builder()
+                            .symbol(tick.symbol)
+                            .price(tick.price)
+                            .build();
+
+                        store.write().await.save_price(price)?;
                     }
 
                     Ok::<_, anyhow::Error>(())
@@ -64,7 +72,7 @@ impl Drop for TickStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
     use std::time::Duration;
     use tokio::time::sleep;
 
@@ -73,7 +81,8 @@ mod tests {
         let tick_stream = TickStream::new();
         let tick = Tick {
             timestamp: 1,
-            price: Decimal::try_from(100.0).unwrap(),
+            symbol: "BTCUSDT".to_string(),
+            price: dec!(100.0),
         };
 
         tick_stream.send(tick.clone()).await?;
@@ -87,31 +96,32 @@ mod tests {
     }
 
     #[derive(Debug, Clone, Builder, PartialEq)]
-    struct MockTickStore {
-        ticks: Vec<Tick>,
+    struct MockSymbolPriceStore {
+        prices: Vec<SymbolPrice>,
     }
 
-    impl MockTickStore {
+    impl MockSymbolPriceStore {
         fn new() -> Self {
-            MockTickStore { ticks: vec![] }
+            MockSymbolPriceStore { prices: vec![] }
         }
     }
 
-    impl TickStore for MockTickStore {
-        fn save_price(&mut self, tick: Tick) -> Result<()> {
-            self.ticks.push(tick);
+    impl SymbolPriceStorable for MockSymbolPriceStore {
+        fn save_price(&mut self, price: SymbolPrice) -> Result<()> {
+            self.prices.push(price);
             Ok(())
         }
     }
 
     #[tokio::test]
-    async fn test_save_price() -> Result<()> {
+    async fn test_save_price_should_work() -> Result<()> {
         let tick_stream = TickStream::new();
-        let store = Arc::new(Mutex::new(MockTickStore::new()));
+        let store = Arc::new(RwLock::new(MockSymbolPriceStore::new()));
         let cloned_store = Arc::clone(&store);
         let tick = Tick {
             timestamp: 1,
-            price: Decimal::try_from(100.0).unwrap(),
+            symbol: "BTCUSDT".to_string(),
+            price: dec!(100.0),
         };
 
         // 准备保存
@@ -123,9 +133,15 @@ mod tests {
         // 等待保存
         sleep(Duration::from_millis(1)).await;
 
-        let store = store.lock().await;
-        assert_eq!(store.ticks.len(), 1);
-        assert_eq!(store.ticks[0], tick);
+        let store = store.read().await;
+        assert_eq!(store.prices.len(), 1);
+        assert_eq!(
+            store.prices[0],
+            SymbolPrice::builder()
+                .symbol("BTCUSDT".to_string())
+                .price(dec!(100.0))
+                .build()
+        );
 
         Ok(())
     }

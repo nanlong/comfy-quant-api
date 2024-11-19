@@ -1,14 +1,14 @@
+use super::stats::Stats;
 use crate::{node_core::Port, workflow::WorkflowContext};
 use anyhow::Result;
-use async_lock::Mutex;
+use async_lock::RwLock;
 use comfy_quant_exchange::client::{
-    spot_client::base::Order,
+    spot_client::base::{Order, SymbolPrice},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use enum_dispatch::enum_dispatch;
+use rust_decimal::Decimal;
 use std::sync::Arc;
-
-use super::{stats::Stats, Tick};
 
 #[enum_dispatch]
 pub trait Setupable {
@@ -27,7 +27,9 @@ pub trait Executable {
 // 节点插槽
 #[enum_dispatch]
 pub trait PortAccessor {
-    fn get_port(&self) -> &Mutex<Port>;
+    fn get_port(&self) -> &Port;
+
+    fn get_port_mut(&mut self) -> &mut Port;
 }
 
 // 节点连接
@@ -49,15 +51,8 @@ impl<T: PortAccessor> Connectable for T {
         origin_slot: usize,            // 当前节点输出槽位
         target_slot: usize,            // 目标节点输入槽位
     ) -> Result<()> {
-        let slot = self
-            .get_port()
-            .lock_blocking()
-            .get_output::<U>(origin_slot)?;
-
-        target
-            .get_port()
-            .lock_blocking()
-            .add_input(target_slot, slot)?;
+        let slot = self.get_port().get_output::<U>(origin_slot)?;
+        target.get_port_mut().add_input(target_slot, slot)?;
 
         Ok(())
     }
@@ -82,15 +77,22 @@ pub trait SpotTradeable {
     ) -> Result<Order>;
 }
 
+#[allow(async_fn_in_trait)]
 pub trait NodeStats {
-    fn get_stats(&self) -> &Mutex<Stats>;
+    // 使用RwLock是因为需要内部可变性
+    fn get_stats(&self) -> Arc<RwLock<Stats>>;
 
-    fn update_stats_with_order(&self, order: &Order) -> Result<()> {
-        self.get_stats().lock_blocking().update_with_order(order)
+    async fn update_stats_with_order(&self, order: &Order) -> Result<()> {
+        self.get_stats().write().await.update_with_order(order)
     }
 }
 
-impl<T: Setupable + NodeStats> SpotTradeable for T {
+#[allow(async_fn_in_trait)]
+pub trait NodeSymbolPrice {
+    async fn get_price(&self, symbol: &str) -> Option<Decimal>;
+}
+
+impl<T: Setupable + NodeStats + NodeSymbolPrice> SpotTradeable for T {
     async fn market_buy(
         &self,
         client: &SpotClientKind,
@@ -98,23 +100,25 @@ impl<T: Setupable + NodeStats> SpotTradeable for T {
         quote_asset: &str,
         qty: f64,
     ) -> Result<Order> {
-        // match client {
-        //     SpotClientKind::BacktestSpotClient(backtest_spot_client) => {
-        //         // 获取价格
-        //     }
-        //     _ => {}
-        // }
+        // 用于回测功能的客户端，需要知道当前价格
+        let symbol = client.symbol(base_asset, quote_asset);
+
+        if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
+            if let Some(price) = self.get_price(&symbol).await {
+                backtest_spot_client.save_price(price).await;
+            }
+        }
 
         // 提交交易
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
 
         // 更新
-        self.update_stats_with_order(&order)?;
+        self.update_stats_with_order(&order).await?;
 
         // 更新数据库
         let _workflow_id = self.get_context()?.workflow_id();
         let _cloned_db = self.get_context()?.cloned_db();
-        let _stats = self.get_stats().lock().await;
+        // let _stats = self.get_stats().read().await;
 
         // save to db
         // save_stats(&cloned_db, workflow_id, &stats)?;
@@ -129,16 +133,25 @@ impl<T: Setupable + NodeStats> SpotTradeable for T {
         quote_asset: &str,
         qty: f64,
     ) -> Result<Order> {
+        // 用于回测功能的客户端，需要知道当前价格
+        let symbol = client.symbol(base_asset, quote_asset);
+
+        if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
+            if let Some(price) = self.get_price(&symbol).await {
+                backtest_spot_client.save_price(price).await;
+            }
+        }
+
         // 提交交易
         let order = client.market_sell(base_asset, quote_asset, qty).await?;
 
         // 更新
-        self.update_stats_with_order(&order)?;
+        self.update_stats_with_order(&order).await?;
 
         Ok(order)
     }
 }
 
-pub(crate) trait TickStore: Send {
-    fn save_price(&mut self, tick: Tick) -> Result<()>;
+pub(crate) trait SymbolPriceStorable: Send + Sync + 'static {
+    fn save_price(&mut self, symbol_price: SymbolPrice) -> Result<()>;
 }

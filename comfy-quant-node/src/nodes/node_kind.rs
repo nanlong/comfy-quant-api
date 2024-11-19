@@ -5,7 +5,6 @@ use crate::{
     workflow::{self, WorkflowContext},
 };
 use anyhow::Result;
-use async_lock::Mutex;
 use enum_dispatch::enum_dispatch;
 use std::sync::Arc;
 

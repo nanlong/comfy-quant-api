@@ -17,6 +17,8 @@ use tower::Service;
 pub trait SpotClientExecutable {
     fn platform_name(&self) -> String;
 
+    fn symbol(&self, base_asset: &str, quote_asset: &str) -> String;
+
     // 获取账户信息，手续费
     async fn get_account(&self) -> Result<AccountInformation>;
 
@@ -82,7 +84,17 @@ impl Service<SpotClientRequest> for SpotClientKind {
 
         let fut = async move {
             let res = match req {
-                SpotClientRequest::PlatformName => client.platform_name().into(),
+                SpotClientRequest::PlatformName => {
+                    let name = client.platform_name();
+                    SpotClientResponse::PlatformName(name)
+                }
+                SpotClientRequest::Symbol {
+                    base_asset,
+                    quote_asset,
+                } => {
+                    let symbol = client.symbol(&base_asset, &quote_asset);
+                    SpotClientResponse::Symbol(symbol)
+                }
                 SpotClientRequest::GetAccount => client.get_account().await?.into(),
                 SpotClientRequest::GetSymbolInfo {
                     base_asset,

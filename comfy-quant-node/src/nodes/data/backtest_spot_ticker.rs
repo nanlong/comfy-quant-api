@@ -5,7 +5,6 @@ use crate::{
     workflow::{self, WorkflowContext},
 };
 use anyhow::{anyhow, Result};
-use async_lock::Mutex;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_database::kline;
@@ -36,7 +35,7 @@ pub(crate) struct Params {
 #[derive(Debug)]
 pub(crate) struct BacktestSpotTicker {
     pub(crate) params: Params,
-    pub(crate) port: Mutex<Port>,
+    pub(crate) port: Port,
     context: Option<Arc<WorkflowContext>>,
 }
 
@@ -58,13 +57,13 @@ impl BacktestSpotTicker {
 
         Ok(BacktestSpotTicker {
             params,
-            port: Mutex::new(port),
+            port,
             context: None,
         })
     }
 
     async fn output1(&self) -> Result<()> {
-        let port = self.port.lock().await;
+        let port = self.get_port();
         let slot1 = port.get_output::<TickStream>(1)?;
         let symbol =
             format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
@@ -115,6 +114,7 @@ impl BacktestSpotTicker {
         while let Some(Ok(kline)) = klines_stream.next().await {
             let tick = Tick::builder()
                 .timestamp(kline.open_time / 1000)
+                .symbol(symbol.clone())
                 .price(kline.close_price)
                 .build();
 
@@ -138,8 +138,12 @@ impl Setupable for BacktestSpotTicker {
 }
 
 impl PortAccessor for BacktestSpotTicker {
-    fn get_port(&self) -> &Mutex<Port> {
+    fn get_port(&self) -> &Port {
         &self.port
+    }
+
+    fn get_port_mut(&mut self) -> &mut Port {
+        &mut self.port
     }
 }
 

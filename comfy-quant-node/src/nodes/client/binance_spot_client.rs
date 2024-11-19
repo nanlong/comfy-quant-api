@@ -3,7 +3,6 @@ use crate::{
     workflow,
 };
 use anyhow::Result;
-use async_lock::Mutex;
 use bon::Builder;
 use comfy_quant_exchange::client::{
     spot_client::binance_spot_client::BinanceSpotClient as Client, spot_client_kind::SpotClientKind,
@@ -22,7 +21,7 @@ pub(crate) struct BinanceSpotClient {
     pub(crate) params: Params,
     // outputs:
     //      0: SpotClient
-    pub(crate) port: Mutex<Port>,
+    pub(crate) port: Port,
 }
 
 impl BinanceSpotClient {
@@ -38,16 +37,17 @@ impl BinanceSpotClient {
 
         port.add_output(0, client_slot)?;
 
-        Ok(BinanceSpotClient {
-            params,
-            port: Mutex::new(port),
-        })
+        Ok(BinanceSpotClient { params, port })
     }
 }
 
 impl PortAccessor for BinanceSpotClient {
-    fn get_port(&self) -> &Mutex<Port> {
+    fn get_port(&self) -> &Port {
         &self.port
+    }
+
+    fn get_port_mut(&mut self) -> &mut Port {
+        &mut self.port
     }
 }
 
