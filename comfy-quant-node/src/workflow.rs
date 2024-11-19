@@ -119,6 +119,7 @@ impl Executable for Workflow {
         // 按顺序从前至后执行节点
         for node in self.sorted_nodes().into_iter() {
             let node_id = node.id;
+            let node_name = node.node_type.clone();
 
             let mut node_kind = self
                 .deserialized_nodes
@@ -136,10 +137,10 @@ impl Executable for Workflow {
                         node_kind.execute().await?;
                         Ok::<(), anyhow::Error>(())
                     } => {
-                        tracing::info!("Node {} finished", node_id);
+                        tracing::info!("Node {}:<{}> finished", node_id, node_name);
                     },
                     _ = cloned_token.cancelled() => {
-                        tracing::info!("Node {} cancelled", node_id);
+                        tracing::info!("Node {}:<{}> cancelled", node_id, node_name);
                     }
                 }
             });
