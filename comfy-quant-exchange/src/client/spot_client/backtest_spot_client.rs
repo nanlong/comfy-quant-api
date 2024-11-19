@@ -216,6 +216,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         let mut data = self.data.lock().await;
         data.order_id += 1;
 
+        // todo: 去掉0值
         let order = Order::builder()
             .exchange(EXCHANGE_NAME)
             .base_asset(base_asset)

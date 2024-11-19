@@ -8,7 +8,7 @@ use comfy_quant_exchange::client::{
 use enum_dispatch::enum_dispatch;
 use std::sync::Arc;
 
-use super::stats::Stats;
+use super::{stats::Stats, Tick};
 
 #[enum_dispatch]
 pub trait Setupable {
@@ -98,6 +98,13 @@ impl<T: Setupable + NodeStats> SpotTradeable for T {
         quote_asset: &str,
         qty: f64,
     ) -> Result<Order> {
+        // match client {
+        //     SpotClientKind::BacktestSpotClient(backtest_spot_client) => {
+        //         // 获取价格
+        //     }
+        //     _ => {}
+        // }
+
         // 提交交易
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
 
@@ -130,4 +137,8 @@ impl<T: Setupable + NodeStats> SpotTradeable for T {
 
         Ok(order)
     }
+}
+
+pub(crate) trait TickStore: Send {
+    fn save_price(&mut self, tick: Tick) -> Result<()>;
 }

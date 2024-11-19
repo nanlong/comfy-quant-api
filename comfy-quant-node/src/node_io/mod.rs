@@ -3,4 +3,4 @@ mod spot_pair_info;
 mod tick_stream;
 
 pub(crate) use spot_pair_info::SpotPairInfo;
-pub(crate) use tick_stream::{Tick, TickStream};
+pub(crate) use tick_stream::TickStream;

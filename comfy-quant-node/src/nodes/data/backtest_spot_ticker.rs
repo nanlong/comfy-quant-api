@@ -1,6 +1,6 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Setupable, Slot},
-    node_io::{SpotPairInfo, Tick, TickStream},
+    node_core::{Executable, Port, PortAccessor, Setupable, Slot, Tick},
+    node_io::{SpotPairInfo, TickStream},
     utils::add_utc_offset,
     workflow::{self, WorkflowContext},
 };
