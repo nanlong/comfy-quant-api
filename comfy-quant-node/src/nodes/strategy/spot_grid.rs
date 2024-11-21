@@ -46,7 +46,7 @@ pub(crate) struct SpotGrid {
     params: Params,                             // 前端配置
     port: Port,                                 // 输入输出
     context: Option<Arc<WorkflowContext>>,      // 工作流上下文信息，由Workflow惰性跨线程传给节点
-    price_store: Arc<RwLock<SymbolPriceStore>>, // 价格存储，有独立进程进行写入
+    price_store: Arc<RwLock<SymbolPriceStore>>, // 价格存储，有独立进程进行写入，为回测中的交易所模拟客户端提供价格信息
     grid: Option<Grid>,                         // 网格
     stats: Stats,                               // 统计数据，实时存储数据库
     initialized: bool,                          // 是否已经初始化

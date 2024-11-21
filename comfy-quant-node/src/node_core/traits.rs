@@ -9,6 +9,7 @@ use enum_dispatch::enum_dispatch;
 use rust_decimal::Decimal;
 use std::sync::Arc;
 
+/// 节点初始化
 #[enum_dispatch]
 pub trait Setupable {
     fn setup_context(&mut self, context: Arc<WorkflowContext>);
@@ -57,6 +58,42 @@ impl<T: PortAccessor> Connectable for T {
     }
 }
 
+/// 价格存储介质
+pub(crate) trait SymbolPriceStorable: Send + Sync + 'static {
+    fn save_price(&mut self, symbol_price: SymbolPrice) -> Result<()>;
+}
+
+/// 统计接口
+#[allow(async_fn_in_trait)]
+pub trait NodeStats {
+    fn get_stats(&self) -> &Stats;
+
+    fn get_stats_mut(&mut self) -> &mut Stats;
+
+    fn update_stats_with_order(&mut self, order: &Order) -> Result<()> {
+        self.get_stats_mut().update_with_order(order)
+    }
+}
+
+/// 价格接口
+#[allow(async_fn_in_trait)]
+pub trait NodeSymbolPrice {
+    async fn get_price(&self, symbol: &str) -> Option<Decimal>;
+}
+
+/// 节点名称接口
+pub trait NodeName {
+    fn get_name(&self) -> &str;
+}
+
+/// 策略统计信息接口
+/// 需要从context中获取到db
+pub trait StrategyStats: Setupable {
+    // 最大回撤
+    fn max_drawdown(&self, start_timestamp: i64, end_timestamp: i64) -> Decimal;
+}
+
+/// 交易接口
 #[allow(async_fn_in_trait)]
 pub trait SpotTradeable {
     async fn market_buy(
@@ -76,26 +113,7 @@ pub trait SpotTradeable {
     ) -> Result<Order>;
 }
 
-#[allow(async_fn_in_trait)]
-pub trait NodeStats {
-    fn get_stats(&self) -> &Stats;
-
-    fn get_stats_mut(&mut self) -> &mut Stats;
-
-    fn update_stats_with_order(&mut self, order: &Order) -> Result<()> {
-        self.get_stats_mut().update_with_order(order)
-    }
-}
-
-#[allow(async_fn_in_trait)]
-pub trait NodeSymbolPrice {
-    async fn get_price(&self, symbol: &str) -> Option<Decimal>;
-}
-
-pub trait NodeName {
-    fn get_name(&self) -> &str;
-}
-
+/// 交易接口默认实现
 impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeName> SpotTradeable for T {
     async fn market_buy(
         &mut self,
@@ -161,8 +179,4 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeName> SpotTradeable for T 
 
         Ok(order)
     }
-}
-
-pub(crate) trait SymbolPriceStorable: Send + Sync + 'static {
-    fn save_price(&mut self, symbol_price: SymbolPrice) -> Result<()>;
 }

@@ -2,7 +2,6 @@ use crate::node_core::{SymbolPriceStorable, Tick};
 use anyhow::Result;
 use async_lock::RwLock;
 use bon::Builder;
-use comfy_quant_exchange::client::spot_client::base::SymbolPrice;
 use flume::{Receiver, Sender};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -42,12 +41,7 @@ impl TickStream {
             tokio::select! {
                 tick = rx.recv_async() => {
                     if let Ok(tick) = tick {
-                        let price = SymbolPrice::builder()
-                            .symbol(tick.symbol)
-                            .price(tick.price)
-                            .build();
-
-                        store.write().await.save_price(price)?;
+                        store.write().await.save_price(tick.into())?;
                     }
 
                     Ok::<_, anyhow::Error>(())
@@ -72,6 +66,7 @@ impl Drop for TickStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use comfy_quant_exchange::client::spot_client::base::SymbolPrice;
     use rust_decimal_macros::dec;
     use std::time::Duration;
     use tokio::time::sleep;
@@ -135,13 +130,7 @@ mod tests {
 
         let store = store.read().await;
         assert_eq!(store.prices.len(), 1);
-        assert_eq!(
-            store.prices[0],
-            SymbolPrice::builder()
-                .symbol("BTCUSDT".to_string())
-                .price(dec!(100.0))
-                .build()
-        );
+        assert_eq!(store.prices[0], tick.into());
 
         Ok(())
     }
