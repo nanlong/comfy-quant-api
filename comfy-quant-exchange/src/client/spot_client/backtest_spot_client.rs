@@ -23,7 +23,7 @@ pub struct BacktestSpotClientData {
 
 #[derive(Debug, Clone)]
 pub struct BacktestSpotClient {
-    data: Arc<Mutex<BacktestSpotClientData>>,
+    data: Arc<Mutex<BacktestSpotClientData>>, // 必须使用内部可变性和Sync
 }
 
 #[bon]

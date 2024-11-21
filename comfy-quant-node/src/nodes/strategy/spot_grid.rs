@@ -1,7 +1,7 @@
 use crate::{
     node_core::{
-        Executable, NodeStats, NodeSymbolPrice, Port, PortAccessor, Setupable, SpotClientService,
-        SpotTradeable, Stats, SymbolPriceStore,
+        Executable, NodeName, NodeStats, NodeSymbolPrice, Port, PortAccessor, Setupable,
+        SpotClientService, SpotTradeable, Stats, SymbolPriceStore,
     },
     node_io::{SpotPairInfo, TickStream},
     workflow::{self, WorkflowContext},
@@ -45,10 +45,10 @@ pub(crate) struct Params {
 pub(crate) struct SpotGrid {
     params: Params,                             // 前端配置
     port: Port,                                 // 输入输出
-    context: Option<Arc<WorkflowContext>>,      // 工作流上下文信息
-    price_store: Arc<RwLock<SymbolPriceStore>>, // 价格存储
+    context: Option<Arc<WorkflowContext>>,      // 工作流上下文信息，由Workflow惰性跨线程传给节点
+    price_store: Arc<RwLock<SymbolPriceStore>>, // 价格存储，有独立进程进行写入
     grid: Option<Grid>,                         // 网格
-    stats: Arc<RwLock<Stats>>,                  // 统计数据
+    stats: Stats,                               // 统计数据，实时存储数据库
     initialized: bool,                          // 是否已经初始化
 }
 
@@ -60,7 +60,7 @@ impl SpotGrid {
             price_store: Arc::new(RwLock::new(SymbolPriceStore::default())),
             context: None,
             grid: None,
-            stats: Arc::new(RwLock::new(Stats::default())),
+            stats: Stats::default(),
             initialized: false,
         })
     }
@@ -172,14 +172,24 @@ impl PortAccessor for SpotGrid {
 }
 
 impl NodeStats for SpotGrid {
-    fn get_stats(&self) -> Arc<RwLock<Stats>> {
-        Arc::clone(&self.stats)
+    fn get_stats(&self) -> &Stats {
+        &self.stats
+    }
+
+    fn get_stats_mut(&mut self) -> &mut Stats {
+        &mut self.stats
     }
 }
 
 impl NodeSymbolPrice for SpotGrid {
     async fn get_price(&self, symbol: &str) -> Option<Decimal> {
         self.price_store.read().await.price(symbol).cloned()
+    }
+}
+
+impl NodeName for SpotGrid {
+    fn get_name(&self) -> &str {
+        "SpotGrid"
     }
 }
 

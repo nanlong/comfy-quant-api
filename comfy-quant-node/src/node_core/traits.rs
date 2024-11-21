@@ -1,7 +1,6 @@
 use super::stats::Stats;
 use crate::{node_core::Port, workflow::WorkflowContext};
 use anyhow::Result;
-use async_lock::RwLock;
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, SymbolPrice},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
@@ -61,7 +60,7 @@ impl<T: PortAccessor> Connectable for T {
 #[allow(async_fn_in_trait)]
 pub trait SpotTradeable {
     async fn market_buy(
-        &self,
+        &mut self,
         client: &SpotClientKind,
         base_asset: &str,
         quote_asset: &str,
@@ -69,7 +68,7 @@ pub trait SpotTradeable {
     ) -> Result<Order>;
 
     async fn market_sell(
-        &self,
+        &mut self,
         client: &SpotClientKind,
         base_asset: &str,
         quote_asset: &str,
@@ -79,11 +78,12 @@ pub trait SpotTradeable {
 
 #[allow(async_fn_in_trait)]
 pub trait NodeStats {
-    // 使用RwLock是因为需要内部可变性
-    fn get_stats(&self) -> Arc<RwLock<Stats>>;
+    fn get_stats(&self) -> &Stats;
 
-    async fn update_stats_with_order(&self, order: &Order) -> Result<()> {
-        self.get_stats().write().await.update_with_order(order)
+    fn get_stats_mut(&mut self) -> &mut Stats;
+
+    fn update_stats_with_order(&mut self, order: &Order) -> Result<()> {
+        self.get_stats_mut().update_with_order(order)
     }
 }
 
@@ -92,9 +92,13 @@ pub trait NodeSymbolPrice {
     async fn get_price(&self, symbol: &str) -> Option<Decimal>;
 }
 
-impl<T: Setupable + NodeStats + NodeSymbolPrice> SpotTradeable for T {
+pub trait NodeName {
+    fn get_name(&self) -> &str;
+}
+
+impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeName> SpotTradeable for T {
     async fn market_buy(
-        &self,
+        &mut self,
         client: &SpotClientKind,
         base_asset: &str,
         quote_asset: &str,
@@ -112,13 +116,14 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice> SpotTradeable for T {
         // 提交交易
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
 
-        // 更新
-        self.update_stats_with_order(&order).await?;
+        // 更新统计信息
+        self.update_stats_with_order(&order)?;
 
         // 更新数据库
-        let _workflow_id = self.get_context()?.workflow_id();
         let _cloned_db = self.get_context()?.cloned_db();
-        // let _stats = self.get_stats().read().await;
+        let _workflow_id = self.get_context()?.workflow_id();
+        let _node_name = self.get_name();
+        let _stats = self.get_stats();
 
         // save to db
         // save_stats(&cloned_db, workflow_id, &stats)?;
@@ -127,7 +132,7 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice> SpotTradeable for T {
     }
 
     async fn market_sell(
-        &self,
+        &mut self,
         client: &SpotClientKind,
         base_asset: &str,
         quote_asset: &str,
@@ -145,8 +150,14 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice> SpotTradeable for T {
         // 提交交易
         let order = client.market_sell(base_asset, quote_asset, qty).await?;
 
-        // 更新
-        self.update_stats_with_order(&order).await?;
+        // 更新统计信息
+        self.update_stats_with_order(&order)?;
+
+        // 更新数据库
+        let _cloned_db = self.get_context()?.cloned_db();
+        let _workflow_id = self.get_context()?.workflow_id();
+        let _node_name = self.get_name();
+        let _stats = self.get_stats();
 
         Ok(order)
     }
