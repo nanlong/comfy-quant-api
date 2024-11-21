@@ -169,9 +169,9 @@ pub struct Link {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
-    id: u32,
+    pub(crate) id: u32,
     #[serde(rename = "type")]
-    node_type: String,
+    pub(crate) node_type: String,
     pos: [u32; 2],
     // size: HashMap<String, u32>,
     // flags: HashMap<String, String>,

@@ -21,15 +21,16 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BacktestSpotClient {
-    pub(crate) params: Params,
+    node: workflow::Node,
+    params: Params,
     // outputs:
     //      0: SpotClient
-    pub(crate) port: Port,
+    port: Port,
     context: Option<Arc<WorkflowContext>>,
 }
 
 impl BacktestSpotClient {
-    pub(crate) fn try_new(params: Params) -> Result<Self> {
+    pub(crate) fn try_new(node: workflow::Node, params: Params) -> Result<Self> {
         let mut port = Port::default();
 
         let client = Client::builder()
@@ -42,6 +43,7 @@ impl BacktestSpotClient {
         port.add_output(0, client_slot)?;
 
         Ok(BacktestSpotClient {
+            node,
             params,
             port,
             context: None,
@@ -116,7 +118,7 @@ impl TryFrom<&workflow::Node> for BacktestSpotClient {
             .commissions(commissions)
             .build();
 
-        BacktestSpotClient::try_new(params)
+        BacktestSpotClient::try_new(node.clone(), params)
     }
 }
 

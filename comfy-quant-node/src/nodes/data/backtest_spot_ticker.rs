@@ -22,10 +22,10 @@ const INTERVAL: &str = "1s";
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
 pub(crate) struct Params {
-    pub(crate) base_asset: String,
-    pub(crate) quote_asset: String,
-    pub(crate) start_datetime: DateTime<Utc>,
-    pub(crate) end_datetime: DateTime<Utc>,
+    base_asset: String,
+    quote_asset: String,
+    start_datetime: DateTime<Utc>,
+    end_datetime: DateTime<Utc>,
 }
 
 /// 回测行情数据
@@ -33,14 +33,16 @@ pub(crate) struct Params {
 ///      0: SpotPairInfo
 ///      1: TickStream
 #[derive(Debug)]
+#[allow(unused)]
 pub(crate) struct BacktestSpotTicker {
-    pub(crate) params: Params,
-    pub(crate) port: Port,
+    node: workflow::Node,
+    params: Params,
+    port: Port,
     context: Option<Arc<WorkflowContext>>,
 }
 
 impl BacktestSpotTicker {
-    pub(crate) fn try_new(params: Params) -> Result<Self> {
+    pub(crate) fn try_new(node: workflow::Node, params: Params) -> Result<Self> {
         let mut port = Port::default();
 
         let pair_info = SpotPairInfo::builder()
@@ -56,6 +58,7 @@ impl BacktestSpotTicker {
         port.add_output(1, tick_stream_slot)?;
 
         Ok(BacktestSpotTicker {
+            node,
             params,
             port,
             context: None,
@@ -199,6 +202,32 @@ impl TryFrom<&workflow::Node> for BacktestSpotTicker {
             .end_datetime(end_datetime)
             .build();
 
-        BacktestSpotTicker::try_new(params)
+        BacktestSpotTicker::try_new(node.clone(), params)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_try_from_node_to_backtest_spot_ticker() -> anyhow::Result<()> {
+        let json_str = r#"{"id":1,"type":"数据/币安现货行情","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"data.BacktestSpotTicker","params":["BTC","USDT","2024-10-10 15:18:42","2024-10-10 16:18:42"]}}"#;
+
+        let node: workflow::Node = serde_json::from_str(json_str)?;
+        let backtest_spot_ticker = BacktestSpotTicker::try_from(&node)?;
+
+        assert_eq!(backtest_spot_ticker.params.base_asset, "BTC");
+        assert_eq!(backtest_spot_ticker.params.quote_asset, "USDT");
+        assert_eq!(
+            backtest_spot_ticker.params.start_datetime,
+            add_utc_offset("2024-10-10 15:18:42")?
+        );
+        assert_eq!(
+            backtest_spot_ticker.params.end_datetime,
+            add_utc_offset("2024-10-10 16:18:42")?
+        );
+
+        Ok(())
     }
 }

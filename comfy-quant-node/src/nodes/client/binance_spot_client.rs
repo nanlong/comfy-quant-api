@@ -16,16 +16,18 @@ pub(crate) struct Params {
     secret_key: String,
 }
 
+#[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BinanceSpotClient {
-    pub(crate) params: Params,
+    node: workflow::Node,
+    params: Params,
     // outputs:
     //      0: SpotClient
-    pub(crate) port: Port,
+    port: Port,
 }
 
 impl BinanceSpotClient {
-    pub(crate) fn try_new(params: Params) -> Result<Self> {
+    pub(crate) fn try_new(node: workflow::Node, params: Params) -> Result<Self> {
         let mut port = Port::default();
 
         let client = Client::builder()
@@ -37,7 +39,7 @@ impl BinanceSpotClient {
 
         port.add_output(0, client_slot)?;
 
-        Ok(BinanceSpotClient { params, port })
+        Ok(BinanceSpotClient { node, params, port })
     }
 }
 
@@ -57,11 +59,11 @@ impl Executable for BinanceSpotClient {
     }
 }
 
-impl TryFrom<workflow::Node> for BinanceSpotClient {
+impl TryFrom<&workflow::Node> for BinanceSpotClient {
     type Error = anyhow::Error;
 
-    fn try_from(node: workflow::Node) -> Result<Self> {
-        if node.properties.prop_type != "account.binanceSubAccount" {
+    fn try_from(node: &workflow::Node) -> Result<Self> {
+        if node.properties.prop_type != "client.BinanceSpotClient" {
             anyhow::bail!("Try from workflow::Node to BinanceSpotClient failed: Invalid prop_type");
         }
 
@@ -82,7 +84,7 @@ impl TryFrom<workflow::Node> for BinanceSpotClient {
             .secret_key(secret_key)
             .build();
 
-        BinanceSpotClient::try_new(params)
+        BinanceSpotClient::try_new(node.clone(), params)
     }
 }
 
@@ -92,10 +94,10 @@ mod tests {
 
     #[test]
     fn test_try_from_node_to_binance_account() -> anyhow::Result<()> {
-        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.binanceSubAccount","params":["api_secret","secret"]}}"#;
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BinanceSpotClient","params":["api_secret","secret"]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = BinanceSpotClient::try_from(node)?;
+        let account = BinanceSpotClient::try_from(&node)?;
 
         assert_eq!(account.params.api_key, "api_secret");
         assert_eq!(account.params.secret_key, "secret");

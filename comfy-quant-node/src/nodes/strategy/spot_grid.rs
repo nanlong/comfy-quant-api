@@ -1,6 +1,6 @@
 use crate::{
     node_core::{
-        Executable, NodeName, NodeStats, NodeSymbolPrice, Port, PortAccessor, Setupable,
+        Executable, NodeInfo, NodeStats, NodeSymbolPrice, Port, PortAccessor, Setupable,
         SpotClientService, SpotTradeable, Stats, SymbolPriceStore,
     },
     node_io::{SpotPairInfo, TickStream},
@@ -43,6 +43,7 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct SpotGrid {
+    node: workflow::Node,                       // 节点信息
     params: Params,                             // 前端配置
     port: Port,                                 // 输入输出
     context: Option<Arc<WorkflowContext>>,      // 工作流上下文信息，由Workflow惰性跨线程传给节点
@@ -53,8 +54,9 @@ pub(crate) struct SpotGrid {
 }
 
 impl SpotGrid {
-    pub(crate) fn new(params: Params) -> Result<Self> {
+    pub(crate) fn new(node: workflow::Node, params: Params) -> Result<Self> {
         Ok(SpotGrid {
+            node,
             params,
             port: Port::default(),
             price_store: Arc::new(RwLock::new(SymbolPriceStore::default())),
@@ -187,9 +189,13 @@ impl NodeSymbolPrice for SpotGrid {
     }
 }
 
-impl NodeName for SpotGrid {
-    fn get_name(&self) -> &str {
-        "SpotGrid"
+impl NodeInfo for SpotGrid {
+    fn node_id(&self) -> u32 {
+        self.node.id
+    }
+
+    fn node_name(&self) -> &str {
+        &self.node.properties.prop_type
     }
 }
 
@@ -419,7 +425,7 @@ impl TryFrom<&workflow::Node> for SpotGrid {
             .sell_all_on_stop(sell_all_on_stop)
             .build();
 
-        SpotGrid::new(params)
+        SpotGrid::new(node.clone(), params)
     }
 }
 

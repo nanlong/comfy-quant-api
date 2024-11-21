@@ -17,14 +17,16 @@ pub(crate) struct Params {
 /// outputs:
 ///      0: SpotPairInfo
 ///      1: TickStream
+#[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BinanceSpotTicker {
-    pub(crate) params: Params,
-    pub(crate) port: Port,
+    node: workflow::Node,
+    params: Params,
+    port: Port,
 }
 
 impl BinanceSpotTicker {
-    pub(crate) fn try_new(params: Params) -> Result<Self> {
+    pub(crate) fn try_new(node: workflow::Node, params: Params) -> Result<Self> {
         let mut port = Port::default();
 
         let pair_info = SpotPairInfo::builder()
@@ -38,7 +40,7 @@ impl BinanceSpotTicker {
         port.add_output(0, pair_info_slot)?;
         // port.add_output(1, output_slot1)?;
 
-        Ok(BinanceSpotTicker { params, port })
+        Ok(BinanceSpotTicker { node, params, port })
     }
 
     async fn output1(&self) -> Result<()> {
@@ -92,20 +94,20 @@ impl TryFrom<workflow::Node> for BinanceSpotTicker {
     type Error = anyhow::Error;
 
     fn try_from(node: workflow::Node) -> Result<Self> {
-        if node.properties.prop_type != "data.binanceSpotTicker" {
-            anyhow::bail!("Try from workflow::Node to binanceSpotTicker failed: Invalid prop_type");
+        if node.properties.prop_type != "data.BinanceSpotTicker" {
+            anyhow::bail!("Try from workflow::Node to BinanceSpotTicker failed: Invalid prop_type");
         }
 
         let [base_asset, quote_asset] = node.properties.params.as_slice() else {
-            anyhow::bail!("Try from workflow::Node to binanceSpotTicker failed: Invalid params");
+            anyhow::bail!("Try from workflow::Node to BinanceSpotTicker failed: Invalid params");
         };
 
         let base_asset = base_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to binanceSpotTicker failed: Invalid base_asset"
+            "Try from workflow::Node to BinanceSpotTicker failed: Invalid base_asset"
         ))?;
 
         let quote_asset = quote_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to binanceSpotTicker failed: Invalid quote_asset"
+            "Try from workflow::Node to BinanceSpotTicker failed: Invalid quote_asset"
         ))?;
 
         let params = Params::builder()
@@ -113,7 +115,7 @@ impl TryFrom<workflow::Node> for BinanceSpotTicker {
             .quote_asset(quote_asset)
             .build();
 
-        BinanceSpotTicker::try_new(params)
+        BinanceSpotTicker::try_new(node.clone(), params)
     }
 }
 
@@ -123,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_try_from_node_to_binance_spot_ticker() -> anyhow::Result<()> {
-        let json_str = r#"{"id":1,"type":"数据/币安现货行情","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"data.binanceSpotTicker","params":["BTC","USDT"]}}"#;
+        let json_str = r#"{"id":1,"type":"数据/币安现货行情","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"data.BinanceSpotTicker","params":["BTC","USDT"]}}"#;
 
         let node: workflow::Node = serde_json::from_str(json_str)?;
         let binance_spot_ticker = BinanceSpotTicker::try_from(node)?;

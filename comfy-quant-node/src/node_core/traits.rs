@@ -1,6 +1,7 @@
 use super::stats::Stats;
 use crate::{node_core::Port, workflow::WorkflowContext};
 use anyhow::Result;
+use comfy_quant_database::strategy_position::{self, StrategyPosition};
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, SymbolPrice},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
@@ -82,8 +83,12 @@ pub trait NodeSymbolPrice {
 }
 
 /// 节点名称接口
-pub trait NodeName {
-    fn get_name(&self) -> &str;
+pub trait NodeInfo {
+    // 节点id
+    fn node_id(&self) -> u32;
+
+    // 节点名称
+    fn node_name(&self) -> &str;
 }
 
 /// 策略统计信息接口
@@ -114,7 +119,7 @@ pub trait SpotTradeable {
 }
 
 /// 交易接口默认实现
-impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeName> SpotTradeable for T {
+impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeInfo> SpotTradeable for T {
     async fn market_buy(
         &mut self,
         client: &SpotClientKind,
@@ -138,13 +143,30 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeName> SpotTradeable for T 
         self.update_stats_with_order(&order)?;
 
         // 更新数据库
-        let _cloned_db = self.get_context()?.cloned_db();
-        let _workflow_id = self.get_context()?.workflow_id();
-        let _node_name = self.get_name();
-        let _stats = self.get_stats();
+        let cloned_db = self.get_context()?.cloned_db();
+        let workflow_id = self.get_context()?.workflow_id();
+        let node_id = self
+            .node_id()
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Node ID exceeds i16 range"))?;
+        let node_name = self.node_name();
+        let stats = self.get_stats();
+
+        let data = StrategyPosition::builder()
+            .workflow_id(workflow_id)
+            .node_id(node_id)
+            .node_name(node_name)
+            .exchange(client.platform_name())
+            .market("spot")
+            .symbol(symbol)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
+            .base_asset_balance(stats.base_asset_balance)
+            .quote_asset_balance(stats.quote_asset_balance)
+            .build();
 
         // save to db
-        // save_stats(&cloned_db, workflow_id, &stats)?;
+        strategy_position::create(&cloned_db, &data).await?;
 
         Ok(order)
     }
@@ -172,10 +194,30 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeName> SpotTradeable for T 
         self.update_stats_with_order(&order)?;
 
         // 更新数据库
-        let _cloned_db = self.get_context()?.cloned_db();
-        let _workflow_id = self.get_context()?.workflow_id();
-        let _node_name = self.get_name();
-        let _stats = self.get_stats();
+        let cloned_db = self.get_context()?.cloned_db();
+        let workflow_id = self.get_context()?.workflow_id();
+        let node_id = self
+            .node_id()
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Node ID exceeds i16 range"))?;
+        let node_name = self.node_name();
+        let stats = self.get_stats();
+
+        let data = StrategyPosition::builder()
+            .workflow_id(workflow_id)
+            .node_id(node_id)
+            .node_name(node_name)
+            .exchange(client.platform_name())
+            .market("spot")
+            .symbol(symbol)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
+            .base_asset_balance(stats.base_asset_balance)
+            .quote_asset_balance(stats.quote_asset_balance)
+            .build();
+
+        // save to db
+        strategy_position::create(&cloned_db, &data).await?;
 
         Ok(order)
     }

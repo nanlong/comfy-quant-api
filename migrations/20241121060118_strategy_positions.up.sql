@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS strategy_positions (
     id SERIAL PRIMARY KEY,
     workflow_id VARCHAR(21) NOT NULL,
     node_id SMALLINT NOT NULL,
+    node_name VARCHAR(20) NOT NULL,
     exchange VARCHAR(20) NOT NULL,
     market VARCHAR(20) NOT NULL,
     symbol VARCHAR(20) NOT NULL,
@@ -16,7 +17,7 @@ CREATE TABLE IF NOT EXISTS strategy_positions (
 
 -- 创建索引（缩短索引名称）
 CREATE INDEX IF NOT EXISTS idx_strategy_positions_lookup
-ON strategy_positions (workflow_id, node_id, exchange, market, symbol, base_asset, quote_asset);
+ON strategy_positions (workflow_id, node_id, node_name, exchange, market, symbol, base_asset, quote_asset);
 
 -- 添加表注释
 COMMENT ON TABLE strategy_positions IS '策略持仓信息';
@@ -25,6 +26,7 @@ COMMENT ON TABLE strategy_positions IS '策略持仓信息';
 COMMENT ON COLUMN strategy_positions.id IS 'ID';
 COMMENT ON COLUMN strategy_positions.workflow_id IS '工作流ID';
 COMMENT ON COLUMN strategy_positions.node_id IS '策略节点ID';
+COMMENT ON COLUMN strategy_positions.node_name IS '策略节点名称';
 COMMENT ON COLUMN strategy_positions.exchange IS '交易所';
 COMMENT ON COLUMN strategy_positions.market IS '市场';
 COMMENT ON COLUMN strategy_positions.symbol IS '交易对';

@@ -125,7 +125,7 @@ impl Executable for BinanceKlinesTask {
                         ..Default::default()
                     };
 
-                    let kline = kline::insert_or_update(&db, &kline_data).await?;
+                    let kline = kline::create_or_update(&db, &kline_data).await?;
 
                     yield Ok(TaskStatus::Running(kline));
                 }
