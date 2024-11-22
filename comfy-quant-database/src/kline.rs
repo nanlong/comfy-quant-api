@@ -7,19 +7,19 @@ use sqlx::{postgres::PgPool, FromRow};
 
 #[derive(Debug, Default, FromRow)]
 pub struct Kline {
-    pub id: i32,
-    pub exchange: String,
-    pub market: String,
-    pub symbol: String,
-    pub interval: String,
-    pub open_time: i64,
-    pub open_price: Decimal,
-    pub high_price: Decimal,
-    pub low_price: Decimal,
-    pub close_price: Decimal,
-    pub volume: Decimal,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub id: i32,                   // 主键ID
+    pub exchange: String,          // 交易所
+    pub market: String,            // 市场
+    pub symbol: String,            // 交易对
+    pub interval: String,          // 时间间隔
+    pub open_time: i64,            // 开盘时间
+    pub open_price: Decimal,       // 开盘价格
+    pub high_price: Decimal,       // 最高价格
+    pub low_price: Decimal,        // 最低价格
+    pub close_price: Decimal,      // 收盘价格
+    pub volume: Decimal,           // 成交量
+    pub created_at: DateTime<Utc>, // 创建时间
+    pub updated_at: DateTime<Utc>, // 更新时间
 }
 
 #[bon]

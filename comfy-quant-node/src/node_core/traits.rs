@@ -1,7 +1,7 @@
 use super::stats::Stats;
 use crate::{node_core::Port, workflow::Node};
 use anyhow::Result;
-use comfy_quant_database::strategy_position::{self, StrategyPosition};
+use comfy_quant_database::strategy_spot_position::{self, StrategySpotPosition};
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, SymbolPrice},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
@@ -148,7 +148,7 @@ impl<T: NodeInfo + NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let stats = self.get_stats();
 
         // 保存策略仓位信息
-        let data = StrategyPosition::builder()
+        let data = StrategySpotPosition::builder()
             .workflow_id(workflow_id)
             .node_id(node_id)
             .node_name(node_name)
@@ -161,7 +161,7 @@ impl<T: NodeInfo + NodeStats + NodeSymbolPrice> SpotTradeable for T {
             .quote_asset_balance(stats.quote_asset_balance)
             .build();
 
-        strategy_position::create(&cloned_db, &data).await?;
+        strategy_spot_position::create(&cloned_db, &data).await?;
 
         Ok(order)
     }
@@ -200,7 +200,7 @@ impl<T: NodeInfo + NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let stats = self.get_stats();
 
         // 保存策略仓位信息
-        let data = StrategyPosition::builder()
+        let data = StrategySpotPosition::builder()
             .workflow_id(workflow_id)
             .node_id(node_id)
             .node_name(node_name)
@@ -213,7 +213,7 @@ impl<T: NodeInfo + NodeStats + NodeSymbolPrice> SpotTradeable for T {
             .quote_asset_balance(stats.quote_asset_balance)
             .build();
 
-        strategy_position::create(&cloned_db, &data).await?;
+        strategy_spot_position::create(&cloned_db, &data).await?;
 
         Ok(order)
     }
