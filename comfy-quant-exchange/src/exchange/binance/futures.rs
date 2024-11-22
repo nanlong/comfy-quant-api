@@ -3,9 +3,9 @@ use anyhow::{anyhow, Result};
 use binance::{
     api::Binance,
     futures::{
-        account::{FuturesAccount, TimeInForce},
-        general::FuturesGeneral,
-        market::FuturesMarket,
+        account::{FuturesAccount as Account, TimeInForce},
+        general::FuturesGeneral as General,
+        market::FuturesMarket as Market,
         model::{
             AccountBalance, AccountInformation, ExchangeInformation, OrderBook, Symbol, Transaction,
         },
@@ -22,16 +22,18 @@ impl<'a> Futures<'a> {
         Futures { client }
     }
 
-    fn account(&self) -> FuturesAccount {
-        FuturesAccount::new(self.client.api_key.clone(), self.client.secret_key.clone())
+    fn account(&self) -> Account {
+        self.client
+            .create_api(Account::new, Account::new_with_config)
     }
 
-    fn market(&self) -> FuturesMarket {
-        FuturesMarket::new(self.client.api_key.clone(), self.client.secret_key.clone())
+    fn market(&self) -> Market {
+        self.client.create_api(Market::new, Market::new_with_config)
     }
 
-    fn general(&self) -> FuturesGeneral {
-        FuturesGeneral::new(self.client.api_key.clone(), self.client.secret_key.clone())
+    fn general(&self) -> General {
+        self.client
+            .create_api(General::new, General::new_with_config)
     }
 
     pub fn ping(&self) -> Result<String> {

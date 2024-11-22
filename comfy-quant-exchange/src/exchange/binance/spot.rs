@@ -23,35 +23,17 @@ impl<'a> Spot<'a> {
     }
 
     fn account(&self) -> Account {
-        let api_key = self.client.api_key.clone();
-        let secret_key = self.client.secret_key.clone();
-
-        self.client.config.as_ref().map_or(
-            Account::new(api_key.clone(), secret_key.clone()),
-            |config| Account::new_with_config(api_key, secret_key, config),
-        )
+        self.client
+            .create_api(Account::new, Account::new_with_config)
     }
 
     fn market(&self) -> Market {
-        let api_key = self.client.api_key.clone();
-        let secret_key = self.client.secret_key.clone();
-
-        self.client
-            .config
-            .as_ref()
-            .map_or(Market::new(api_key.clone(), secret_key.clone()), |config| {
-                Market::new_with_config(api_key, secret_key, config)
-            })
+        self.client.create_api(Market::new, Market::new_with_config)
     }
 
     fn general(&self) -> General {
-        let api_key = self.client.api_key.clone();
-        let secret_key = self.client.secret_key.clone();
-
-        self.client.config.as_ref().map_or(
-            General::new(api_key.clone(), secret_key.clone()),
-            |config| General::new_with_config(api_key, secret_key, config),
-        )
+        self.client
+            .create_api(General::new, General::new_with_config)
     }
 
     pub fn ping(&self) -> Result<String> {

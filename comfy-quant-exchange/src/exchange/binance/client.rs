@@ -4,9 +4,9 @@ use bon::bon;
 
 #[derive(Debug, Clone)]
 pub struct BinanceClient {
-    pub(crate) api_key: Option<String>,
-    pub(crate) secret_key: Option<String>,
-    pub(crate) config: Option<Config>,
+    api_key: Option<String>,
+    secret_key: Option<String>,
+    config: Option<Config>,
 }
 
 #[bon]
@@ -30,5 +30,20 @@ impl BinanceClient {
 
     pub fn futures(&self) -> Futures {
         Futures::new(self)
+    }
+
+    pub(crate) fn create_api<T, F1, F2>(&self, new: F1, new_with_config: F2) -> T
+    where
+        F1: FnOnce(Option<String>, Option<String>) -> T,
+        F2: FnOnce(Option<String>, Option<String>, &Config) -> T,
+    {
+        let api_key = self.api_key.clone();
+        let secret_key = self.secret_key.clone();
+
+        self.config
+            .as_ref()
+            .map_or(new(api_key.clone(), secret_key.clone()), |config| {
+                new_with_config(api_key, secret_key, config)
+            })
     }
 }
