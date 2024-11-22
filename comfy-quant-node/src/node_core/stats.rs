@@ -29,6 +29,14 @@ pub struct Stats {
 
 #[allow(unused)]
 impl Stats {
+    pub fn initialize_base_balance(&mut self, base_asset_balance: Decimal) {
+        self.initial_base_balance = base_asset_balance;
+    }
+
+    pub fn initialize_quote_balance(&mut self, quote_asset_balance: Decimal) {
+        self.initial_quote_balance = quote_asset_balance;
+    }
+
     pub fn update_with_order(&mut self, order: &Order) -> Result<()> {
         let base_asset_amount = order.base_asset_amount()?;
         let quote_asset_amount = order.quote_asset_amount()?;

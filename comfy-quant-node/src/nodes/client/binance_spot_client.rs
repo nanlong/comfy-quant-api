@@ -1,6 +1,6 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Slot},
-    workflow,
+    node_core::{NodeExecutable, NodePort, Port, Slot},
+    workflow::Node,
 };
 use anyhow::Result;
 use bon::Builder;
@@ -19,7 +19,7 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BinanceSpotClient {
-    node: workflow::Node,
+    node: Node,
     params: Params,
     // outputs:
     //      0: SpotClient
@@ -27,7 +27,7 @@ pub(crate) struct BinanceSpotClient {
 }
 
 impl BinanceSpotClient {
-    pub(crate) fn try_new(node: workflow::Node, params: Params) -> Result<Self> {
+    pub(crate) fn try_new(node: Node, params: Params) -> Result<Self> {
         let mut port = Port::default();
 
         let client = Client::builder()
@@ -43,7 +43,7 @@ impl BinanceSpotClient {
     }
 }
 
-impl PortAccessor for BinanceSpotClient {
+impl NodePort for BinanceSpotClient {
     fn get_port(&self) -> &Port {
         &self.port
     }
@@ -53,16 +53,16 @@ impl PortAccessor for BinanceSpotClient {
     }
 }
 
-impl Executable for BinanceSpotClient {
+impl NodeExecutable for BinanceSpotClient {
     async fn execute(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
-impl TryFrom<&workflow::Node> for BinanceSpotClient {
+impl TryFrom<&Node> for BinanceSpotClient {
     type Error = anyhow::Error;
 
-    fn try_from(node: &workflow::Node) -> Result<Self> {
+    fn try_from(node: &Node) -> Result<Self> {
         if node.properties.prop_type != "client.BinanceSpotClient" {
             anyhow::bail!("Try from workflow::Node to BinanceSpotClient failed: Invalid prop_type");
         }
@@ -96,7 +96,7 @@ mod tests {
     fn test_try_from_node_to_binance_account() -> anyhow::Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BinanceSpotClient","params":["api_secret","secret"]}}"#;
 
-        let node: workflow::Node = serde_json::from_str(json_str)?;
+        let node: Node = serde_json::from_str(json_str)?;
         let account = BinanceSpotClient::try_from(&node)?;
 
         assert_eq!(account.params.api_key, "api_secret");

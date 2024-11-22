@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{Connectable, Executable, Setupable},
+    node_core::{Connectable, NodeExecutable},
     node_io::{SpotPairInfo, TickStream},
     nodes::node_kind::NodeKind,
     utils::generate_workflow_id,
@@ -35,57 +35,21 @@ impl Workflow {
     // 初始化上下文
     pub fn initialize(&mut self, db: PgPool) {
         let barrier = Barrier::new(self.nodes.len());
+        let context = Arc::new(WorkflowContext::new(db, barrier));
 
-        self.context = Some(Arc::new(WorkflowContext::new(db, barrier)));
+        self.context = Some(Arc::clone(&context));
         self.token = CancellationToken::new();
-    }
 
-    // 按照 order 排序
-    fn sorted_nodes(&self) -> Vec<&Node> {
-        let mut nodes_vec = self.nodes.iter().collect::<Vec<_>>();
-        nodes_vec.sort_by_key(|node| node.order);
-        nodes_vec
-    }
-
-    // 建立连接
-    async fn make_connection(
-        &self,
-        origin: &NodeKind,
-        target: &mut NodeKind,
-        link: &Link,
-    ) -> Result<()> {
-        match link.link_type.as_str() {
-            "SpotPairInfo" => {
-                origin.connection::<SpotPairInfo>(target, link.origin_slot, link.target_slot)?
-            }
-            "TickStream" => {
-                origin.connection::<TickStream>(target, link.origin_slot, link.target_slot)?
-            }
-            "SpotClient" => {
-                origin.connection::<SpotClientKind>(target, link.origin_slot, link.target_slot)?
-            }
-            _ => anyhow::bail!("Invalid link type: {}", link.link_type),
+        for node in &mut self.nodes {
+            node.context = Some(Arc::clone(&context));
         }
-
-        Ok(())
     }
-}
 
-impl Executable for Workflow {
-    async fn execute(&mut self) -> Result<()> {
-        // 获取上下文
-        let context = self
-            .context
-            .as_ref()
-            .ok_or_else(|| anyhow!("context not setup"))?;
-
+    pub async fn execute(&mut self) -> Result<()> {
         // 反序列化节点
         for node in &self.nodes {
             let node_id = node.id;
-            let mut node_kind = NodeKind::try_from(node)?;
-
-            // 为节点初始化上下文
-            node_kind.setup_context(Arc::clone(context));
+            let node_kind = NodeKind::try_from(node.clone())?;
 
             // 存储反序列化节点
             self.deserialized_nodes
@@ -110,8 +74,7 @@ impl Executable for Workflow {
                 .lock()
                 .await;
 
-            self.make_connection(&origin_node, &mut target_node, link)
-                .await?;
+            self.make_connection(&origin_node, &mut target_node, link)?;
         }
 
         tracing::info!("Workflow make connection");
@@ -149,6 +112,31 @@ impl Executable for Workflow {
 
         Ok(())
     }
+
+    // 按照 order 排序
+    fn sorted_nodes(&self) -> Vec<&Node> {
+        let mut nodes_vec = self.nodes.iter().collect::<Vec<_>>();
+        nodes_vec.sort_by_key(|node| node.order);
+        nodes_vec
+    }
+
+    // 建立连接
+    fn make_connection(&self, origin: &NodeKind, target: &mut NodeKind, link: &Link) -> Result<()> {
+        match link.link_type.as_str() {
+            "SpotPairInfo" => {
+                origin.connection::<SpotPairInfo>(target, link.origin_slot, link.target_slot)?
+            }
+            "TickStream" => {
+                origin.connection::<TickStream>(target, link.origin_slot, link.target_slot)?
+            }
+            "SpotClient" => {
+                origin.connection::<SpotClientKind>(target, link.origin_slot, link.target_slot)?
+            }
+            _ => anyhow::bail!("Invalid link type: {}", link.link_type),
+        }
+
+        Ok(())
+    }
 }
 
 impl Drop for Workflow {
@@ -180,6 +168,17 @@ pub struct Node {
     inputs: Option<Vec<Input>>,
     outputs: Option<Vec<Output>>,
     pub(crate) properties: Properties,
+
+    #[serde(skip)]
+    pub(crate) context: Option<Arc<WorkflowContext>>, // 上下文
+}
+
+impl Node {
+    pub(crate) fn context(&self) -> Result<&Arc<WorkflowContext>> {
+        self.context
+            .as_ref()
+            .ok_or_else(|| anyhow!("Context not set"))
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

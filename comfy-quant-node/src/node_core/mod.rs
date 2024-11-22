@@ -16,6 +16,6 @@ pub(crate) use traits::SymbolPriceStorable;
 
 pub use client_service::SpotClientService;
 pub use traits::{
-    Connectable, Executable, NodeInfo, NodeStats, NodeSymbolPrice, PortAccessor, Setupable,
-    SpotTradeable, StrategyStats,
+    Connectable, NodeExecutable, NodeInfo, NodePort, NodeStats, NodeStatsInfo, NodeSymbolPrice,
+    SpotTradeable,
 };

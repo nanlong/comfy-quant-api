@@ -1,10 +1,10 @@
 use crate::{
     node_core::{
-        Executable, NodeInfo, NodeStats, NodeSymbolPrice, Port, PortAccessor, Setupable,
-        SpotClientService, SpotTradeable, Stats, SymbolPriceStore,
+        NodeExecutable, NodeInfo, NodePort, NodeStats, NodeSymbolPrice, Port, SpotClientService,
+        SpotTradeable, Stats, SymbolPriceStore,
     },
     node_io::{SpotPairInfo, TickStream},
-    workflow::{self, WorkflowContext},
+    workflow::Node,
 };
 use anyhow::{anyhow, Result};
 use async_lock::RwLock;
@@ -43,10 +43,9 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct SpotGrid {
-    node: workflow::Node,                       // 节点信息
+    node: Node,                                 // 节点信息
     params: Params,                             // 前端配置
     port: Port,                                 // 输入输出
-    context: Option<Arc<WorkflowContext>>,      // 工作流上下文信息，由Workflow惰性跨线程传给节点
     price_store: Arc<RwLock<SymbolPriceStore>>, // 价格存储，有独立进程进行写入，为回测中的交易所模拟客户端提供价格信息
     grid: Option<Grid>,                         // 网格
     stats: Stats,                               // 统计数据，实时存储数据库
@@ -54,13 +53,12 @@ pub(crate) struct SpotGrid {
 }
 
 impl SpotGrid {
-    pub(crate) fn new(node: workflow::Node, params: Params) -> Result<Self> {
+    pub(crate) fn new(node: Node, params: Params) -> Result<Self> {
         Ok(SpotGrid {
             node,
             params,
             port: Port::default(),
             price_store: Arc::new(RwLock::new(SymbolPriceStore::default())),
-            context: None,
             grid: None,
             stats: Stats::default(),
             initialized: false,
@@ -106,9 +104,7 @@ impl SpotGrid {
         }
 
         // 初始化策略可操作的账户金额
-        // self.get_context()?
-        //     .assets()
-        //     .add_value(&pair_info.quote_asset, self.params.investment);
+        self.stats.initialize_quote_balance(self.params.investment);
 
         // 计算网格价格
         let grid_prices = calc_grid_prices(
@@ -151,19 +147,7 @@ impl SpotGrid {
     }
 }
 
-impl Setupable for SpotGrid {
-    fn setup_context(&mut self, context: Arc<WorkflowContext>) {
-        self.context = Some(context);
-    }
-
-    fn get_context(&self) -> Result<&Arc<WorkflowContext>> {
-        self.context
-            .as_ref()
-            .ok_or_else(|| anyhow!("context not setup"))
-    }
-}
-
-impl PortAccessor for SpotGrid {
+impl NodePort for SpotGrid {
     fn get_port(&self) -> &Port {
         &self.port
     }
@@ -190,6 +174,10 @@ impl NodeSymbolPrice for SpotGrid {
 }
 
 impl NodeInfo for SpotGrid {
+    fn node(&self) -> &Node {
+        &self.node
+    }
+
     fn node_id(&self) -> u32 {
         self.node.id
     }
@@ -200,10 +188,10 @@ impl NodeInfo for SpotGrid {
 }
 
 // 节点执行
-impl Executable for SpotGrid {
+impl NodeExecutable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
         // 等待其他节点
-        self.get_context()?.wait().await;
+        self.node().context()?.wait().await;
 
         // 获取输入
         let port = self.get_port();
@@ -347,10 +335,10 @@ impl Executable for SpotGrid {
     }
 }
 
-impl TryFrom<&workflow::Node> for SpotGrid {
+impl TryFrom<Node> for SpotGrid {
     type Error = anyhow::Error;
 
-    fn try_from(node: &workflow::Node) -> Result<Self> {
+    fn try_from(node: Node) -> Result<Self> {
         if node.properties.prop_type != "strategy.SpotGrid" {
             anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid prop_type");
         }
@@ -819,9 +807,9 @@ mod tests {
     fn test_try_from_node_to_spot_grid() -> Result<()> {
         let json_str = r#"{"id":4,"type":"交易策略/网格(现货)","pos":[367,125],"size":{"0":210,"1":310},"flags":{},"order":1,"mode":0,"inputs":[{"name":"交易所信息","type":"exchangeData","link":null},{"name":"最新成交价格","type":"tickerStream","link":null},{"name":"账户","type":"account","link":null},{"name":"回测","type":"backtest","link":null}],"properties":{"type":"strategy.SpotGrid","params":["arithmetic",1,1.1,8,1,"","","",true]}}"#;
 
-        let node: workflow::Node = serde_json::from_str(json_str)?;
+        let node: Node = serde_json::from_str(json_str)?;
 
-        let spot_grid = SpotGrid::try_from(&node)?;
+        let spot_grid = SpotGrid::try_from(node)?;
 
         assert_eq!(spot_grid.params.mode, Mode::Arithmetic);
         assert_eq!(spot_grid.params.lower_price, Decimal::try_from(1.0)?);

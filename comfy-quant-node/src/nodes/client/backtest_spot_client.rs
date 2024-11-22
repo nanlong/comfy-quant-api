@@ -1,14 +1,13 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Setupable, Slot},
-    workflow::{self, WorkflowContext},
+    node_core::{NodeExecutable, NodeInfo, NodePort, Port, Slot},
+    workflow::Node,
 };
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use bon::Builder;
 use comfy_quant_exchange::client::{
     spot_client::backtest_spot_client::BacktestSpotClient as Client,
     spot_client_kind::SpotClientKind,
 };
-use std::sync::Arc;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -21,16 +20,15 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BacktestSpotClient {
-    node: workflow::Node,
+    node: Node,
     params: Params,
     // outputs:
     //      0: SpotClient
     port: Port,
-    context: Option<Arc<WorkflowContext>>,
 }
 
 impl BacktestSpotClient {
-    pub(crate) fn try_new(node: workflow::Node, params: Params) -> Result<Self> {
+    pub(crate) fn try_new(node: Node, params: Params) -> Result<Self> {
         let mut port = Port::default();
 
         let client = Client::builder()
@@ -42,28 +40,11 @@ impl BacktestSpotClient {
 
         port.add_output(0, client_slot)?;
 
-        Ok(BacktestSpotClient {
-            node,
-            params,
-            port,
-            context: None,
-        })
+        Ok(BacktestSpotClient { node, params, port })
     }
 }
 
-impl Setupable for BacktestSpotClient {
-    fn setup_context(&mut self, context: Arc<WorkflowContext>) {
-        self.context = Some(context);
-    }
-
-    fn get_context(&self) -> Result<&Arc<WorkflowContext>> {
-        self.context
-            .as_ref()
-            .ok_or_else(|| anyhow!("context not setup"))
-    }
-}
-
-impl PortAccessor for BacktestSpotClient {
+impl NodePort for BacktestSpotClient {
     fn get_port(&self) -> &Port {
         &self.port
     }
@@ -73,18 +54,32 @@ impl PortAccessor for BacktestSpotClient {
     }
 }
 
-impl Executable for BacktestSpotClient {
+impl NodeInfo for BacktestSpotClient {
+    fn node(&self) -> &Node {
+        &self.node
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node.id
+    }
+
+    fn node_name(&self) -> &str {
+        &self.node.properties.prop_type
+    }
+}
+
+impl NodeExecutable for BacktestSpotClient {
     async fn execute(&mut self) -> Result<()> {
-        self.get_context()?.wait().await;
+        self.node().context()?.wait().await;
 
         Ok(())
     }
 }
 
-impl TryFrom<&workflow::Node> for BacktestSpotClient {
+impl TryFrom<Node> for BacktestSpotClient {
     type Error = anyhow::Error;
 
-    fn try_from(node: &workflow::Node) -> Result<Self> {
+    fn try_from(node: Node) -> Result<Self> {
         if node.properties.prop_type != "client.BacktestSpotClient" {
             anyhow::bail!(
                 "Try from workflow::Node to BacktestSpotClient failed: Invalid prop_type"
@@ -132,8 +127,8 @@ mod tests {
     fn test_try_from_node_to_mock_account() -> anyhow::Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
-        let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = BacktestSpotClient::try_from(&node)?;
+        let node: Node = serde_json::from_str(json_str)?;
+        let account = BacktestSpotClient::try_from(node)?;
 
         assert_eq!(
             account.params.assets,
@@ -148,8 +143,8 @@ mod tests {
     async fn test_mock_account_execute() -> anyhow::Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
-        let node: workflow::Node = serde_json::from_str(json_str)?;
-        let account = BacktestSpotClient::try_from(&node)?;
+        let node: Node = serde_json::from_str(json_str)?;
+        let account = BacktestSpotClient::try_from(node)?;
         let port = account.get_port();
 
         let client = port.get_output::<SpotClientKind>(0)?;

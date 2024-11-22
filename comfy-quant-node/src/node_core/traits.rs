@@ -1,5 +1,5 @@
 use super::stats::Stats;
-use crate::{node_core::Port, workflow::WorkflowContext};
+use crate::{node_core::Port, workflow::Node};
 use anyhow::Result;
 use comfy_quant_database::strategy_position::{self, StrategyPosition};
 use comfy_quant_exchange::client::{
@@ -8,26 +8,17 @@ use comfy_quant_exchange::client::{
 };
 use enum_dispatch::enum_dispatch;
 use rust_decimal::Decimal;
-use std::sync::Arc;
-
-/// 节点初始化
-#[enum_dispatch]
-pub trait Setupable {
-    fn setup_context(&mut self, context: Arc<WorkflowContext>);
-
-    fn get_context(&self) -> Result<&Arc<WorkflowContext>>;
-}
 
 // 节点执行
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
-pub trait Executable {
+pub trait NodeExecutable {
     async fn execute(&mut self) -> Result<()>;
 }
 
 // 节点插槽
 #[enum_dispatch]
-pub trait PortAccessor {
+pub trait NodePort {
     fn get_port(&self) -> &Port;
 
     fn get_port_mut(&mut self) -> &mut Port;
@@ -37,20 +28,20 @@ pub trait PortAccessor {
 #[enum_dispatch]
 pub trait Connectable {
     fn connection<U: Send + Sync + 'static>(
-        &self,                         // 当前节点
-        target: &mut dyn PortAccessor, // 目标节点
-        origin_slot: usize,            // 当前节点输出槽位
-        target_slot: usize,            // 目标节点输入槽位
+        &self,                     // 当前节点
+        target: &mut dyn NodePort, // 目标节点
+        origin_slot: usize,        // 当前节点输出槽位
+        target_slot: usize,        // 目标节点输入槽位
     ) -> Result<()>;
 }
 
 // 节点连接默认实现
-impl<T: PortAccessor> Connectable for T {
+impl<T: NodePort> Connectable for T {
     fn connection<U: Send + Sync + 'static>(
-        &self,                         // 当前节点
-        target: &mut dyn PortAccessor, // 目标节点
-        origin_slot: usize,            // 当前节点输出槽位
-        target_slot: usize,            // 目标节点输入槽位
+        &self,                     // 当前节点
+        target: &mut dyn NodePort, // 目标节点
+        origin_slot: usize,        // 当前节点输出槽位
+        target_slot: usize,        // 目标节点输入槽位
     ) -> Result<()> {
         let slot = self.get_port().get_output::<U>(origin_slot)?;
         target.get_port_mut().add_input(target_slot, slot)?;
@@ -84,6 +75,9 @@ pub trait NodeSymbolPrice {
 
 /// 节点名称接口
 pub trait NodeInfo {
+    // 获取节点
+    fn node(&self) -> &Node;
+
     // 节点id
     fn node_id(&self) -> u32;
 
@@ -93,7 +87,7 @@ pub trait NodeInfo {
 
 /// 策略统计信息接口
 /// 需要从context中获取到db
-pub trait StrategyStats: Setupable {
+pub trait NodeStatsInfo: NodeInfo {
     // 最大回撤
     fn max_drawdown(&self, start_timestamp: i64, end_timestamp: i64) -> Decimal;
 }
@@ -119,7 +113,7 @@ pub trait SpotTradeable {
 }
 
 /// 交易接口默认实现
-impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeInfo> SpotTradeable for T {
+impl<T: NodeInfo + NodeStats + NodeSymbolPrice> SpotTradeable for T {
     async fn market_buy(
         &mut self,
         client: &SpotClientKind,
@@ -143,8 +137,9 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeInfo> SpotTradeable for T 
         self.update_stats_with_order(&order)?;
 
         // 更新数据库
-        let cloned_db = self.get_context()?.cloned_db();
-        let workflow_id = self.get_context()?.workflow_id();
+        let context = self.node().context()?;
+        let cloned_db = context.cloned_db();
+        let workflow_id = context.workflow_id();
         let node_id = self
             .node_id()
             .try_into()
@@ -152,6 +147,7 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeInfo> SpotTradeable for T 
         let node_name = self.node_name();
         let stats = self.get_stats();
 
+        // 保存策略仓位信息
         let data = StrategyPosition::builder()
             .workflow_id(workflow_id)
             .node_id(node_id)
@@ -165,7 +161,6 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeInfo> SpotTradeable for T 
             .quote_asset_balance(stats.quote_asset_balance)
             .build();
 
-        // save to db
         strategy_position::create(&cloned_db, &data).await?;
 
         Ok(order)
@@ -194,8 +189,9 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeInfo> SpotTradeable for T 
         self.update_stats_with_order(&order)?;
 
         // 更新数据库
-        let cloned_db = self.get_context()?.cloned_db();
-        let workflow_id = self.get_context()?.workflow_id();
+        let context = self.node().context()?;
+        let cloned_db = context.cloned_db();
+        let workflow_id = context.workflow_id();
         let node_id = self
             .node_id()
             .try_into()
@@ -203,6 +199,7 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeInfo> SpotTradeable for T 
         let node_name = self.node_name();
         let stats = self.get_stats();
 
+        // 保存策略仓位信息
         let data = StrategyPosition::builder()
             .workflow_id(workflow_id)
             .node_id(node_id)
@@ -216,7 +213,6 @@ impl<T: Setupable + NodeStats + NodeSymbolPrice + NodeInfo> SpotTradeable for T 
             .quote_asset_balance(stats.quote_asset_balance)
             .build();
 
-        // save to db
         strategy_position::create(&cloned_db, &data).await?;
 
         Ok(order)

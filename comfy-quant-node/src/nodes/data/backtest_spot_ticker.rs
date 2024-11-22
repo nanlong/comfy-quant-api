@@ -1,10 +1,10 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Setupable, Slot, Tick},
+    node_core::{NodeExecutable, NodeInfo, NodePort, Port, Slot, Tick},
     node_io::{SpotPairInfo, TickStream},
     utils::add_utc_offset,
-    workflow::{self, WorkflowContext},
+    workflow::Node,
 };
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_database::kline;
@@ -35,14 +35,13 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BacktestSpotTicker {
-    node: workflow::Node,
+    node: Node,
     params: Params,
     port: Port,
-    context: Option<Arc<WorkflowContext>>,
 }
 
 impl BacktestSpotTicker {
-    pub(crate) fn try_new(node: workflow::Node, params: Params) -> Result<Self> {
+    pub(crate) fn try_new(node: Node, params: Params) -> Result<Self> {
         let mut port = Port::default();
 
         let pair_info = SpotPairInfo::builder()
@@ -57,12 +56,7 @@ impl BacktestSpotTicker {
         port.add_output(0, pair_info_slot)?;
         port.add_output(1, tick_stream_slot)?;
 
-        Ok(BacktestSpotTicker {
-            node,
-            params,
-            port,
-            context: None,
-        })
+        Ok(BacktestSpotTicker { node, params, port })
     }
 
     async fn output1(&self) -> Result<()> {
@@ -72,7 +66,7 @@ impl BacktestSpotTicker {
             format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
         let start_timestamp = self.params.start_datetime.timestamp();
         let end_timestamp = self.params.end_datetime.timestamp();
-        let db = self.get_context()?.cloned_db();
+        let db = self.node().context()?.cloned_db();
 
         // 等待数据同步完成，如果出错，重试3次
         'retry: for i in 0..3 {
@@ -128,19 +122,7 @@ impl BacktestSpotTicker {
     }
 }
 
-impl Setupable for BacktestSpotTicker {
-    fn setup_context(&mut self, context: Arc<WorkflowContext>) {
-        self.context = Some(context);
-    }
-
-    fn get_context(&self) -> Result<&Arc<WorkflowContext>> {
-        self.context
-            .as_ref()
-            .ok_or_else(|| anyhow!("context not setup"))
-    }
-}
-
-impl PortAccessor for BacktestSpotTicker {
+impl NodePort for BacktestSpotTicker {
     fn get_port(&self) -> &Port {
         &self.port
     }
@@ -150,20 +132,34 @@ impl PortAccessor for BacktestSpotTicker {
     }
 }
 
-impl Executable for BacktestSpotTicker {
+impl NodeInfo for BacktestSpotTicker {
+    fn node(&self) -> &Node {
+        &self.node
+    }
+
+    fn node_id(&self) -> u32 {
+        self.node.id
+    }
+
+    fn node_name(&self) -> &str {
+        &self.node.properties.prop_type
+    }
+}
+
+impl NodeExecutable for BacktestSpotTicker {
     async fn execute(&mut self) -> Result<()> {
         // 同步等待其他节点
-        self.get_context()?.wait().await;
+        self.node().context()?.wait().await;
 
         self.output1().await?;
         Ok(())
     }
 }
 
-impl TryFrom<&workflow::Node> for BacktestSpotTicker {
+impl TryFrom<Node> for BacktestSpotTicker {
     type Error = anyhow::Error;
 
-    fn try_from(node: &workflow::Node) -> Result<Self> {
+    fn try_from(node: Node) -> Result<Self> {
         if node.properties.prop_type != "data.BacktestSpotTicker" {
             anyhow::bail!(
                 "Try from workflow::Node to BacktestSpotTicker failed: Invalid prop_type"
@@ -202,7 +198,7 @@ impl TryFrom<&workflow::Node> for BacktestSpotTicker {
             .end_datetime(end_datetime)
             .build();
 
-        BacktestSpotTicker::try_new(node.clone(), params)
+        BacktestSpotTicker::try_new(node, params)
     }
 }
 
@@ -214,8 +210,8 @@ mod tests {
     fn test_try_from_node_to_backtest_spot_ticker() -> anyhow::Result<()> {
         let json_str = r#"{"id":1,"type":"数据/币安现货行情","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"data.BacktestSpotTicker","params":["BTC","USDT","2024-10-10 15:18:42","2024-10-10 16:18:42"]}}"#;
 
-        let node: workflow::Node = serde_json::from_str(json_str)?;
-        let backtest_spot_ticker = BacktestSpotTicker::try_from(&node)?;
+        let node: Node = serde_json::from_str(json_str)?;
+        let backtest_spot_ticker = BacktestSpotTicker::try_from(node)?;
 
         assert_eq!(backtest_spot_ticker.params.base_asset, "BTC");
         assert_eq!(backtest_spot_ticker.params.quote_asset, "USDT");

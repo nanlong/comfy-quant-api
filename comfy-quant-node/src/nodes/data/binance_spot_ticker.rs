@@ -1,7 +1,7 @@
 use crate::{
-    node_core::{Executable, Port, PortAccessor, Slot},
+    node_core::{NodeExecutable, NodePort, Port, Slot},
     node_io::SpotPairInfo,
-    workflow,
+    workflow::Node,
 };
 use anyhow::Result;
 use bon::Builder;
@@ -20,13 +20,13 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BinanceSpotTicker {
-    node: workflow::Node,
+    node: Node,
     params: Params,
     port: Port,
 }
 
 impl BinanceSpotTicker {
-    pub(crate) fn try_new(node: workflow::Node, params: Params) -> Result<Self> {
+    pub(crate) fn try_new(node: Node, params: Params) -> Result<Self> {
         let mut port = Port::default();
 
         let pair_info = SpotPairInfo::builder()
@@ -73,7 +73,7 @@ impl BinanceSpotTicker {
     }
 }
 
-impl PortAccessor for BinanceSpotTicker {
+impl NodePort for BinanceSpotTicker {
     fn get_port(&self) -> &Port {
         &self.port
     }
@@ -83,17 +83,17 @@ impl PortAccessor for BinanceSpotTicker {
     }
 }
 
-impl Executable for BinanceSpotTicker {
+impl NodeExecutable for BinanceSpotTicker {
     async fn execute(&mut self) -> Result<()> {
         self.output1().await?;
         Ok(())
     }
 }
 
-impl TryFrom<workflow::Node> for BinanceSpotTicker {
+impl TryFrom<&Node> for BinanceSpotTicker {
     type Error = anyhow::Error;
 
-    fn try_from(node: workflow::Node) -> Result<Self> {
+    fn try_from(node: &Node) -> Result<Self> {
         if node.properties.prop_type != "data.BinanceSpotTicker" {
             anyhow::bail!("Try from workflow::Node to BinanceSpotTicker failed: Invalid prop_type");
         }
@@ -127,8 +127,8 @@ mod tests {
     fn test_try_from_node_to_binance_spot_ticker() -> anyhow::Result<()> {
         let json_str = r#"{"id":1,"type":"数据/币安现货行情","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"data.BinanceSpotTicker","params":["BTC","USDT"]}}"#;
 
-        let node: workflow::Node = serde_json::from_str(json_str)?;
-        let binance_spot_ticker = BinanceSpotTicker::try_from(node)?;
+        let node: Node = serde_json::from_str(json_str)?;
+        let binance_spot_ticker = BinanceSpotTicker::try_from(&node)?;
 
         assert_eq!(binance_spot_ticker.params.base_asset, "BTC");
         assert_eq!(binance_spot_ticker.params.quote_asset, "USDT");

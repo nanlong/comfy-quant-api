@@ -1,4 +1,4 @@
-use comfy_quant_node::{node_core::Executable, workflow::Workflow};
+use comfy_quant_node::workflow::Workflow;
 use sqlx::postgres::PgPoolOptions;
 
 #[tokio::main]
