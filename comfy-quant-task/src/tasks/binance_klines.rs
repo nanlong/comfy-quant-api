@@ -98,7 +98,7 @@ impl Executable for BinanceKlinesTask {
                 yield Ok(TaskStatus::Finished);
                 return;
             } else {
-                let client = BinanceKline::new();
+                let client = BinanceKline::default();
 
                 let mut klines_stream = client.klines_stream(
                     &params.market,

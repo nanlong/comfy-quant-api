@@ -5,7 +5,7 @@ use futures::StreamExt;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let client = BinanceKline::new();
+    let client = BinanceKline::default();
 
     let mut klines_stream = client.klines_stream("spot", "BTCUSDT", "12h", 1502928000, 1503705600);
 

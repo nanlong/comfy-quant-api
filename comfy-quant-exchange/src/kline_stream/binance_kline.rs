@@ -2,10 +2,14 @@ use super::utils::calc_time_range_group;
 use crate::exchange::binance::BinanceClient;
 use anyhow::Result;
 use async_stream::stream;
-use binance::model::{KlineSummaries, KlineSummary};
+use binance::{
+    config::Config,
+    model::{KlineSummaries, KlineSummary},
+};
+use bon::bon;
 use futures::Stream;
 use std::{str::FromStr, sync::Arc};
-use tokio::sync::watch;
+use tokio_util::sync::CancellationToken;
 
 const KLINE_LIMIT: u16 = 1000;
 
@@ -29,26 +33,24 @@ impl FromStr for Market {
 
 #[derive(Debug)]
 pub struct BinanceKline {
-    client: BinanceClient,
-
-    shutdown_tx: watch::Sender<bool>,
+    client: Arc<BinanceClient>,
+    token: CancellationToken,
 }
 
-impl Default for BinanceKline {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
+#[bon]
 impl BinanceKline {
-    pub fn new() -> Self {
-        let client = BinanceClient::builder().build();
-        let (shutdown_tx, _shutdown_rx) = watch::channel(false);
+    #[builder]
+    pub fn new(config: Option<Config>) -> Self {
+        // 访问公共接口，不需要api_key和secret_key
+        let client = if let Some(config) = config {
+            Arc::new(BinanceClient::builder().config(config).build())
+        } else {
+            Arc::new(BinanceClient::builder().build())
+        };
 
-        BinanceKline {
-            client,
-            shutdown_tx,
-        }
+        let token = CancellationToken::new();
+
+        BinanceKline { client, token }
     }
 
     // 获取K线流
@@ -63,13 +65,13 @@ impl BinanceKline {
         let market = market.into();
         let symbol = symbol.into();
         let interval = interval.into();
-        let client = self.client.clone();
+        let client = Arc::clone(&self.client);
         let (tx, rx) = flume::bounded(1);
         let (error_tx, error_rx) = flume::bounded(1);
         let semaphore = Arc::new(async_lock::Semaphore::new(1));
         let time_range_groups = calc_time_range_group(&interval, start_time, end_time, KLINE_LIMIT);
-        let task_shutdown_rx = self.shutdown_tx.subscribe();
-        let stream_shutdown_rx = self.shutdown_tx.subscribe();
+        let cloned_token1 = self.token.clone();
+        let cloned_token2 = self.token.clone();
 
         // 使用 tokio::spawn 会有问题，所以使用 tokio::task::spawn_blocking
         // 报错信息: Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context.
@@ -79,7 +81,7 @@ impl BinanceKline {
                 let market = market.parse::<Market>()?;
 
                 for (start_time, end_time) in time_range_groups {
-                    if *task_shutdown_rx.borrow() {
+                    if cloned_token1.is_cancelled() {
                         return Ok(());
                     }
 
@@ -101,7 +103,7 @@ impl BinanceKline {
                     };
 
                     for kline in klines {
-                        if *task_shutdown_rx.borrow() {
+                        if cloned_token1.is_cancelled() {
                             return Ok(());
                         }
 
@@ -122,7 +124,7 @@ impl BinanceKline {
 
         let kline_stream = stream! {
             loop {
-                if *stream_shutdown_rx.borrow() {
+                if cloned_token2.is_cancelled() {
                     break;
                 }
 
@@ -143,8 +145,14 @@ impl BinanceKline {
     }
 }
 
+impl Default for BinanceKline {
+    fn default() -> Self {
+        BinanceKline::builder().build()
+    }
+}
+
 impl Drop for BinanceKline {
     fn drop(&mut self) {
-        let _ = self.shutdown_tx.send(true);
+        self.token.cancel();
     }
 }
