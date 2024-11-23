@@ -1,6 +1,6 @@
 use super::base::{
     AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType, SymbolInformation,
-    SymbolPrice,
+    SymbolPrice, BACKTEST_EXCHANGE_NAME,
 };
 use crate::client::spot_client_kind::SpotClientExecutable;
 use anyhow::{anyhow, Result};
@@ -143,8 +143,8 @@ impl BacktestSpotClient {
 }
 
 impl SpotClientExecutable for BacktestSpotClient {
-    fn platform_name(&self) -> String {
-        "Backtest".to_string()
+    fn platform_name(&self) -> &str {
+        BACKTEST_EXCHANGE_NAME
     }
 
     fn symbol(&self, base_asset: &str, quote_asset: &str) -> String {

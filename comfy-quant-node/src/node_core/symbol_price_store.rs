@@ -27,8 +27,8 @@ impl DerefMut for SymbolPriceStore {
 }
 
 impl SymbolPriceStore {
-    pub fn price(&self, symbol: &str) -> Option<&Decimal> {
-        self.get(symbol)
+    pub fn price(&self, symbol: impl AsRef<str>) -> Option<&Decimal> {
+        self.get(symbol.as_ref())
     }
 }
 

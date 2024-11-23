@@ -1,7 +1,7 @@
 use crate::{
     node_core::{
         NodeExecutable, NodeInfo, NodePort, NodeStats, NodeSymbolPrice, Port, SpotClientService,
-        SpotTradeable, Stats, SymbolPriceStore,
+        SpotStats, SpotTradeable, SymbolPriceStore,
     },
     node_io::{SpotPairInfo, TickStream},
     workflow::Node,
@@ -48,7 +48,7 @@ pub(crate) struct SpotGrid {
     port: Port,                                 // 输入输出
     price_store: Arc<RwLock<SymbolPriceStore>>, // 价格存储，有独立进程进行写入，为回测中的交易所模拟客户端提供价格信息
     grid: Option<Grid>,                         // 网格
-    stats: Stats,                               // 统计数据，实时存储数据库
+    stats: SpotStats,                           // 统计数据，实时存储数据库
     initialized: bool,                          // 是否已经初始化
 }
 
@@ -60,7 +60,7 @@ impl SpotGrid {
             port: Port::default(),
             price_store: Arc::new(RwLock::new(SymbolPriceStore::default())),
             grid: None,
-            stats: Stats::default(),
+            stats: SpotStats::default(),
             initialized: false,
         })
     }
@@ -69,15 +69,18 @@ impl SpotGrid {
         &mut self,
         pair_info: &SpotPairInfo,
         client: &SpotClientKind,
-        current_price: Decimal,
+        tick_stream: &TickStream,
     ) -> Result<()> {
+        // 保存最新的价格
+        tick_stream.save_price(self.price_store.clone()).await?;
+
         // 如果已经初始化，则跳过
         if self.initialized {
             return Ok(());
         }
 
         // 创建客户端服务
-        let mut service = SpotClientService::builder()
+        let mut spot_client_service = SpotClientService::builder()
             .client(client)
             .retry_max_retries(3)
             .retry_wait_secs(3)
@@ -85,26 +88,38 @@ impl SpotGrid {
             .build();
 
         // 获取账户信息
-        let account = service.get_account().await?;
+        let account = spot_client_service.get_account().await?;
 
         // 获取账户余额
-        let balance = service.get_balance(&pair_info.quote_asset).await?;
+        let balance = spot_client_service
+            .get_balance(&pair_info.quote_asset)
+            .await?;
 
         // 获取交易对信息
-        let symbol_info = service
+        let symbol_info = spot_client_service
             .get_symbol_info(&pair_info.base_asset, &pair_info.quote_asset)
             .await?;
 
         // 获取平台名称
-        let platform_name = service.platform_name().await?;
+        let platform_name = spot_client_service.platform_name().await?;
 
         // 检查账户余额是否充足
         if balance.free.parse::<Decimal>()? < self.params.investment {
             anyhow::bail!("Insufficient free balance");
         }
 
-        // 初始化策略可操作的账户金额
-        self.stats.initialize_quote_balance(self.params.investment);
+        // 初始化统计信息
+        let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
+        let stats_key = client.stats_key(&symbol);
+        let stats = self.stats.get_or_insert(&stats_key);
+
+        stats.initialize(
+            &platform_name,
+            &symbol,
+            &pair_info.base_asset,
+            &pair_info.quote_asset,
+        );
+        stats.initialize_quote_balance(self.params.investment);
 
         // 计算网格价格
         let grid_prices = calc_grid_prices(
@@ -115,12 +130,15 @@ impl SpotGrid {
             symbol_info.quote_asset_precision,
         );
 
+        // 获取当前价格
+        let tick = tick_stream.subscribe().recv_async().await?;
+
         // 创建网格
         let grid = Grid::builder()
             .platform_name(platform_name)
             .investment(self.params.investment)
             .grid_prices(grid_prices)
-            .current_price(current_price)
+            .current_price(tick.price)
             .base_asset_precision(symbol_info.base_asset_precision)
             .quote_asset_precision(symbol_info.quote_asset_precision)
             .commission_rate(account.taker_commission_rate)
@@ -158,18 +176,22 @@ impl NodePort for SpotGrid {
 }
 
 impl NodeStats for SpotGrid {
-    fn get_stats(&self) -> &Stats {
-        &self.stats
+    fn get_spot_stats(&self) -> Option<&SpotStats> {
+        Some(&self.stats)
     }
 
-    fn get_stats_mut(&mut self) -> &mut Stats {
-        &mut self.stats
+    fn get_spot_stats_mut(&mut self) -> Option<&mut SpotStats> {
+        Some(&mut self.stats)
     }
 }
 
 impl NodeSymbolPrice for SpotGrid {
-    async fn get_price(&self, symbol: &str) -> Option<Decimal> {
-        self.price_store.read().await.price(symbol).cloned()
+    async fn get_price(&self, symbol: impl AsRef<str>) -> Option<Decimal> {
+        self.price_store
+            .read()
+            .await
+            .price(symbol.as_ref())
+            .cloned()
     }
 }
 
@@ -198,24 +220,17 @@ impl NodeExecutable for SpotGrid {
         let pair_info = port.get_input::<SpotPairInfo>(0)?;
         let client = port.get_input::<SpotClientKind>(1)?;
         let tick_stream = port.get_input::<TickStream>(2)?;
+        let cloned_params = self.params.clone();
+        let rx = tick_stream.subscribe();
 
-        // 保存最新的价格
-        tick_stream.save_price(self.price_store.clone()).await?;
-
-        // 获取当前价格
-        let tick_rx = tick_stream.subscribe();
-        let current_price = tick_rx.recv_async().await?.price;
-
-        self.initialize(&pair_info, &client, current_price).await?;
-
-        let params = self.params.clone();
+        self.initialize(&pair_info, &client, &tick_stream).await?;
 
         self.get_grid()?.start();
 
-        while let Ok(tick) = tick_rx.recv_async().await {
+        while let Ok(tick) = rx.recv_async().await {
             let Some(signal) = self
                 .get_grid_mut()?
-                .evaluate_with_price(&params, tick.price)
+                .evaluate_with_price(&cloned_params, tick.price)
             else {
                 continue;
             };

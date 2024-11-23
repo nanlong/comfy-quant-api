@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS strategy_spot_stats (
     node_id SMALLINT NOT NULL,
     node_name VARCHAR(20) NOT NULL,
     exchange VARCHAR(20) NOT NULL,
-    market VARCHAR(20) NOT NULL,
     symbol VARCHAR(20) NOT NULL,
     base_asset VARCHAR(20) NOT NULL,
     quote_asset VARCHAR(20) NOT NULL,
@@ -31,8 +30,8 @@ CREATE TABLE IF NOT EXISTS strategy_spot_stats (
 );
 
 -- 创建索引（缩短索引名称）
-CREATE INDEX IF NOT EXISTS idx_strategy_spot_stats_lookup
-ON strategy_spot_stats (workflow_id, node_id, node_name, exchange, market, symbol, base_asset, quote_asset);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_strategy_spot_stats_unique
+ON strategy_spot_stats (workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset);
 
 -- 添加表注释
 COMMENT ON TABLE strategy_spot_stats IS '策略统计信息';
@@ -43,7 +42,6 @@ COMMENT ON COLUMN strategy_spot_stats.workflow_id IS '工作流ID';
 COMMENT ON COLUMN strategy_spot_stats.node_id IS '策略节点ID';
 COMMENT ON COLUMN strategy_spot_stats.node_name IS '策略节点名称';
 COMMENT ON COLUMN strategy_spot_stats.exchange IS '交易所';
-COMMENT ON COLUMN strategy_spot_stats.market IS '市场';
 COMMENT ON COLUMN strategy_spot_stats.symbol IS '交易对';
 COMMENT ON COLUMN strategy_spot_stats.base_asset IS '基础资产';
 COMMENT ON COLUMN strategy_spot_stats.quote_asset IS '计价资产';

@@ -11,7 +11,6 @@ pub struct StrategySpotPosition {
     pub node_id: i16,                 // 策略节点ID
     pub node_name: String,            // 策略节点名称
     pub exchange: String,             // 交易所
-    pub market: String,               // 市场
     pub symbol: String,               // 交易对
     pub base_asset: String,           // 基础资产
     pub quote_asset: String,          // 计价资产
@@ -28,7 +27,6 @@ impl StrategySpotPosition {
         node_id: i16,
         node_name: String,
         exchange: String,
-        market: String,
         symbol: String,
         base_asset: String,
         quote_asset: String,
@@ -40,7 +38,6 @@ impl StrategySpotPosition {
             node_id,
             node_name,
             exchange,
-            market,
             symbol,
             base_asset,
             quote_asset,
@@ -55,15 +52,14 @@ pub async fn create(db: &PgPool, data: &StrategySpotPosition) -> Result<Strategy
     let strategy_spot_position = sqlx::query_as!(
         StrategySpotPosition,
         r#"
-        INSERT INTO strategy_spot_positions (workflow_id, node_id, node_name, exchange, market, symbol, base_asset, quote_asset, base_asset_balance, quote_asset_balance, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        INSERT INTO strategy_spot_positions (workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset, base_asset_balance, quote_asset_balance, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
         RETURNING *
         "#,
         data.workflow_id,
         data.node_id,
         data.node_name,
         data.exchange,
-        data.market,
         data.symbol,
         data.base_asset,
         data.quote_asset,
@@ -86,7 +82,6 @@ mod tests {
             .node_id(1)
             .node_name("SpotGrid")
             .exchange("Binance")
-            .market("spot")
             .symbol("BTCUSDT")
             .base_asset("BTC")
             .quote_asset("USDT")
@@ -107,7 +102,6 @@ mod tests {
         assert_eq!(strategy_spot_position.node_id, 1);
         assert_eq!(strategy_spot_position.node_name, "SpotGrid");
         assert_eq!(strategy_spot_position.exchange, "Binance");
-        assert_eq!(strategy_spot_position.market, "spot");
         assert_eq!(strategy_spot_position.symbol, "BTCUSDT");
         assert_eq!(strategy_spot_position.base_asset, "BTC");
         assert_eq!(strategy_spot_position.quote_asset, "USDT");

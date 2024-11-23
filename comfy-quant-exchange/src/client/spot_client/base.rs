@@ -7,9 +7,10 @@ use binance::model::{
 use bon::Builder;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use rust_decimal_macros::dec;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
-const BINANCE_EXCHANGE_NAME: &str = "Binance";
+pub const BACKTEST_EXCHANGE_NAME: &str = "Backtest";
+pub const BINANCE_EXCHANGE_NAME: &str = "Binance";
 
 #[derive(Builder)]
 #[builder(on(String, into))]
@@ -195,6 +196,12 @@ impl From<String> for Symbol {
 impl From<&str> for Symbol {
     fn from(value: &str) -> Self {
         Symbol::new(value)
+    }
+}
+
+impl fmt::Display for Symbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

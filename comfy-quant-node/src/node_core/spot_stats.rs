@@ -1,12 +1,56 @@
 use anyhow::Result;
+use comfy_quant_database::{
+    strategy_spot_position::{self, StrategySpotPosition},
+    strategy_spot_stats::{self, SpotStatsUniqueKey, StrategySpotStats},
+};
 use comfy_quant_exchange::client::spot_client::base::{Order, OrderSide};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use sqlx::PgPool;
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+};
+
+#[derive(Debug, Default)]
+pub struct SpotStats {
+    inner: HashMap<String, SpotStatsInner>,
+}
+
+impl SpotStats {
+    pub fn new() -> Self {
+        SpotStats {
+            inner: HashMap::new(),
+        }
+    }
+
+    pub fn get_or_insert(&mut self, key: &str) -> &mut SpotStatsInner {
+        self.inner.entry(key.to_string()).or_default()
+    }
+}
+
+impl Deref for SpotStats {
+    type Target = HashMap<String, SpotStatsInner>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for SpotStats {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
 
 /// 节点统计数据
 #[derive(Debug, Default)]
 #[allow(unused)]
-pub struct Stats {
+pub struct SpotStatsInner {
+    pub exchange: String,
+    pub symbol: String,
+    pub base_asset: String,
+    pub quote_asset: String,
     pub initial_base_balance: Decimal,   // 初始化base资产余额
     pub initial_quote_balance: Decimal,  // 初始化quote资产余额
     pub maker_commission_rate: Decimal,  // maker手续费率
@@ -28,7 +72,20 @@ pub struct Stats {
 }
 
 #[allow(unused)]
-impl Stats {
+impl SpotStatsInner {
+    pub fn initialize(
+        &mut self,
+        exchange: impl Into<String>,
+        symbol: impl Into<String>,
+        base_asset: impl Into<String>,
+        quote_asset: impl Into<String>,
+    ) {
+        self.exchange = exchange.into();
+        self.symbol = symbol.into();
+        self.base_asset = base_asset.into();
+        self.quote_asset = quote_asset.into();
+    }
+
     pub fn initialize_base_balance(&mut self, base_asset_balance: Decimal) {
         self.initial_base_balance = base_asset_balance;
     }
@@ -97,5 +154,65 @@ impl Stats {
         let cost = self.base_asset_balance * self.avg_price;
         let maybe_sell = self.base_asset_balance * price * (dec!(1) - self.maker_commission_rate);
         maybe_sell - cost
+    }
+
+    // 保存策略持仓
+    pub async fn save_strategy_spot_position(
+        &self,
+        db: &PgPool,
+        params: &SpotStatsUniqueKey<'_>,
+    ) -> Result<()> {
+        let data = StrategySpotPosition::builder()
+            .workflow_id(params.workflow_id)
+            .node_id(params.node_id)
+            .node_name(params.node_name)
+            .exchange(params.exchange)
+            .symbol(params.symbol)
+            .base_asset(params.base_asset)
+            .quote_asset(params.quote_asset)
+            .base_asset_balance(self.base_asset_balance)
+            .quote_asset_balance(self.quote_asset_balance)
+            .build();
+
+        strategy_spot_position::create(db, &data).await?;
+
+        Ok(())
+    }
+
+    // 保存策略统计数据
+    pub async fn save_strategy_spot_stats(
+        &self,
+        db: &PgPool,
+        params: &SpotStatsUniqueKey<'_>,
+    ) -> Result<()> {
+        let data = StrategySpotStats::builder()
+            .workflow_id(params.workflow_id)
+            .node_id(params.node_id)
+            .node_name(params.node_name)
+            .exchange(params.exchange)
+            .symbol(params.symbol)
+            .base_asset(params.base_asset)
+            .quote_asset(params.quote_asset)
+            .initial_base_balance(self.initial_base_balance)
+            .initial_quote_balance(self.initial_quote_balance)
+            .maker_commission_rate(self.maker_commission_rate)
+            .taker_commission_rate(self.taker_commission_rate)
+            .base_asset_balance(self.base_asset_balance)
+            .quote_asset_balance(self.quote_asset_balance)
+            .avg_price(self.avg_price)
+            .total_trades(self.total_trades as i64)
+            .buy_trades(self.buy_trades as i64)
+            .sell_trades(self.sell_trades as i64)
+            .total_base_volume(self.total_base_volume)
+            .total_quote_volume(self.total_quote_volume)
+            .total_base_commission(self.total_base_commission)
+            .total_quote_commission(self.total_quote_commission)
+            .realized_pnl(self.realized_pnl)
+            .win_trades(self.win_trades as i64)
+            .build();
+
+        strategy_spot_stats::create_or_update(db, &data).await?;
+
+        Ok(())
     }
 }
