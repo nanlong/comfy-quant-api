@@ -47,20 +47,28 @@ pub(crate) struct SpotGrid {
     params: Params,                             // 前端配置
     port: Port,                                 // 输入输出
     price_store: Arc<RwLock<SymbolPriceStore>>, // 价格存储，有独立进程进行写入，为回测中的交易所模拟客户端提供价格信息
-    grid: Option<Grid>,                         // 网格
     stats: SpotStats,                           // 统计数据，实时存储数据库
+    grid: Option<Grid>,                         // 网格
     initialized: bool,                          // 是否已经初始化
 }
 
 impl SpotGrid {
     pub(crate) fn new(node: Node, params: Params) -> Result<Self> {
+        let cloned_db = node.context()?.cloned_db();
+        let workflow_id = node.context()?.workflow_id();
+        let node_id = node.node_id();
+        let node_name = node.node_name();
+        let port = Port::default();
+        let price_store = Arc::new(RwLock::new(SymbolPriceStore::default()));
+        let stats = SpotStats::new(cloned_db, workflow_id, node_id, node_name);
+
         Ok(SpotGrid {
             node,
             params,
-            port: Port::default(),
-            price_store: Arc::new(RwLock::new(SymbolPriceStore::default())),
+            port,
+            price_store,
+            stats,
             grid: None,
-            stats: SpotStats::default(),
             initialized: false,
         })
     }
@@ -111,15 +119,18 @@ impl SpotGrid {
         // 初始化统计信息
         let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
         let stats_key = client.stats_key(&symbol);
-        let stats = self.stats.get_or_insert(&stats_key);
 
-        stats.initialize(
+        self.stats.initialize(
+            &stats_key,
             &platform_name,
             &symbol,
             &pair_info.base_asset,
             &pair_info.quote_asset,
         );
-        stats.initialize_quote_balance(self.params.investment);
+
+        self.stats
+            .initial_quote_balance(&stats_key, &self.params.investment)
+            .await?;
 
         // 计算网格价格
         let grid_prices = calc_grid_prices(
@@ -200,12 +211,12 @@ impl NodeInfo for SpotGrid {
         &self.node
     }
 
-    fn node_id(&self) -> u32 {
-        self.node.id
+    fn node_id(&self) -> i16 {
+        self.node.node_id()
     }
 
     fn node_name(&self) -> &str {
-        &self.node.properties.prop_type
+        self.node.node_name()
     }
 }
 
@@ -816,13 +827,18 @@ fn calculate_minimum_investment(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::workflow::WorkflowContext;
+    use async_lock::Barrier;
     use comfy_quant_exchange::client::spot_client::base::{OrderStatus, OrderType};
+    use sqlx::PgPool;
 
-    #[test]
-    fn test_try_from_node_to_spot_grid() -> Result<()> {
+    #[sqlx::test]
+    fn test_try_from_node_to_spot_grid(db: PgPool) -> Result<()> {
         let json_str = r#"{"id":4,"type":"交易策略/网格(现货)","pos":[367,125],"size":{"0":210,"1":310},"flags":{},"order":1,"mode":0,"inputs":[{"name":"交易所信息","type":"exchangeData","link":null},{"name":"最新成交价格","type":"tickerStream","link":null},{"name":"账户","type":"account","link":null},{"name":"回测","type":"backtest","link":null}],"properties":{"type":"strategy.SpotGrid","params":["arithmetic",1,1.1,8,1,"","","",true]}}"#;
 
-        let node: Node = serde_json::from_str(json_str)?;
+        let mut node: Node = serde_json::from_str(json_str)?;
+        let workflow_context = Arc::new(WorkflowContext::new(db, Barrier::new(0)));
+        node.context = Some(workflow_context);
 
         let spot_grid = SpotGrid::try_from(node)?;
 

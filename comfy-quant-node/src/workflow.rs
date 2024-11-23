@@ -179,6 +179,14 @@ impl Node {
             .as_ref()
             .ok_or_else(|| anyhow!("Context not set"))
     }
+
+    pub(crate) fn node_id(&self) -> i16 {
+        self.id as i16
+    }
+
+    pub(crate) fn node_name(&self) -> &str {
+        &self.properties.prop_type
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -215,7 +223,7 @@ pub struct WorkflowContext {
 
 #[allow(unused)]
 impl WorkflowContext {
-    fn new(db: PgPool, barrier: Barrier) -> Self {
+    pub(crate) fn new(db: PgPool, barrier: Barrier) -> Self {
         let id = generate_workflow_id();
         let db = Arc::new(db);
 

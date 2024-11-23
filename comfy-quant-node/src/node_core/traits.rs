@@ -1,7 +1,6 @@
 use super::spot_stats::{SpotStats, SpotStatsInner};
 use crate::{node_core::Port, workflow::Node};
 use anyhow::Result;
-use comfy_quant_database::strategy_spot_stats::SpotStatsUniqueKey;
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, SymbolPrice},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
@@ -73,12 +72,16 @@ pub trait NodeStats {
             .ok_or_else(|| anyhow::anyhow!("Stats not found for key: {}", key.as_ref()))
     }
 
-    fn update_spot_stats_with_order(&mut self, key: impl AsRef<str>, order: &Order) -> Result<()> {
+    async fn update_spot_stats_with_order(
+        &mut self,
+        key: impl AsRef<str>,
+        order: &Order,
+    ) -> Result<()> {
         let stats = self
             .get_spot_stats_mut()
             .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?;
 
-        stats.get_or_insert(key.as_ref()).update_with_order(order)?;
+        stats.update_with_order(key.as_ref(), order).await?;
 
         Ok(())
     }
@@ -96,7 +99,7 @@ pub trait NodeInfo {
     fn node(&self) -> &Node;
 
     // 节点id
-    fn node_id(&self) -> u32;
+    fn node_id(&self) -> i16;
 
     // 节点名称
     fn node_name(&self) -> &str;
@@ -130,7 +133,7 @@ pub trait SpotTradeable {
 }
 
 /// 交易接口默认实现
-impl<T: NodeInfo + NodeStats + NodeSymbolPrice> SpotTradeable for T {
+impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
     async fn market_buy(
         &mut self,
         client: &SpotClientKind,
@@ -152,32 +155,8 @@ impl<T: NodeInfo + NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
 
         // 更新统计信息
-        self.update_spot_stats_with_order(&stats_key, &order)?;
-
-        let context = self.node().context()?;
-        let cloned_db = context.cloned_db();
-        let workflow_id = context.workflow_id();
-        let node_id = self.node_id() as i16;
-        let node_name = self.node_name();
-        let exchange = client.platform_name();
-        let stats = self.get_spot_stats_inner(&stats_key)?;
-        let params = SpotStatsUniqueKey::builder()
-            .workflow_id(workflow_id)
-            .node_id(node_id)
-            .node_name(node_name)
-            .exchange(exchange)
-            .symbol(&symbol)
-            .base_asset(base_asset)
-            .quote_asset(quote_asset)
-            .build();
-
-        // 保存策略仓位信息到数据库
-        stats
-            .save_strategy_spot_position(&cloned_db, &params)
+        self.update_spot_stats_with_order(&stats_key, &order)
             .await?;
-
-        // 保存统计信息到数据库
-        stats.save_strategy_spot_stats(&cloned_db, &params).await?;
 
         Ok(order)
     }
@@ -203,32 +182,8 @@ impl<T: NodeInfo + NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let order = client.market_sell(base_asset, quote_asset, qty).await?;
 
         // 更新统计信息
-        self.update_spot_stats_with_order(&stats_key, &order)?;
-
-        let context = self.node().context()?;
-        let cloned_db = context.cloned_db();
-        let workflow_id = context.workflow_id();
-        let node_id = self.node_id() as i16;
-        let node_name = self.node_name();
-        let exchange = client.platform_name();
-        let stats = self.get_spot_stats_inner(&stats_key)?;
-        let params = SpotStatsUniqueKey::builder()
-            .workflow_id(workflow_id)
-            .node_id(node_id)
-            .node_name(node_name)
-            .exchange(exchange)
-            .symbol(&symbol)
-            .base_asset(base_asset)
-            .quote_asset(quote_asset)
-            .build();
-
-        // 保存策略仓位信息到数据库
-        stats
-            .save_strategy_spot_position(&cloned_db, &params)
+        self.update_spot_stats_with_order(&stats_key, &order)
             .await?;
-
-        // 保存统计信息到数据库
-        stats.save_strategy_spot_stats(&cloned_db, &params).await?;
 
         Ok(order)
     }

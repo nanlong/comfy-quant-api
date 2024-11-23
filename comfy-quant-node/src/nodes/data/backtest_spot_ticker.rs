@@ -137,12 +137,12 @@ impl NodeInfo for BacktestSpotTicker {
         &self.node
     }
 
-    fn node_id(&self) -> u32 {
-        self.node.id
+    fn node_id(&self) -> i16 {
+        self.node.node_id()
     }
 
     fn node_name(&self) -> &str {
-        &self.node.properties.prop_type
+        self.node.node_name()
     }
 }
 

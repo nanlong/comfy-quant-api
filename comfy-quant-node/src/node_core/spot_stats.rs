@@ -10,22 +10,92 @@ use sqlx::PgPool;
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
+    sync::Arc,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SpotStats {
-    inner: HashMap<String, SpotStatsInner>,
+    db: Arc<PgPool>,
+    workflow_id: String,
+    node_id: i16,
+    node_name: String,
+    data: HashMap<String, SpotStatsInner>,
 }
 
 impl SpotStats {
-    pub fn new() -> Self {
+    pub fn new(
+        db: Arc<PgPool>,
+        workflow_id: impl Into<String>,
+        node_id: i16,
+        node_name: impl Into<String>,
+    ) -> Self {
         SpotStats {
-            inner: HashMap::new(),
+            db,
+            workflow_id: workflow_id.into(),
+            node_id,
+            node_name: node_name.into(),
+            data: HashMap::new(),
         }
     }
 
     pub fn get_or_insert(&mut self, key: &str) -> &mut SpotStatsInner {
-        self.inner.entry(key.to_string()).or_default()
+        self.data.entry(key.to_string()).or_default()
+    }
+
+    pub fn initialize(
+        &mut self,
+        key: &str,
+        exchange: &str,
+        symbol: &str,
+        base_asset: &str,
+        quote_asset: &str,
+    ) {
+        self.get_or_insert(key)
+            .initialize(exchange, symbol, base_asset, quote_asset);
+    }
+
+    pub async fn initialize_base_balance(
+        &mut self,
+        key: &str,
+        base_balance: &Decimal,
+    ) -> Result<()> {
+        let db = self.db.clone();
+        let workflow_id = self.workflow_id.clone();
+        let node_id = self.node_id;
+        let node_name = self.node_name.clone();
+
+        self.get_or_insert(key)
+            .initialize_base_balance(&db, &workflow_id, node_id, &node_name, base_balance)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn initial_quote_balance(
+        &mut self,
+        key: &str,
+        quote_balance: &Decimal,
+    ) -> Result<()> {
+        let db = self.db.clone();
+        let workflow_id = self.workflow_id.clone();
+        let node_id = self.node_id;
+        let node_name = self.node_name.clone();
+
+        self.get_or_insert(key)
+            .initialize_quote_balance(&db, &workflow_id, node_id, &node_name, quote_balance)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn update_with_order(&mut self, key: &str, order: &Order) -> Result<()> {
+        let db = self.db.clone();
+        let workflow_id = self.workflow_id.clone();
+        let node_id = self.node_id;
+        let node_name = self.node_name.clone();
+
+        self.get_or_insert(key)
+            .update_with_order(&db, &workflow_id, node_id, &node_name, order)
+            .await?;
+        Ok(())
     }
 }
 
@@ -33,13 +103,13 @@ impl Deref for SpotStats {
     type Target = HashMap<String, SpotStatsInner>;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.data
     }
 }
 
 impl DerefMut for SpotStats {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        &mut self.data
     }
 }
 
@@ -75,10 +145,10 @@ pub struct SpotStatsInner {
 impl SpotStatsInner {
     pub fn initialize(
         &mut self,
-        exchange: impl Into<String>,
-        symbol: impl Into<String>,
-        base_asset: impl Into<String>,
-        quote_asset: impl Into<String>,
+        exchange: &str,
+        symbol: &str,
+        base_asset: &str,
+        quote_asset: &str,
     ) {
         self.exchange = exchange.into();
         self.symbol = symbol.into();
@@ -86,15 +156,63 @@ impl SpotStatsInner {
         self.quote_asset = quote_asset.into();
     }
 
-    pub fn initialize_base_balance(&mut self, base_asset_balance: Decimal) {
-        self.initial_base_balance = base_asset_balance;
+    fn params<'a>(
+        &'a self,
+        workflow_id: &'a str,
+        node_id: i16,
+        node_name: &'a str,
+    ) -> SpotStatsUniqueKey<'a> {
+        SpotStatsUniqueKey::builder()
+            .workflow_id(workflow_id)
+            .node_id(node_id)
+            .node_name(node_name)
+            .exchange(&self.exchange)
+            .symbol(&self.symbol)
+            .base_asset(&self.base_asset)
+            .quote_asset(&self.quote_asset)
+            .build()
     }
 
-    pub fn initialize_quote_balance(&mut self, quote_asset_balance: Decimal) {
-        self.initial_quote_balance = quote_asset_balance;
+    async fn initialize_base_balance(
+        &mut self,
+        db: &PgPool,
+        workflow_id: &str,
+        node_id: i16,
+        node_name: &str,
+        base_balance: &Decimal,
+    ) -> Result<()> {
+        self.initial_base_balance = base_balance.to_owned();
+
+        let params = self.params(workflow_id, node_id, node_name);
+        self.save_strategy_spot_stats(db, &params).await?;
+
+        Ok(())
     }
 
-    pub fn update_with_order(&mut self, order: &Order) -> Result<()> {
+    async fn initialize_quote_balance(
+        &mut self,
+        db: &PgPool,
+        workflow_id: &str,
+        node_id: i16,
+        node_name: &str,
+        quote_balance: &Decimal,
+    ) -> Result<()> {
+        self.initial_quote_balance = quote_balance.to_owned();
+
+        let params = self.params(workflow_id, node_id, node_name);
+        self.save_strategy_spot_stats(db, &params).await?;
+
+        Ok(())
+    }
+
+    async fn update_with_order(
+        &mut self,
+        db: &PgPool,
+        workflow_id: &str,
+        node_id: i16,
+        node_name: &str,
+        order: &Order,
+    ) -> Result<()> {
         let base_asset_amount = order.base_asset_amount()?;
         let quote_asset_amount = order.quote_asset_amount()?;
         let base_commission = order.base_commission(&self.maker_commission_rate)?;
@@ -140,6 +258,11 @@ impl SpotStatsInner {
                 self.realized_pnl += quote_amount - cost;
             }
         }
+
+        let params = self.params(workflow_id, node_id, node_name);
+
+        self.save_strategy_spot_stats(db, &params).await?;
+        self.save_strategy_spot_position(db, &params).await?;
 
         Ok(())
     }
