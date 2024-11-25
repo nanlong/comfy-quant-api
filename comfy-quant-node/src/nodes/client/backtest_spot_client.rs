@@ -38,18 +38,18 @@ impl BacktestSpotClient {
 
         let client_slot = Slot::<SpotClientKind>::new(client.into());
 
-        port.add_output(0, client_slot)?;
+        port.set_output(0, client_slot)?;
 
         Ok(BacktestSpotClient { node, params, port })
     }
 }
 
 impl NodePort for BacktestSpotClient {
-    fn get_port(&self) -> &Port {
+    fn port(&self) -> &Port {
         &self.port
     }
 
-    fn get_port_mut(&mut self) -> &mut Port {
+    fn port_mut(&mut self) -> &mut Port {
         &mut self.port
     }
 }
@@ -145,9 +145,9 @@ mod tests {
 
         let node: Node = serde_json::from_str(json_str)?;
         let account = BacktestSpotClient::try_from(node)?;
-        let port = account.get_port();
+        let port = account.port();
 
-        let client = port.get_output::<SpotClientKind>(0)?;
+        let client = port.output::<SpotClientKind>(0)?;
 
         let balance = client.get_balance("BTC").await?;
         assert_eq!(balance.free, "10");

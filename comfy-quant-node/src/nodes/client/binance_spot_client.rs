@@ -37,18 +37,18 @@ impl BinanceSpotClient {
 
         let client_slot = Slot::<SpotClientKind>::new(client.into());
 
-        port.add_output(0, client_slot)?;
+        port.set_output(0, client_slot)?;
 
         Ok(BinanceSpotClient { node, params, port })
     }
 }
 
 impl NodePort for BinanceSpotClient {
-    fn get_port(&self) -> &Port {
+    fn port(&self) -> &Port {
         &self.port
     }
 
-    fn get_port_mut(&mut self) -> &mut Port {
+    fn port_mut(&mut self) -> &mut Port {
         &mut self.port
     }
 }
@@ -112,7 +112,7 @@ mod tests {
     //     let node: workflow::Node = serde_json::from_str(json_str)?;
     //     let account = BinanceSpotClient::try_from(node)?;
 
-    //     // let _slot0 = account.port.get_output::<Arc<Mutex<SpotClient>>>(0)?;
+    //     // let _slot0 = account.port.output::<Arc<Mutex<SpotClient>>>(0)?;
 
     //     // let client = slot0.data().unwrap();
 

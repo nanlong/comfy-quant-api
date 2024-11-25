@@ -53,15 +53,15 @@ impl BacktestSpotTicker {
         let pair_info_slot = Slot::<SpotPairInfo>::new(pair_info);
         let tick_stream_slot = Slot::<TickStream>::new(tick_stream);
 
-        port.add_output(0, pair_info_slot)?;
-        port.add_output(1, tick_stream_slot)?;
+        port.set_output(0, pair_info_slot)?;
+        port.set_output(1, tick_stream_slot)?;
 
         Ok(BacktestSpotTicker { node, params, port })
     }
 
     async fn output1(&self) -> Result<()> {
-        let port = self.get_port();
-        let slot1 = port.get_output::<TickStream>(1)?;
+        let port = self.port();
+        let slot1 = port.output::<TickStream>(1)?;
         let symbol =
             format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
         let start_timestamp = self.params.start_datetime.timestamp();
@@ -123,11 +123,11 @@ impl BacktestSpotTicker {
 }
 
 impl NodePort for BacktestSpotTicker {
-    fn get_port(&self) -> &Port {
+    fn port(&self) -> &Port {
         &self.port
     }
 
-    fn get_port_mut(&mut self) -> &mut Port {
+    fn port_mut(&mut self) -> &mut Port {
         &mut self.port
     }
 }

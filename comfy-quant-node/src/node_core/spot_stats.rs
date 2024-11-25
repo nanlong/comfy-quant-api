@@ -7,19 +7,38 @@ use comfy_quant_exchange::client::spot_client::base::{Order, OrderSide};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use sqlx::PgPool;
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
-#[derive(Debug)]
-pub struct SpotStats {
+type SpotStatsDataMap = HashMap<String, SpotStatsData>;
+
+#[derive(Debug, Clone)]
+struct SpotStatsContext {
     db: Arc<PgPool>,
     workflow_id: String,
     node_id: i16,
     node_name: String,
-    data: HashMap<String, SpotStatsInner>,
+}
+
+impl SpotStatsContext {
+    fn new(
+        db: Arc<PgPool>,
+        workflow_id: impl Into<String>,
+        node_id: i16,
+        node_name: impl Into<String>,
+    ) -> Self {
+        SpotStatsContext {
+            db,
+            workflow_id: workflow_id.into(),
+            node_id,
+            node_name: node_name.into(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct SpotStats {
+    data: SpotStatsDataMap,
+    context: SpotStatsContext,
 }
 
 impl SpotStats {
@@ -30,16 +49,21 @@ impl SpotStats {
         node_name: impl Into<String>,
     ) -> Self {
         SpotStats {
-            db,
-            workflow_id: workflow_id.into(),
-            node_id,
-            node_name: node_name.into(),
-            data: HashMap::new(),
+            data: SpotStatsDataMap::new(),
+            context: SpotStatsContext::new(db, workflow_id, node_id, node_name),
         }
     }
 
-    pub fn get_or_insert(&mut self, key: &str) -> &mut SpotStatsInner {
-        self.data.entry(key.to_string()).or_default()
+    pub fn data(&self) -> &SpotStatsDataMap {
+        &self.data
+    }
+
+    pub fn data_mut(&mut self) -> &mut SpotStatsDataMap {
+        &mut self.data
+    }
+
+    pub fn get_or_insert(&mut self, key: &str) -> &mut SpotStatsData {
+        self.data_mut().entry(key.to_string()).or_default()
     }
 
     pub fn initialize(
@@ -59,13 +83,16 @@ impl SpotStats {
         key: &str,
         base_balance: &Decimal,
     ) -> Result<()> {
-        let db = self.db.clone();
-        let workflow_id = self.workflow_id.clone();
-        let node_id = self.node_id;
-        let node_name = self.node_name.clone();
+        let ctx = self.context.clone();
 
         self.get_or_insert(key)
-            .initialize_base_balance(&db, &workflow_id, node_id, &node_name, base_balance)
+            .initialize_base_balance(
+                &ctx.db,
+                &ctx.workflow_id,
+                ctx.node_id,
+                &ctx.node_name,
+                base_balance,
+            )
             .await?;
         Ok(())
     }
@@ -75,52 +102,45 @@ impl SpotStats {
         key: &str,
         quote_balance: &Decimal,
     ) -> Result<()> {
-        let db = self.db.clone();
-        let workflow_id = self.workflow_id.clone();
-        let node_id = self.node_id;
-        let node_name = self.node_name.clone();
+        let ctx = self.context.clone();
 
         self.get_or_insert(key)
-            .initialize_quote_balance(&db, &workflow_id, node_id, &node_name, quote_balance)
+            .initialize_quote_balance(
+                &ctx.db,
+                &ctx.workflow_id,
+                ctx.node_id,
+                &ctx.node_name,
+                quote_balance,
+            )
             .await?;
         Ok(())
     }
 
     pub async fn update_with_order(&mut self, key: &str, order: &Order) -> Result<()> {
-        let db = self.db.clone();
-        let workflow_id = self.workflow_id.clone();
-        let node_id = self.node_id;
-        let node_name = self.node_name.clone();
+        let ctx = self.context.clone();
 
         self.get_or_insert(key)
-            .update_with_order(&db, &workflow_id, node_id, &node_name, order)
+            .update_with_order(
+                &ctx.db,
+                &ctx.workflow_id,
+                ctx.node_id,
+                &ctx.node_name,
+                order,
+            )
             .await?;
+
         Ok(())
-    }
-}
-
-impl Deref for SpotStats {
-    type Target = HashMap<String, SpotStatsInner>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl DerefMut for SpotStats {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
     }
 }
 
 /// 节点统计数据
 #[derive(Debug, Default)]
 #[allow(unused)]
-pub struct SpotStatsInner {
-    pub exchange: String,
-    pub symbol: String,
-    pub base_asset: String,
-    pub quote_asset: String,
+pub struct SpotStatsData {
+    pub exchange: String,                // 交易所
+    pub symbol: String,                  // 币种
+    pub base_asset: String,              // 基础币种
+    pub quote_asset: String,             // 计价币种
     pub initial_base_balance: Decimal,   // 初始化base资产余额
     pub initial_quote_balance: Decimal,  // 初始化quote资产余额
     pub maker_commission_rate: Decimal,  // maker手续费率
@@ -142,7 +162,7 @@ pub struct SpotStatsInner {
 }
 
 #[allow(unused)]
-impl SpotStatsInner {
+impl SpotStatsData {
     pub fn initialize(
         &mut self,
         exchange: &str,

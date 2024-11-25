@@ -1,4 +1,4 @@
-use super::spot_stats::{SpotStats, SpotStatsInner};
+use super::spot_stats::{SpotStats, SpotStatsData};
 use crate::{node_core::Port, workflow::Node};
 use anyhow::Result;
 use comfy_quant_exchange::client::{
@@ -18,9 +18,9 @@ pub trait NodeExecutable {
 // 节点插槽
 #[enum_dispatch]
 pub trait NodePort {
-    fn get_port(&self) -> &Port;
+    fn port(&self) -> &Port;
 
-    fn get_port_mut(&mut self) -> &mut Port;
+    fn port_mut(&mut self) -> &mut Port;
 }
 
 // 节点连接
@@ -42,8 +42,8 @@ impl<T: NodePort> Connectable for T {
         origin_slot: usize,        // 当前节点输出槽位
         target_slot: usize,        // 目标节点输入槽位
     ) -> Result<()> {
-        let slot = self.get_port().get_output::<U>(origin_slot)?;
-        target.get_port_mut().add_input(target_slot, slot)?;
+        let slot = self.port().output::<U>(origin_slot)?;
+        target.port_mut().set_input(target_slot, slot)?;
 
         Ok(())
     }
@@ -57,17 +57,18 @@ pub(crate) trait SymbolPriceStorable: Send + Sync + 'static {
 /// 统计接口
 #[allow(async_fn_in_trait)]
 pub trait NodeStats {
-    fn get_spot_stats(&self) -> Option<&SpotStats> {
+    fn spot_stats(&self) -> Option<&SpotStats> {
         None
     }
 
-    fn get_spot_stats_mut(&mut self) -> Option<&mut SpotStats> {
+    fn spot_stats_mut(&mut self) -> Option<&mut SpotStats> {
         None
     }
 
-    fn get_spot_stats_inner(&self, key: impl AsRef<str>) -> Result<&SpotStatsInner> {
-        self.get_spot_stats()
+    fn spot_stats_data(&self, key: impl AsRef<str>) -> Result<&SpotStatsData> {
+        self.spot_stats()
             .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?
+            .data()
             .get(key.as_ref())
             .ok_or_else(|| anyhow::anyhow!("Stats not found for key: {}", key.as_ref()))
     }
@@ -78,7 +79,7 @@ pub trait NodeStats {
         order: &Order,
     ) -> Result<()> {
         let stats = self
-            .get_spot_stats_mut()
+            .spot_stats_mut()
             .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?;
 
         stats.update_with_order(key.as_ref(), order).await?;
@@ -90,7 +91,7 @@ pub trait NodeStats {
 /// 价格接口
 #[allow(async_fn_in_trait)]
 pub trait NodeSymbolPrice {
-    async fn get_price(&self, symbol: impl AsRef<str>) -> Option<Decimal>;
+    async fn price(&self, symbol: impl AsRef<str>) -> Option<Decimal>;
 }
 
 /// 节点名称接口
@@ -146,7 +147,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let stats_key = client.stats_key(&symbol);
 
         if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
-            if let Some(price) = self.get_price(&symbol).await {
+            if let Some(price) = self.price(&symbol).await {
                 backtest_spot_client.save_price(price).await;
             }
         }
@@ -173,7 +174,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
 
         // 用于回测功能的客户端，需要知道当前价格
         if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
-            if let Some(price) = self.get_price(&symbol).await {
+            if let Some(price) = self.price(&symbol).await {
                 backtest_spot_client.save_price(price).await;
             }
         }

@@ -37,14 +37,14 @@ impl BinanceSpotTicker {
         let pair_info_slot = Slot::<SpotPairInfo>::new(pair_info);
         // let output_slot1 = Slot::<Tick>::builder().channel_capacity(1024).build();
 
-        port.add_output(0, pair_info_slot)?;
-        // port.add_output(1, output_slot1)?;
+        port.set_output(0, pair_info_slot)?;
+        // port.set_output(1, output_slot1)?;
 
         Ok(BinanceSpotTicker { node, params, port })
     }
 
     async fn output1(&self) -> Result<()> {
-        // let slot = self.port.get_output::<Tick>(1)?;
+        // let slot = self.port.output::<Tick>(1)?;
 
         // let symbol = format!(
         //     "{}{}@ticker",
@@ -74,11 +74,11 @@ impl BinanceSpotTicker {
 }
 
 impl NodePort for BinanceSpotTicker {
-    fn get_port(&self) -> &Port {
+    fn port(&self) -> &Port {
         &self.port
     }
 
-    fn get_port_mut(&mut self) -> &mut Port {
+    fn port_mut(&mut self) -> &mut Port {
         &mut self.port
     }
 }
