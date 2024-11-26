@@ -161,4 +161,97 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_invalid_prop_type() {
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"invalid.type","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
+
+        let node: Node = serde_json::from_str(json_str).unwrap();
+        let result = BacktestSpotClient::try_from(node);
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid prop_type"));
+    }
+
+    #[test]
+    fn test_invalid_params_count() {
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001]}}"#;
+
+        let node: Node = serde_json::from_str(json_str).unwrap();
+        let result = BacktestSpotClient::try_from(node);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid params"));
+    }
+
+    #[test]
+    fn test_invalid_commissions_format() {
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":["invalid", [["BTC", 10], ["USDT", 10000]]]}}"#;
+
+        let node: Node = serde_json::from_str(json_str).unwrap();
+        let result = BacktestSpotClient::try_from(node);
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid commissions"));
+    }
+
+    #[test]
+    fn test_invalid_assets_format() {
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, "invalid"]}}"#;
+
+        let node: Node = serde_json::from_str(json_str).unwrap();
+        let result = BacktestSpotClient::try_from(node);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid assets"));
+    }
+
+    #[test]
+    fn test_empty_assets() -> anyhow::Result<()> {
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, []]}}"#;
+
+        let node: Node = serde_json::from_str(json_str)?;
+        let account = BacktestSpotClient::try_from(node)?;
+
+        assert!(account.params.assets.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn test_node_info() -> anyhow::Result<()> {
+        let json_str = r#"{"id":42,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10]]]}}"#;
+
+        let node: Node = serde_json::from_str(json_str)?;
+        let account = BacktestSpotClient::try_from(node)?;
+
+        assert_eq!(account.node_id(), 42);
+        assert_eq!(account.node_name(), "client.BacktestSpotClient");
+        assert_eq!(account.node().node_id(), account.node.node_id());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_port_methods() -> anyhow::Result<()> {
+        let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10]]]}}"#;
+
+        let node: Node = serde_json::from_str(json_str)?;
+        let mut account = BacktestSpotClient::try_from(node)?;
+
+        // Test port() returns the correct port
+        let port = account.port();
+        assert!(port.output::<SpotClientKind>(0).is_ok());
+
+        // Test port_mut() returns mutable reference
+        let port_mut = account.port_mut();
+        assert!(port_mut.output::<SpotClientKind>(0).is_ok());
+
+        Ok(())
+    }
 }
