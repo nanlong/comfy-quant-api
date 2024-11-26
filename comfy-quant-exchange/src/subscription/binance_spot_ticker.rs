@@ -11,7 +11,6 @@ use comfy_quant_database::{
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::{
-    ops::Deref,
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -126,14 +125,6 @@ static MARKET: &str = "spot";
 
 #[derive(Debug, Clone)]
 pub struct TickerWrapper(pub DayTickerEvent);
-
-impl Deref for TickerWrapper {
-    type Target = DayTickerEvent;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 impl TickerWrapper {
     pub async fn try_into_kline(&self, pool: &PgPool, interval: &str) -> Result<Kline> {

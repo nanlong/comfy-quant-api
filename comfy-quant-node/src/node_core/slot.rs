@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug)]
-pub struct Slot<T>(pub T);
+pub struct Slot<T>(T);
 
 impl<T> Deref for Slot<T> {
     type Target = T;

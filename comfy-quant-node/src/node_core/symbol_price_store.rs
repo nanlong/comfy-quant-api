@@ -2,39 +2,37 @@ use super::SymbolPriceStorable;
 use anyhow::Result;
 use comfy_quant_exchange::client::spot_client::base::SymbolPrice;
 use rust_decimal::Decimal;
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-};
+use std::collections::HashMap;
+
+type SymbolPriceStoreMap = HashMap<String, Decimal>;
 
 #[derive(Debug, Default)]
 pub(crate) struct SymbolPriceStore {
-    inner: HashMap<String, Decimal>,
+    inner: SymbolPriceStoreMap,
 }
 
-impl Deref for SymbolPriceStore {
-    type Target = HashMap<String, Decimal>;
-
-    fn deref(&self) -> &Self::Target {
+impl AsRef<SymbolPriceStoreMap> for SymbolPriceStore {
+    fn as_ref(&self) -> &SymbolPriceStoreMap {
         &self.inner
     }
 }
 
-impl DerefMut for SymbolPriceStore {
-    fn deref_mut(&mut self) -> &mut Self::Target {
+impl AsMut<SymbolPriceStoreMap> for SymbolPriceStore {
+    fn as_mut(&mut self) -> &mut SymbolPriceStoreMap {
         &mut self.inner
     }
 }
 
 impl SymbolPriceStore {
     pub fn price(&self, symbol: impl AsRef<str>) -> Option<&Decimal> {
-        self.get(symbol.as_ref())
+        self.as_ref().get(symbol.as_ref())
     }
 }
 
 impl SymbolPriceStorable for SymbolPriceStore {
     fn save_price(&mut self, symbol_price: SymbolPrice) -> Result<()> {
-        self.insert(symbol_price.symbol, symbol_price.price);
+        self.as_mut()
+            .insert(symbol_price.symbol, symbol_price.price);
 
         Ok(())
     }

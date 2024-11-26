@@ -7,11 +7,7 @@ use comfy_quant_exchange::client::{
     spot_client_kind::SpotClientKind,
 };
 use futures::future;
-use std::{
-    ops::{Deref, DerefMut},
-    thread::sleep,
-    time::Duration,
-};
+use std::{thread::sleep, time::Duration};
 use tower::{retry::Policy, util::BoxService, BoxError, Service, ServiceBuilder, ServiceExt};
 
 #[derive(Clone)]
@@ -61,20 +57,20 @@ where
     }
 }
 
+type SpotClientServiceInner = BoxService<SpotClientRequest, SpotClientResponse, BoxError>;
+
 pub struct SpotClientService {
-    inner: BoxService<SpotClientRequest, SpotClientResponse, BoxError>,
+    inner: SpotClientServiceInner,
 }
 
-impl Deref for SpotClientService {
-    type Target = BoxService<SpotClientRequest, SpotClientResponse, BoxError>;
-
-    fn deref(&self) -> &Self::Target {
+impl AsRef<SpotClientServiceInner> for SpotClientService {
+    fn as_ref(&self) -> &SpotClientServiceInner {
         &self.inner
     }
 }
 
-impl DerefMut for SpotClientService {
-    fn deref_mut(&mut self) -> &mut Self::Target {
+impl AsMut<SpotClientServiceInner> for SpotClientService {
+    fn as_mut(&mut self) -> &mut SpotClientServiceInner {
         &mut self.inner
     }
 }
@@ -130,6 +126,7 @@ impl SpotClientService {
 
     async fn ready_call(&mut self, req: SpotClientRequest) -> Result<SpotClientResponse> {
         let res = self
+            .as_mut()
             .ready()
             .await
             .map_err(|e| anyhow!(e))?

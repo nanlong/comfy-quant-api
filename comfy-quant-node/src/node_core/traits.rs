@@ -68,7 +68,7 @@ pub trait NodeStats {
     fn spot_stats_data(&self, key: impl AsRef<str>) -> Result<&SpotStatsData> {
         self.spot_stats()
             .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?
-            .data()
+            .as_ref()
             .get(key.as_ref())
             .ok_or_else(|| anyhow::anyhow!("Stats not found for key: {}", key.as_ref()))
     }
@@ -82,7 +82,7 @@ pub trait NodeStats {
             .spot_stats_mut()
             .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?;
 
-        stats.update_with_order(key.as_ref(), order).await?;
+        stats.update_with_order(key, order).await?;
 
         Ok(())
     }

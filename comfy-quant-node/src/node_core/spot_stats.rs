@@ -23,13 +23,13 @@ impl SpotStatsContext {
     fn new(
         db: Arc<PgPool>,
         workflow_id: impl Into<String>,
-        node_id: i16,
+        node_id: impl Into<i16>,
         node_name: impl Into<String>,
     ) -> Self {
         SpotStatsContext {
             db,
             workflow_id: workflow_id.into(),
-            node_id,
+            node_id: node_id.into(),
             node_name: node_name.into(),
         }
     }
@@ -41,11 +41,23 @@ pub struct SpotStats {
     context: SpotStatsContext,
 }
 
+impl AsRef<SpotStatsDataMap> for SpotStats {
+    fn as_ref(&self) -> &SpotStatsDataMap {
+        &self.data
+    }
+}
+
+impl AsMut<SpotStatsDataMap> for SpotStats {
+    fn as_mut(&mut self) -> &mut SpotStatsDataMap {
+        &mut self.data
+    }
+}
+
 impl SpotStats {
     pub fn new(
         db: Arc<PgPool>,
         workflow_id: impl Into<String>,
-        node_id: i16,
+        node_id: impl Into<i16>,
         node_name: impl Into<String>,
     ) -> Self {
         SpotStats {
@@ -54,38 +66,34 @@ impl SpotStats {
         }
     }
 
-    pub fn data(&self) -> &SpotStatsDataMap {
-        &self.data
-    }
-
-    pub fn data_mut(&mut self) -> &mut SpotStatsDataMap {
-        &mut self.data
-    }
-
-    pub fn get_or_insert(&mut self, key: &str) -> &mut SpotStatsData {
-        self.data_mut().entry(key.to_string()).or_default()
+    pub fn get_or_insert(&mut self, key: impl Into<String>) -> &mut SpotStatsData {
+        self.as_mut().entry(key.into()).or_default()
     }
 
     pub fn initialize(
         &mut self,
-        key: &str,
-        exchange: &str,
-        symbol: &str,
-        base_asset: &str,
-        quote_asset: &str,
+        key: impl AsRef<str>,
+        exchange: impl AsRef<str>,
+        symbol: impl AsRef<str>,
+        base_asset: impl AsRef<str>,
+        quote_asset: impl AsRef<str>,
     ) {
-        self.get_or_insert(key)
-            .initialize(exchange, symbol, base_asset, quote_asset);
+        self.get_or_insert(key.as_ref()).initialize(
+            exchange.as_ref(),
+            symbol.as_ref(),
+            base_asset.as_ref(),
+            quote_asset.as_ref(),
+        );
     }
 
     pub async fn initialize_base_balance(
         &mut self,
-        key: &str,
+        key: impl AsRef<str>,
         base_balance: &Decimal,
     ) -> Result<()> {
         let ctx = self.context.clone();
 
-        self.get_or_insert(key)
+        self.get_or_insert(key.as_ref())
             .initialize_base_balance(
                 &ctx.db,
                 &ctx.workflow_id,
@@ -99,12 +107,12 @@ impl SpotStats {
 
     pub async fn initial_quote_balance(
         &mut self,
-        key: &str,
+        key: impl AsRef<str>,
         quote_balance: &Decimal,
     ) -> Result<()> {
         let ctx = self.context.clone();
 
-        self.get_or_insert(key)
+        self.get_or_insert(key.as_ref())
             .initialize_quote_balance(
                 &ctx.db,
                 &ctx.workflow_id,
@@ -116,10 +124,10 @@ impl SpotStats {
         Ok(())
     }
 
-    pub async fn update_with_order(&mut self, key: &str, order: &Order) -> Result<()> {
+    pub async fn update_with_order(&mut self, key: impl AsRef<str>, order: &Order) -> Result<()> {
         let ctx = self.context.clone();
 
-        self.get_or_insert(key)
+        self.get_or_insert(key.as_ref())
             .update_with_order(
                 &ctx.db,
                 &ctx.workflow_id,
