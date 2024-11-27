@@ -13,4 +13,6 @@ flume = { workspace = true }
 futures = { workspace = true }
 rust_decimal = { workspace = true, features = ["db-postgres"] }
 sqlx = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
 tokio = { workspace = true }
