@@ -234,21 +234,21 @@ mod tests {
             .symbol("BTCUSDT")
             .base_asset("BTC")
             .quote_asset("USDT")
-            .initial_base_balance("1".parse::<Decimal>()?)
-            .initial_quote_balance("1000".parse::<Decimal>()?)
-            .maker_commission_rate("0.001".parse::<Decimal>()?)
-            .taker_commission_rate("0.001".parse::<Decimal>()?)
-            .base_asset_balance("1".parse::<Decimal>()?)
-            .quote_asset_balance("1000".parse::<Decimal>()?)
-            .avg_price("10000".parse::<Decimal>()?)
+            .initial_base_balance("1".parse()?)
+            .initial_quote_balance("1000".parse()?)
+            .maker_commission_rate("0.001".parse()?)
+            .taker_commission_rate("0.001".parse()?)
+            .base_asset_balance("1".parse()?)
+            .quote_asset_balance("1000".parse()?)
+            .avg_price("10000".parse()?)
             .total_trades(100)
             .buy_trades(50)
             .sell_trades(50)
-            .total_base_volume("100".parse::<Decimal>()?)
-            .total_quote_volume("100000".parse::<Decimal>()?)
-            .total_base_commission("10".parse::<Decimal>()?)
-            .total_quote_commission("1000".parse::<Decimal>()?)
-            .realized_pnl("100".parse::<Decimal>()?)
+            .total_base_volume("100".parse()?)
+            .total_quote_volume("100000".parse()?)
+            .total_base_commission("10".parse()?)
+            .total_quote_commission("1000".parse()?)
+            .realized_pnl("100".parse()?)
             .win_trades(50)
             .build();
 
@@ -268,51 +268,21 @@ mod tests {
         assert_eq!(strategy_spot_stats.symbol, "BTCUSDT");
         assert_eq!(strategy_spot_stats.base_asset, "BTC");
         assert_eq!(strategy_spot_stats.quote_asset, "USDT");
-        assert_eq!(
-            strategy_spot_stats.initial_base_balance,
-            "1".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_stats.initial_quote_balance,
-            "1000".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_stats.maker_commission_rate,
-            "0.001".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_stats.taker_commission_rate,
-            "0.001".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_stats.base_asset_balance,
-            "1".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_stats.quote_asset_balance,
-            "1000".parse::<Decimal>()?
-        );
-        assert_eq!(strategy_spot_stats.avg_price, "10000".parse::<Decimal>()?);
+        assert_eq!(strategy_spot_stats.initial_base_balance, "1".parse()?);
+        assert_eq!(strategy_spot_stats.initial_quote_balance, "1000".parse()?);
+        assert_eq!(strategy_spot_stats.maker_commission_rate, "0.001".parse()?);
+        assert_eq!(strategy_spot_stats.taker_commission_rate, "0.001".parse()?);
+        assert_eq!(strategy_spot_stats.base_asset_balance, "1".parse()?);
+        assert_eq!(strategy_spot_stats.quote_asset_balance, "1000".parse()?);
+        assert_eq!(strategy_spot_stats.avg_price, "10000".parse()?);
         assert_eq!(strategy_spot_stats.total_trades, 100);
         assert_eq!(strategy_spot_stats.buy_trades, 50);
         assert_eq!(strategy_spot_stats.sell_trades, 50);
-        assert_eq!(
-            strategy_spot_stats.total_base_volume,
-            "100".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_stats.total_quote_volume,
-            "100000".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_stats.total_base_commission,
-            "10".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_stats.total_quote_commission,
-            "1000".parse::<Decimal>()?
-        );
-        assert_eq!(strategy_spot_stats.realized_pnl, "100".parse::<Decimal>()?);
+        assert_eq!(strategy_spot_stats.total_base_volume, "100".parse()?);
+        assert_eq!(strategy_spot_stats.total_quote_volume, "100000".parse()?);
+        assert_eq!(strategy_spot_stats.total_base_commission, "10".parse()?);
+        assert_eq!(strategy_spot_stats.total_quote_commission, "1000".parse()?);
+        assert_eq!(strategy_spot_stats.realized_pnl, "100".parse()?);
         assert_eq!(strategy_spot_stats.win_trades, 50);
 
         Ok(())
@@ -323,24 +293,18 @@ mod tests {
         let strategy_spot_stats = gen_strategy_spot_stats()?;
         let mut strategy_spot_stats = create(&db, &strategy_spot_stats).await?;
 
-        strategy_spot_stats.base_asset_balance = "2".parse::<Decimal>()?;
-        strategy_spot_stats.quote_asset_balance = "2000".parse::<Decimal>()?;
-        strategy_spot_stats.avg_price = "20000".parse::<Decimal>()?;
+        strategy_spot_stats.base_asset_balance = "2".parse()?;
+        strategy_spot_stats.quote_asset_balance = "2000".parse()?;
+        strategy_spot_stats.avg_price = "20000".parse()?;
         strategy_spot_stats.total_trades = 200;
         strategy_spot_stats.buy_trades = 100;
         strategy_spot_stats.sell_trades = 100;
 
         let strategy_spot_stats = update(&db, &strategy_spot_stats).await?;
 
-        assert_eq!(
-            strategy_spot_stats.base_asset_balance,
-            "2".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_stats.quote_asset_balance,
-            "2000".parse::<Decimal>()?
-        );
-        assert_eq!(strategy_spot_stats.avg_price, "20000".parse::<Decimal>()?);
+        assert_eq!(strategy_spot_stats.base_asset_balance, "2".parse()?);
+        assert_eq!(strategy_spot_stats.quote_asset_balance, "2000".parse()?);
+        assert_eq!(strategy_spot_stats.avg_price, "20000".parse()?);
         assert_eq!(strategy_spot_stats.total_trades, 200);
         assert_eq!(strategy_spot_stats.buy_trades, 100);
         assert_eq!(strategy_spot_stats.sell_trades, 100);
@@ -354,20 +318,14 @@ mod tests {
         let strategy_spot_stats = create_or_update(&db, &strategy_spot_stats).await?;
 
         assert_eq!(strategy_spot_stats.id, 1);
-        assert_eq!(
-            strategy_spot_stats.base_asset_balance,
-            "1".parse::<Decimal>()?
-        );
+        assert_eq!(strategy_spot_stats.base_asset_balance, "1".parse()?);
 
         let mut strategy_spot_stats = gen_strategy_spot_stats()?;
-        strategy_spot_stats.base_asset_balance = "2".parse::<Decimal>()?;
+        strategy_spot_stats.base_asset_balance = "2".parse()?;
         let strategy_spot_stats = create_or_update(&db, &strategy_spot_stats).await?;
 
         assert_eq!(strategy_spot_stats.id, 1);
-        assert_eq!(
-            strategy_spot_stats.base_asset_balance,
-            "2".parse::<Decimal>()?
-        );
+        assert_eq!(strategy_spot_stats.base_asset_balance, "2".parse()?);
 
         Ok(())
     }

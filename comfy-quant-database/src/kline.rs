@@ -286,11 +286,11 @@ mod tests {
             .symbol("BTCUSDT".to_string())
             .interval("1m".to_string())
             .open_time(1721817600)
-            .open_price("10000".parse::<Decimal>()?)
-            .high_price("10000".parse::<Decimal>()?)
-            .low_price("10000".parse::<Decimal>()?)
-            .close_price("10000".parse::<Decimal>()?)
-            .volume("10000".parse::<Decimal>()?)
+            .open_price("10000".parse()?)
+            .high_price("10000".parse()?)
+            .low_price("10000".parse()?)
+            .close_price("10000".parse()?)
+            .volume("10000".parse()?)
             .build();
 
         let kline = create(&db, &kline).await?;
@@ -324,11 +324,11 @@ mod tests {
         assert_eq!(kline_createed.market, "spot");
         assert_eq!(kline_createed.symbol, "BTCUSDT");
         assert_eq!(kline_createed.interval, "1m");
-        assert_eq!(kline_createed.open_price, "10000".parse::<Decimal>()?);
-        assert_eq!(kline_createed.high_price, "10000".parse::<Decimal>()?);
-        assert_eq!(kline_createed.low_price, "10000".parse::<Decimal>()?);
-        assert_eq!(kline_createed.close_price, "10000".parse::<Decimal>()?);
-        assert_eq!(kline_createed.volume, "10000".parse::<Decimal>()?);
+        assert_eq!(kline_createed.open_price, "10000".parse()?);
+        assert_eq!(kline_createed.high_price, "10000".parse()?);
+        assert_eq!(kline_createed.low_price, "10000".parse()?);
+        assert_eq!(kline_createed.close_price, "10000".parse()?);
+        assert_eq!(kline_createed.volume, "10000".parse()?);
 
         Ok(())
     }
@@ -337,18 +337,18 @@ mod tests {
     async fn test_update_kline(db: PgPool) -> anyhow::Result<()> {
         let mut kline = create_kline(&db).await?;
 
-        kline.high_price = "20000".parse::<Decimal>()?;
-        kline.low_price = "20000".parse::<Decimal>()?;
-        kline.close_price = "20000".parse::<Decimal>()?;
-        kline.volume = "20000".parse::<Decimal>()?;
+        kline.high_price = "20000".parse()?;
+        kline.low_price = "20000".parse()?;
+        kline.close_price = "20000".parse()?;
+        kline.volume = "20000".parse()?;
 
         let kline_updated = update(&db, &kline).await?;
 
         assert_eq!(kline_updated.id, 1);
-        assert_eq!(kline_updated.high_price, "20000".parse::<Decimal>()?);
-        assert_eq!(kline_updated.low_price, "20000".parse::<Decimal>()?);
-        assert_eq!(kline_updated.close_price, "20000".parse::<Decimal>()?);
-        assert_eq!(kline_updated.volume, "20000".parse::<Decimal>()?);
+        assert_eq!(kline_updated.high_price, "20000".parse()?);
+        assert_eq!(kline_updated.low_price, "20000".parse()?);
+        assert_eq!(kline_updated.close_price, "20000".parse()?);
+        assert_eq!(kline_updated.volume, "20000".parse()?);
 
         Ok(())
     }
@@ -361,11 +361,11 @@ mod tests {
             .symbol("BTCUSDT".to_string())
             .interval("1m".to_string())
             .open_time(1721817600)
-            .open_price("10000".parse::<Decimal>()?)
-            .high_price("10000".parse::<Decimal>()?)
-            .low_price("10000".parse::<Decimal>()?)
-            .close_price("10000".parse::<Decimal>()?)
-            .volume("10000".parse::<Decimal>()?)
+            .open_price("10000".parse()?)
+            .high_price("10000".parse()?)
+            .low_price("10000".parse()?)
+            .close_price("10000".parse()?)
+            .volume("10000".parse()?)
             .build();
 
         let kline = create_or_update(&db, &kline).await?;
@@ -376,11 +376,11 @@ mod tests {
         assert_eq!(kline.symbol, "BTCUSDT");
         assert_eq!(kline.interval, "1m");
         assert_eq!(kline.open_time, 1721817600);
-        assert_eq!(kline.open_price, "10000".parse::<Decimal>()?);
-        assert_eq!(kline.high_price, "10000".parse::<Decimal>()?);
-        assert_eq!(kline.low_price, "10000".parse::<Decimal>()?);
-        assert_eq!(kline.close_price, "10000".parse::<Decimal>()?);
-        assert_eq!(kline.volume, "10000".parse::<Decimal>()?);
+        assert_eq!(kline.open_price, "10000".parse()?);
+        assert_eq!(kline.high_price, "10000".parse()?);
+        assert_eq!(kline.low_price, "10000".parse()?);
+        assert_eq!(kline.close_price, "10000".parse()?);
+        assert_eq!(kline.volume, "10000".parse()?);
 
         let kline2 = Kline::builder()
             .exchange("binance".to_string())
@@ -388,21 +388,21 @@ mod tests {
             .symbol("BTCUSDT".to_string())
             .interval("1m".to_string())
             .open_time(1721817600)
-            .open_price("20000".parse::<Decimal>()?)
-            .high_price("20000".parse::<Decimal>()?)
-            .low_price("20000".parse::<Decimal>()?)
-            .close_price("20000".parse::<Decimal>()?)
-            .volume("20000".parse::<Decimal>()?)
+            .open_price("20000".parse()?)
+            .high_price("20000".parse()?)
+            .low_price("20000".parse()?)
+            .close_price("20000".parse()?)
+            .volume("20000".parse()?)
             .build();
 
         let kline2 = create_or_update(&db, &kline2).await?;
 
         assert_eq!(kline2.id, 1);
-        assert_eq!(kline2.open_price, "20000".parse::<Decimal>()?);
-        assert_eq!(kline2.high_price, "20000".parse::<Decimal>()?);
-        assert_eq!(kline2.low_price, "20000".parse::<Decimal>()?);
-        assert_eq!(kline2.close_price, "20000".parse::<Decimal>()?);
-        assert_eq!(kline2.volume, "20000".parse::<Decimal>()?);
+        assert_eq!(kline2.open_price, "20000".parse()?);
+        assert_eq!(kline2.high_price, "20000".parse()?);
+        assert_eq!(kline2.low_price, "20000".parse()?);
+        assert_eq!(kline2.close_price, "20000".parse()?);
+        assert_eq!(kline2.volume, "20000".parse()?);
 
         Ok(())
     }
@@ -417,11 +417,11 @@ mod tests {
     //         symbol: "BTCUSDT".to_string(),
     //         interval: "1m".to_string(),
     //         open_time: 1721817600,
-    //         open_price: "10000".parse::<Decimal>()?,
-    //         high_price: "10000".parse::<Decimal>()?,
-    //         low_price: "10000".parse::<Decimal>()?,
-    //         close_price: "10000".parse::<Decimal>()?,
-    //         volume: "10000".parse::<Decimal>()?,
+    //         open_price: "10000".parse()?,
+    //         high_price: "10000".parse()?,
+    //         low_price: "10000".parse()?,
+    //         close_price: "10000".parse()?,
+    //         volume: "10000".parse()?,
     //         created_at: Utc::now(),
     //         updated_at: Utc::now(),
     //         ..Default::default()

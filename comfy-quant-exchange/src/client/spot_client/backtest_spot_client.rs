@@ -3,9 +3,9 @@ use super::base::{
     SymbolPrice, BACKTEST_EXCHANGE_NAME,
 };
 use crate::client::spot_client_kind::SpotClientExecutable;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use bon::bon;
-use rust_decimal::{prelude::FromPrimitive, Decimal};
+use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -62,7 +62,7 @@ impl BacktestSpotClient {
         data.price = price;
     }
 
-    async fn add_asset(&mut self, asset: &str, amount: f64) -> Result<()> {
+    async fn add_asset(&mut self, asset: &str, amount: Decimal) -> Result<()> {
         let mut data = self.data.lock().await;
 
         let balance = data.assets.entry(asset.to_string()).or_insert(
@@ -73,14 +73,14 @@ impl BacktestSpotClient {
                 .build(),
         );
 
-        let free = balance.free.parse::<f64>()?;
+        let free = balance.free.parse::<Decimal>()?;
 
         balance.free = (free + amount).to_string();
 
         Ok(())
     }
 
-    async fn sub_asset(&mut self, asset: &str, amount: f64) -> Result<()> {
+    async fn sub_asset(&mut self, asset: &str, amount: Decimal) -> Result<()> {
         let mut data = self.data.lock().await;
 
         let balance = data
@@ -88,7 +88,7 @@ impl BacktestSpotClient {
             .get_mut(asset)
             .ok_or(anyhow::anyhow!("Asset not found"))?;
 
-        let free = balance.free.parse::<f64>()?;
+        let free = balance.free.parse::<Decimal>()?;
 
         if free < amount {
             return Err(anyhow::anyhow!("Insufficient free balance"));
@@ -99,7 +99,7 @@ impl BacktestSpotClient {
         Ok(())
     }
 
-    async fn lock_asset(&mut self, asset: &str, amount: f64) -> Result<()> {
+    async fn lock_asset(&mut self, asset: &str, amount: Decimal) -> Result<()> {
         let mut data = self.data.lock().await;
 
         let balance = data
@@ -107,8 +107,8 @@ impl BacktestSpotClient {
             .get_mut(asset)
             .ok_or(anyhow::anyhow!("Asset not found"))?;
 
-        let free = balance.free.parse::<f64>()?;
-        let locked = balance.locked.parse::<f64>()?;
+        let free = balance.free.parse::<Decimal>()?;
+        let locked = balance.locked.parse::<Decimal>()?;
 
         if free < amount {
             return Err(anyhow::anyhow!("Insufficient free balance"));
@@ -120,7 +120,7 @@ impl BacktestSpotClient {
         Ok(())
     }
 
-    async fn unlock_asset(&mut self, asset: &str, amount: f64) -> Result<()> {
+    async fn unlock_asset(&mut self, asset: &str, amount: Decimal) -> Result<()> {
         let mut data = self.data.lock().await;
 
         let balance = data
@@ -128,8 +128,8 @@ impl BacktestSpotClient {
             .get_mut(asset)
             .ok_or(anyhow::anyhow!("Asset not found"))?;
 
-        let free = balance.free.parse::<f64>()?;
-        let locked = balance.locked.parse::<f64>()?;
+        let free = balance.free.parse::<Decimal>()?;
+        let locked = balance.locked.parse::<Decimal>()?;
 
         if locked < amount {
             return Err(anyhow::anyhow!("Insufficient locked balance"));
@@ -158,7 +158,7 @@ impl SpotClientExecutable for BacktestSpotClient {
     async fn get_account(&self) -> Result<AccountInformation> {
         let data = self.data.lock().await;
         let commissions = data.commissions.unwrap_or(0.001);
-        let commission_rate = Decimal::from_f64(commissions).unwrap();
+        let commission_rate = commissions.try_into()?;
 
         Ok(AccountInformation::builder()
             .maker_commission_rate(commission_rate)
@@ -180,8 +180,8 @@ impl SpotClientExecutable for BacktestSpotClient {
 
         Ok(SymbolInformation::builder()
             .symbol(symbol)
-            .base_asset(base_asset.to_string())
-            .quote_asset(quote_asset.to_string())
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
             .base_asset_precision(3)
             .quote_asset_precision(3)
             .build())
@@ -220,7 +220,7 @@ impl SpotClientExecutable for BacktestSpotClient {
 
     async fn market_buy(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
         let symbol = self.symbol(base_asset, quote_asset);
-        let qty = Decimal::from_f64(qty).ok_or_else(|| anyhow!("Invalid quantity"))?;
+        let qty = Decimal::try_from(qty)?;
         let mut data = self.data.lock().await;
         let price = data.price;
 
@@ -249,7 +249,7 @@ impl SpotClientExecutable for BacktestSpotClient {
 
     async fn market_sell(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
         let symbol = self.symbol(base_asset, quote_asset);
-        let qty = Decimal::from_f64(qty).ok_or_else(|| anyhow!("Invalid quantity"))?;
+        let qty = Decimal::try_from(qty)?;
         let mut data = self.data.lock().await;
         let price = data.price;
 

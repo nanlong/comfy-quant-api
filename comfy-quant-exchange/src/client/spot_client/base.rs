@@ -59,6 +59,7 @@ impl TryFrom<BinanceAccountInformation> for AccountInformation {
 }
 
 #[derive(Builder, Debug)]
+#[builder(on(String, into))]
 pub struct SymbolInformation {
     pub symbol: String,
     pub base_asset: String,
@@ -71,9 +72,9 @@ pub struct SymbolInformation {
 impl From<BinaceSymbolInformation> for SymbolInformation {
     fn from(value: BinaceSymbolInformation) -> Self {
         let min_notional = value.filters.iter().find_map(|filter| match filter {
-            BinanceFilters::Notional { min_notional, .. } => min_notional
-                .as_ref()
-                .and_then(|val| val.parse::<Decimal>().ok()),
+            BinanceFilters::Notional { min_notional, .. } => {
+                min_notional.as_ref().and_then(|val| val.parse().ok())
+            }
             _ => None,
         });
 
@@ -196,25 +197,25 @@ impl fmt::Display for Symbol {
 }
 
 #[derive(Builder, Debug, Clone)]
-#[builder(on(String, into))]
+#[builder(on(String, into), on(Symbol, into))]
+#[allow(clippy::duplicated_attributes)]
 pub struct Order {
-    pub exchange: String,            // 交易所
-    pub base_asset: Option<String>,  // 基础货币
-    pub quote_asset: Option<String>, // 计价货币
-    #[builder(into)]
-    pub symbol: Symbol, // 交易对
-    pub order_id: String,            // 订单ID
+    pub exchange: String,                // 交易所
+    pub base_asset: Option<String>,      // 基础货币
+    pub quote_asset: Option<String>,     // 计价货币
+    pub symbol: Symbol,                  // 交易对
+    pub order_id: String,                // 订单ID
     pub client_order_id: Option<String>, // 用户自己设置的ID
-    pub price: String,               // 订单价格
-    pub avg_price: String,           // 平均成交价格
-    pub orig_qty: String,            // 用户设置的原始订单数量
-    pub executed_qty: String,        // 交易的订单数量
-    pub cumulative_quote_qty: String, // 累计交易的金额
-    pub order_type: OrderType,       // 订单类型
-    pub order_side: OrderSide,       // 订单方向
-    pub order_status: OrderStatus,   // 订单状态
-    pub time: i64,                   // 订单时间
-    pub update_time: i64,            // 最后更新时间
+    pub price: String,                   // 订单价格
+    pub avg_price: String,               // 平均成交价格
+    pub orig_qty: String,                // 用户设置的原始订单数量
+    pub executed_qty: String,            // 交易的订单数量
+    pub cumulative_quote_qty: String,    // 累计交易的金额
+    pub order_type: OrderType,           // 订单类型
+    pub order_side: OrderSide,           // 订单方向
+    pub order_status: OrderStatus,       // 订单状态
+    pub time: i64,                       // 订单时间
+    pub update_time: i64,                // 最后更新时间
 }
 
 impl Order {
@@ -231,11 +232,11 @@ impl Order {
     }
 
     pub fn base_asset_amount(&self) -> anyhow::Result<Decimal> {
-        Ok(self.executed_qty.parse::<Decimal>()?)
+        Ok(self.executed_qty.parse()?)
     }
 
     pub fn quote_asset_amount(&self) -> anyhow::Result<Decimal> {
-        Ok(self.cumulative_quote_qty.parse::<Decimal>()?)
+        Ok(self.cumulative_quote_qty.parse()?)
     }
 
     pub fn base_commission(&self, commission_rate: &Decimal) -> anyhow::Result<Decimal> {

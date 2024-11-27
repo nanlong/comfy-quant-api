@@ -5,7 +5,6 @@ use bon::{bon, Builder};
 use comfy_quant_database::kline::{self, Kline};
 use comfy_quant_exchange::kline_stream::{calc_time_range_kline_count, BinanceKline};
 use futures::{stream::BoxStream, StreamExt};
-use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -117,11 +116,11 @@ impl Executable for BinanceKlinesTask {
                         symbol: params.symbol.clone(),
                         interval: params.interval.clone(),
                         open_time: kline_summary.open_time,
-                        open_price: kline_summary.open.parse::<Decimal>()?,
-                        high_price: kline_summary.high.parse::<Decimal>()?,
-                        low_price: kline_summary.low.parse::<Decimal>()?,
-                        close_price: kline_summary.close.parse::<Decimal>()?,
-                        volume: kline_summary.volume.parse::<Decimal>()?,
+                        open_price: kline_summary.open.parse()?,
+                        high_price: kline_summary.high.parse()?,
+                        low_price: kline_summary.low.parse()?,
+                        close_price: kline_summary.close.parse()?,
+                        volume: kline_summary.volume.parse()?,
                         ..Default::default()
                     };
 

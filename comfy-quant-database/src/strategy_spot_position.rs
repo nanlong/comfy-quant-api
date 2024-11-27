@@ -85,8 +85,8 @@ mod tests {
             .symbol("BTCUSDT")
             .base_asset("BTC")
             .quote_asset("USDT")
-            .base_asset_balance("1".parse::<Decimal>()?)
-            .quote_asset_balance("1000".parse::<Decimal>()?)
+            .base_asset_balance("1".parse()?)
+            .quote_asset_balance("1000".parse()?)
             .build();
 
         Ok(strategy_spot_position)
@@ -105,14 +105,8 @@ mod tests {
         assert_eq!(strategy_spot_position.symbol, "BTCUSDT");
         assert_eq!(strategy_spot_position.base_asset, "BTC");
         assert_eq!(strategy_spot_position.quote_asset, "USDT");
-        assert_eq!(
-            strategy_spot_position.base_asset_balance,
-            "1".parse::<Decimal>()?
-        );
-        assert_eq!(
-            strategy_spot_position.quote_asset_balance,
-            "1000".parse::<Decimal>()?
-        );
+        assert_eq!(strategy_spot_position.base_asset_balance, "1".parse()?);
+        assert_eq!(strategy_spot_position.quote_asset_balance, "1000".parse()?);
 
         Ok(())
     }
