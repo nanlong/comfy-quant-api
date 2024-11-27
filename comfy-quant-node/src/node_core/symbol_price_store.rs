@@ -24,6 +24,12 @@ impl AsMut<SymbolPriceStoreMap> for SymbolPriceStore {
 }
 
 impl SymbolPriceStore {
+    pub fn new() -> Self {
+        SymbolPriceStore {
+            inner: HashMap::new(),
+        }
+    }
+
     pub fn price(&self, symbol: impl AsRef<str>) -> Option<&Decimal> {
         self.as_ref().get(symbol.as_ref())
     }
@@ -45,7 +51,7 @@ mod tests {
 
     #[test]
     fn test_tick_store() {
-        let mut store = SymbolPriceStore::default();
+        let mut store = SymbolPriceStore::new();
         assert_eq!(store.price("BTCUSDT"), None);
 
         let price = SymbolPrice::builder()

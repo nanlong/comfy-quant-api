@@ -54,13 +54,14 @@ pub(crate) struct SpotGrid {
 
 impl SpotGrid {
     pub(crate) fn new(node: Node, params: Params) -> Result<Self> {
-        let cloned_db = node.context()?.cloned_db();
-        let workflow_id = node.context()?.workflow_id();
-        let node_id = node.node_id();
-        let node_name = node.node_name();
-        let port = Port::default();
-        let price_store = Arc::new(RwLock::new(SymbolPriceStore::default()));
-        let stats = SpotStats::new(cloned_db, workflow_id, node_id, node_name);
+        let port = Port::new();
+        let price_store = Arc::new(RwLock::new(SymbolPriceStore::new()));
+        let stats = SpotStats::builder()
+            .db(node.context()?.cloned_db())
+            .workflow_id(node.context()?.workflow_id())
+            .node_id(node.node_id())
+            .node_name(node.node_name())
+            .build();
 
         Ok(SpotGrid {
             node,

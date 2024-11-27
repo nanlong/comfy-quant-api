@@ -29,7 +29,7 @@ pub(crate) struct BacktestSpotClient {
 
 impl BacktestSpotClient {
     pub(crate) fn try_new(node: Node, params: Params) -> Result<Self> {
-        let mut port = Port::default();
+        let mut port = Port::new();
 
         let client = Client::builder()
             .assets(&params.assets[..])

@@ -11,7 +11,7 @@ pub struct Slots {
 impl Slots {
     #[inline]
     pub fn new() -> Self {
-        Self::default()
+        Slots::default()
     }
 
     pub fn set<T>(&mut self, key: usize, val: T) -> Option<T>

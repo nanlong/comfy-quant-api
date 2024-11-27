@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bon::bon;
 use comfy_quant_database::{
     strategy_spot_position::{self, StrategySpotPosition},
     strategy_spot_stats::{self, SpotStatsUniqueKey, StrategySpotStats},
@@ -53,7 +54,9 @@ impl AsMut<SpotStatsDataMap> for SpotStats {
     }
 }
 
+#[bon]
 impl SpotStats {
+    #[builder]
     pub fn new(
         db: Arc<PgPool>,
         workflow_id: impl Into<String>,
@@ -171,6 +174,10 @@ pub struct SpotStatsData {
 
 #[allow(unused)]
 impl SpotStatsData {
+    fn new() -> Self {
+        SpotStatsData::default()
+    }
+
     pub fn initialize(
         &mut self,
         exchange: &str,
@@ -403,7 +410,7 @@ mod tests {
 
     #[test]
     fn test_spot_stats_data_initialize() {
-        let mut data = SpotStatsData::default();
+        let mut data = SpotStatsData::new();
         data.initialize("binance", "BTC/USDT", "BTC", "USDT");
 
         assert_eq!(data.exchange, "binance");
@@ -414,7 +421,7 @@ mod tests {
 
     #[sqlx::test(migrator = "comfy_quant_database::MIGRATOR")]
     async fn test_spot_stats_data_update_with_buy_order(db: PgPool) {
-        let mut data = SpotStatsData::default();
+        let mut data = SpotStatsData::new();
         data.initialize("binance", "BTC/USDT", "BTC", "USDT");
         data.maker_commission_rate = dec!(0.001);
         data.quote_asset_balance = dec!(10000);
@@ -443,7 +450,7 @@ mod tests {
 
     #[sqlx::test(migrator = "comfy_quant_database::MIGRATOR")]
     async fn test_spot_stats_data_update_with_sell_order(db: PgPool) {
-        let mut data = SpotStatsData::default();
+        let mut data = SpotStatsData::new();
         data.initialize("binance", "BTC/USDT", "BTC", "USDT");
         data.maker_commission_rate = dec!(0.001);
         data.base_asset_balance = dec!(1.0);
@@ -477,7 +484,7 @@ mod tests {
 
     #[test]
     fn test_spot_stats_data_pnl_calculations() {
-        let mut data = SpotStatsData::default();
+        let mut data = SpotStatsData::new();
         data.initialize("binance", "BTC/USDT", "BTC", "USDT");
         data.maker_commission_rate = dec!(0.001);
         data.base_asset_balance = dec!(1.0);
@@ -496,7 +503,13 @@ mod tests {
     #[sqlx::test(migrator = "comfy_quant_database::MIGRATOR")]
     async fn test_spot_stats_get_or_insert(db: PgPool) {
         let db = Arc::new(db);
-        let mut stats = SpotStats::new(db, "test_workflow", 1_i16, "test_node");
+
+        let mut stats = SpotStats::builder()
+            .db(db)
+            .workflow_id("test_workflow")
+            .node_id(1_i16)
+            .node_name("test_node")
+            .build();
 
         let data = stats.get_or_insert("BTC/USDT");
         assert_eq!(data.total_trades, 0);

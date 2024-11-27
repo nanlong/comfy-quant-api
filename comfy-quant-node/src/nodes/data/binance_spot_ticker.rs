@@ -27,7 +27,7 @@ pub(crate) struct BinanceSpotTicker {
 
 impl BinanceSpotTicker {
     pub(crate) fn try_new(node: Node, params: Params) -> Result<Self> {
-        let mut port = Port::default();
+        let mut port = Port::new();
 
         let pair_info = SpotPairInfo::builder()
             .base_asset(&params.base_asset)

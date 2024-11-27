@@ -9,6 +9,13 @@ pub struct Port {
 }
 
 impl Port {
+    pub fn new() -> Self {
+        Port {
+            inputs: Slots::new(),
+            outputs: Slots::new(),
+        }
+    }
+
     pub fn set_input<T>(&mut self, index: usize, slot: Arc<Slot<T>>) -> Result<()>
     where
         T: Send + Sync + 'static,
@@ -60,7 +67,7 @@ mod tests {
 
     #[test]
     fn test_port_set_output() {
-        let mut port = Port::default();
+        let mut port = Port::new();
 
         // Add input
         let slot = Arc::new(Slot::<usize>::new(5));

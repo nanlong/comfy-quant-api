@@ -28,21 +28,11 @@ pub struct BinanceTransaction {
     transaction: binance::model::Transaction,
 }
 
-#[derive(Builder, Debug, Clone)]
+#[derive(Builder, Debug, Clone, Default)]
 pub struct AccountInformation {
     pub maker_commission_rate: Decimal,
     pub taker_commission_rate: Decimal,
     pub can_trade: bool,
-}
-
-impl Default for AccountInformation {
-    fn default() -> Self {
-        AccountInformation {
-            maker_commission_rate: dec!(0),
-            taker_commission_rate: dec!(0),
-            can_trade: false,
-        }
-    }
 }
 
 impl TryFrom<BinanceAccountInformation> for AccountInformation {
