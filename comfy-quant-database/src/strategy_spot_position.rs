@@ -86,14 +86,9 @@ pub async fn list(
     node_id: i16,
     exchange: &str,
     symbol: &str,
-    start_timestamp: i64,
-    end_timestamp: i64,
+    start_datetime: &DateTime<Utc>,
+    end_datetime: &DateTime<Utc>,
 ) -> Result<Vec<StrategySpotPosition>> {
-    let start_datetime = DateTime::<Utc>::from_timestamp(start_timestamp, 0)
-        .ok_or_else(|| anyhow::anyhow!("Invalid start timestamp"))?;
-    let end_datetime = DateTime::<Utc>::from_timestamp(end_timestamp, 0)
-        .ok_or_else(|| anyhow::anyhow!("Invalid end timestamp"))?;
-
     let result = sqlx::query_as!(
         StrategySpotPosition,
         r#"
@@ -121,6 +116,8 @@ pub async fn list(
 
 #[cfg(test)]
 mod tests {
+    use comfy_quant_util::secs_to_datetime;
+
     use super::*;
 
     fn gen_strategy_spot_position() -> Result<StrategySpotPosition> {
@@ -165,17 +162,16 @@ mod tests {
         let strategy_spot_position = gen_strategy_spot_position()?;
         create(&db, &strategy_spot_position).await?;
 
-        let start_timestamp = 0;
-        let end_timestamp = 10000000000;
-
+        let start_datetime = secs_to_datetime(0)?;
+        let end_datetime = secs_to_datetime(10000000000_i64)?;
         let result = list(
             &db,
             "jEnbRDqQu4UN6y7cgQgp6",
             1,
             "Binance",
             "BTCUSDT",
-            start_timestamp,
-            end_timestamp,
+            &start_datetime,
+            &end_datetime,
         )
         .await?;
 

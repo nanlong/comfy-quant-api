@@ -2,11 +2,11 @@ use crate::{
     node_core::{Connectable, NodeExecutable},
     node_io::{SpotPairInfo, TickStream},
     nodes::node_kind::NodeKind,
-    utils::generate_workflow_id,
 };
 use anyhow::{anyhow, Result};
 use async_lock::{Barrier, Mutex};
 use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
+use comfy_quant_util::generate_workflow_id;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::{collections::HashMap, sync::Arc};

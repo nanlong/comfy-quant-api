@@ -9,6 +9,7 @@ use comfy_quant_exchange::client::{
     spot_client::base::{Order, SymbolPrice},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
+use comfy_quant_util::secs_to_datetime;
 use enum_dispatch::enum_dispatch;
 use rust_decimal::Decimal;
 
@@ -139,6 +140,8 @@ impl<T: NodeStats> NodeStatsInfo for T {
         let market = "spot";
         let stats_key = stats_key(exchange, market, symbol);
         let stats_data = stats.get(stats_key)?;
+        let start_datetime = secs_to_datetime(start_timestamp).ok()?;
+        let end_datetime = secs_to_datetime(end_timestamp).ok()?;
 
         let positions = strategy_spot_position::list(
             &ctx.db,
@@ -146,8 +149,8 @@ impl<T: NodeStats> NodeStatsInfo for T {
             ctx.node_id,
             exchange,
             symbol,
-            start_timestamp,
-            end_timestamp,
+            &start_datetime,
+            &end_datetime,
         )
         .await
         .ok()?;
@@ -158,8 +161,8 @@ impl<T: NodeStats> NodeStatsInfo for T {
             market,
             symbol,
             interval,
-            start_timestamp,
-            end_timestamp,
+            &start_datetime,
+            &end_datetime,
         )
         .await
         .ok()?;

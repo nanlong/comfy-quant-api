@@ -14,6 +14,7 @@ comfy-quant-config = { path = "../comfy-quant-config" }
 comfy-quant-database = { path = "../comfy-quant-database" }
 comfy-quant-exchange = { path = "../comfy-quant-exchange" }
 comfy-quant-task = { path = "../comfy-quant-task" }
+comfy-quant-util = { path = "../comfy-quant-util" }
 dashmap = { workspace = true }
 enum_dispatch = { workspace = true }
 flume = { workspace = true }

@@ -287,6 +287,7 @@ impl SpotStatsData {
         positions: &[StrategySpotPosition],
         klines: &[Kline],
     ) -> Result<Vec<NetValue>> {
+        // 初始资产价值
         let initial_value = (self.initial_base_balance * self.initial_price
             + self.initial_quote_balance)
             .to_string()
@@ -308,7 +309,7 @@ impl SpotStatsData {
         }
 
         for k in klines {
-            kline_timestamps.push(k.open_time / 1000);
+            kline_timestamps.push(k.open_time.timestamp());
             kline_close_prices.push(k.close_price.to_string().parse::<f64>()?);
         }
 
@@ -324,23 +325,30 @@ impl SpotStatsData {
         )?;
 
         let df = kline_df
+            // 合并数据
             .join(
                 &pos_df,
                 ["timestamp"],
                 ["timestamp"],
                 JoinArgs::new(JoinType::Left),
             )?
+            // 排序
             .sort(["timestamp"], SortMultipleOptions::default())?
             .lazy()
+            //  向前填充缺失的数据
             .with_columns([
                 col("base_balance").fill_null_with_strategy(FillNullStrategy::Forward(None)),
                 col("quote_balance").fill_null_with_strategy(FillNullStrategy::Forward(None)),
             ])
+            // 计算资产价值
             .with_column(
                 (col("base_balance") * col("close") + col("quote_balance")).alias("total_value"),
             )
+            // 计算净值
             .with_column((col("total_value") / lit(initial_value)).alias("net_value"))
+            // 计算最大净值
             .with_column(col("net_value").cum_max(false).alias("max_net_value"))
+            // 计算回撤
             .with_column((lit(1.0) - col("net_value") / col("max_net_value")).alias("drawdown"))
             .collect()?;
 
@@ -472,11 +480,12 @@ mod tests {
     use comfy_quant_exchange::client::spot_client::base::{
         Order, OrderSide, OrderStatus, OrderType,
     };
+    use comfy_quant_util::secs_to_datetime;
     use rust_decimal_macros::dec;
     use std::str::FromStr;
 
     #[test]
-    fn test_net_value_calculation() {
+    fn test_net_value_calculation() -> Result<()> {
         let workflow_id = "test_workflow";
         let node_id = 1;
         let node_name = "test_node";
@@ -527,7 +536,7 @@ mod tests {
                 .market(market)
                 .symbol(symbol)
                 .interval("1m")
-                .open_time(1000000)
+                .open_time(secs_to_datetime(1000)?)
                 .open_price(dec!(50000))
                 .high_price(dec!(50000))
                 .low_price(dec!(50000))
@@ -539,7 +548,7 @@ mod tests {
                 .market(market)
                 .symbol(symbol)
                 .interval("1m")
-                .open_time(1500000)
+                .open_time(secs_to_datetime(1500)?)
                 .open_price(dec!(50000))
                 .high_price(dec!(50000))
                 .low_price(dec!(45000))
@@ -551,7 +560,7 @@ mod tests {
                 .market(market)
                 .symbol(symbol)
                 .interval("1m")
-                .open_time(2000000)
+                .open_time(secs_to_datetime(2000)?)
                 .open_price(dec!(48000))
                 .high_price(dec!(48000))
                 .low_price(dec!(48000))
@@ -563,7 +572,7 @@ mod tests {
                 .market(market)
                 .symbol(symbol)
                 .interval("1m")
-                .open_time(2500000)
+                .open_time(secs_to_datetime(2500)?)
                 .open_price(dec!(48000))
                 .high_price(dec!(48000))
                 .low_price(dec!(48000))
@@ -575,7 +584,7 @@ mod tests {
                 .market(market)
                 .symbol(symbol)
                 .interval("1m")
-                .open_time(3000000)
+                .open_time(secs_to_datetime(3000)?)
                 .open_price(dec!(48000))
                 .high_price(dec!(48000))
                 .low_price(dec!(48000))
@@ -646,6 +655,8 @@ mod tests {
             (results[4].drawdown * dec!(10000)).round() / dec!(10000),
             dec!(0.0574)
         );
+
+        Ok(())
     }
 
     fn create_test_order(side: OrderSide, price: &str, quantity: &str) -> Order {

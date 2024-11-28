@@ -695,6 +695,7 @@ dependencies = [
  "bon",
  "chrono",
  "comfy-quant-exchange",
+ "comfy-quant-util",
  "flume",
  "futures",
  "rust_decimal",
@@ -743,6 +744,7 @@ dependencies = [
  "comfy-quant-database",
  "comfy-quant-exchange",
  "comfy-quant-task",
+ "comfy-quant-util",
  "dashmap",
  "enum_dispatch",
  "flume",
@@ -772,6 +774,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "bon",
+ "chrono",
  "comfy-quant-database",
  "comfy-quant-exchange",
  "flume",
@@ -780,6 +783,15 @@ dependencies = [
  "sqlx",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "comfy-quant-util"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "nanoid",
 ]
 
 [[package]]

@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS klines (
     market VARCHAR(20) NOT NULL,
     symbol VARCHAR(20) NOT NULL,
     interval VARCHAR(10) NOT NULL,
-    open_time BIGINT NOT NULL,
+    open_time TIMESTAMPTZ NOT NULL,
     open_price NUMERIC(20,8) NOT NULL,
     high_price NUMERIC(20,8) NOT NULL,
     low_price NUMERIC(20,8) NOT NULL,

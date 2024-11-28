@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = { workspace = true }
 async-stream = { workspace = true }
 bon = { workspace = true }
+chrono = { workspace = true }
 comfy-quant-database = { path = "../comfy-quant-database" }
 comfy-quant-exchange = { path = "../comfy-quant-exchange" }
 flume = { workspace = true }

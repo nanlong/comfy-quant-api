@@ -1,7 +1,6 @@
 use crate::{
     node_core::{NodeExecutable, NodeInfo, NodePort, Port, Slot, Tick},
     node_io::{SpotPairInfo, TickStream},
-    utils::add_utc_offset,
     workflow::Node,
 };
 use anyhow::Result;
@@ -12,6 +11,7 @@ use comfy_quant_task::{
     task_core::{status::TaskStatus, traits::Executable as _},
     tasks::binance_klines::BinanceKlinesTask,
 };
+use comfy_quant_util::add_utc_offset;
 use futures::StreamExt;
 use std::sync::Arc;
 
@@ -104,13 +104,13 @@ impl BacktestSpotTicker {
             MARKET,
             &symbol,
             INTERVAL,
-            start_timestamp * 1000,
-            end_timestamp * 1000,
+            &self.params.start_datetime,
+            &self.params.end_datetime,
         );
 
         while let Some(Ok(kline)) = klines_stream.next().await {
             let tick = Tick::builder()
-                .timestamp(kline.open_time / 1000)
+                .timestamp(kline.open_time.timestamp())
                 .symbol(symbol.clone())
                 .price(kline.close_price)
                 .build();

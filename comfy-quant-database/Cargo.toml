@@ -7,11 +7,12 @@ edition = "2021"
 anyhow = { workspace = true }
 binance = { workspace = true }
 bon = { workspace = true }
-chrono = { workspace = true, features = ["serde"] }
+chrono = { workspace = true }
 comfy-quant-exchange = { path = "../comfy-quant-exchange" }
+comfy-quant-util = { path = "../comfy-quant-util" }
 flume = { workspace = true }
 futures = { workspace = true }
-rust_decimal = { workspace = true, features = ["db-postgres"] }
+rust_decimal = { workspace = true }
 sqlx = { workspace = true }
 strum = { workspace = true }
 strum_macros = { workspace = true }

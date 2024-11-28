@@ -2,6 +2,7 @@ use crate::task_core::{status::TaskStatus, traits::Executable};
 use anyhow::Result;
 use async_stream::stream;
 use bon::{bon, Builder};
+use chrono::{DateTime, Utc};
 use comfy_quant_database::kline::{self, Kline};
 use comfy_quant_exchange::kline_stream::{calc_time_range_kline_count, BinanceKline};
 use futures::{stream::BoxStream, StreamExt};
@@ -52,14 +53,19 @@ impl Executable for BinanceKlinesTask {
     type Output = BoxStream<'static, Result<TaskStatus<Kline>>>;
 
     async fn check_data_complete(&self) -> Result<bool> {
+        let start_datetime = DateTime::<Utc>::from_timestamp(self.params.start_timestamp, 0)
+            .ok_or_else(|| anyhow::anyhow!("start_timestamp is invalid"))?;
+        let end_datetime = DateTime::<Utc>::from_timestamp(self.params.end_timestamp, 0)
+            .ok_or_else(|| anyhow::anyhow!("end_timestamp is invalid"))?;
+
         let store_kline_count = kline::time_range_klines_count(
             &self.db,
             "binance",
             &self.params.market,
             &self.params.symbol,
             &self.params.interval,
-            self.params.start_timestamp * 1000,
-            self.params.end_timestamp * 1000,
+            &start_datetime,
+            &end_datetime,
         )
         .await?;
 
@@ -109,13 +115,14 @@ impl Executable for BinanceKlinesTask {
 
                 while let Some(kline_summary) = klines_stream.next().await {
                     let kline_summary = kline_summary?;
+                    let open_time = DateTime::<Utc>::from_timestamp_millis(kline_summary.open_time).unwrap_or_default();
 
                     let kline_data = kline::Kline {
                         exchange: EXCHANGE.to_string(),
                         market: params.market.clone(),
                         symbol: params.symbol.clone(),
                         interval: params.interval.clone(),
-                        open_time: kline_summary.open_time,
+                        open_time,
                         open_price: kline_summary.open.parse()?,
                         high_price: kline_summary.high.parse()?,
                         low_price: kline_summary.low.parse()?,

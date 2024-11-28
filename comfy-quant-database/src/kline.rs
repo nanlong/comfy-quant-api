@@ -13,7 +13,7 @@ pub struct Kline {
     pub market: String,            // 市场
     pub symbol: String,            // 交易对
     pub interval: String,          // 时间间隔
-    pub open_time: i64,            // 开盘时间
+    pub open_time: DateTime<Utc>,  // 开盘时间
     pub open_price: Decimal,       // 开盘价格
     pub high_price: Decimal,       // 最高价格
     pub low_price: Decimal,        // 最低价格
@@ -31,7 +31,7 @@ impl Kline {
         market: String,
         symbol: String,
         interval: String,
-        open_time: i64,
+        open_time: DateTime<Utc>,
         open_price: Decimal,
         high_price: Decimal,
         low_price: Decimal,
@@ -150,7 +150,7 @@ pub async fn get_kline(
     market: &str,
     symbol: &str,
     interval: &str,
-    open_time: i64,
+    open_time: DateTime<Utc>,
 ) -> Result<Option<Kline>> {
     let kline = sqlx::query_as!(
         Kline,
@@ -175,8 +175,8 @@ pub async fn list(
     market: &str,
     symbol: &str,
     interval: &str,
-    start_timestamp: i64,
-    end_timestamp: i64,
+    start_datetime: &DateTime<Utc>,
+    end_datetime: &DateTime<Utc>,
 ) -> Result<Vec<Kline>> {
     let result = sqlx::query_as!(
         Kline,
@@ -194,8 +194,8 @@ pub async fn list(
         market,
         symbol,
         interval,
-        start_timestamp * 1000,
-        end_timestamp * 1000
+        start_datetime,
+        end_datetime
     )
     .fetch_all(db)
     .await?;
@@ -209,8 +209,8 @@ pub fn time_range_klines_stream<'a>(
     market: &str,
     symbol: &str,
     interval: &str,
-    start_timestamp_millis: i64,
-    end_timestamp_millis: i64,
+    start_datetime: &DateTime<Utc>,
+    end_datetime: &DateTime<Utc>,
 ) -> impl Stream<Item = Result<Kline, sqlx::Error>> + 'a {
     sqlx::query_as!(
         Kline,
@@ -221,8 +221,8 @@ pub fn time_range_klines_stream<'a>(
         market,
         symbol,
         interval,
-        start_timestamp_millis,
-        end_timestamp_millis,
+        start_datetime,
+        end_datetime,
     )
     .fetch(db)
 }
@@ -233,8 +233,8 @@ pub async fn time_range_klines_count(
     market: &str,
     symbol: &str,
     interval: &str,
-    start_timestamp_millis: i64,
-    end_timestamp_millis: i64,
+    start_datetime: &DateTime<Utc>,
+    end_datetime: &DateTime<Utc>,
 ) -> Result<usize> {
     let count = sqlx::query_scalar!(
         r#"
@@ -244,8 +244,8 @@ pub async fn time_range_klines_count(
         market,
         symbol,
         interval,
-        start_timestamp_millis,
-        end_timestamp_millis,
+        start_datetime,
+        end_datetime,
     )
     .fetch_one(db)
     .await?;
@@ -309,17 +309,20 @@ pub enum KlineInterval {
 
 #[cfg(test)]
 mod tests {
+    use comfy_quant_util::secs_to_datetime;
     use futures::StreamExt;
 
     use super::*;
 
     async fn create_kline(db: &PgPool) -> Result<Kline> {
+        let open_time = secs_to_datetime(1721817600)?;
+
         let kline = Kline::builder()
             .exchange("binance".to_string())
             .market("spot".to_string())
             .symbol("BTCUSDT".to_string())
             .interval("1m".to_string())
-            .open_time(1721817600)
+            .open_time(open_time)
             .open_price("10000".parse()?)
             .high_price("10000".parse()?)
             .low_price("10000".parse()?)
@@ -389,12 +392,14 @@ mod tests {
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn test_create_or_update_kline(db: PgPool) -> anyhow::Result<()> {
+        let open_time = secs_to_datetime(1721817600)?;
+
         let kline = Kline::builder()
             .exchange("binance".to_string())
             .market("spot".to_string())
             .symbol("BTCUSDT".to_string())
             .interval("1m".to_string())
-            .open_time(1721817600)
+            .open_time(open_time)
             .open_price("10000".parse()?)
             .high_price("10000".parse()?)
             .low_price("10000".parse()?)
@@ -409,7 +414,7 @@ mod tests {
         assert_eq!(kline.market, "spot");
         assert_eq!(kline.symbol, "BTCUSDT");
         assert_eq!(kline.interval, "1m");
-        assert_eq!(kline.open_time, 1721817600);
+        assert_eq!(kline.open_time.timestamp(), 1721817600);
         assert_eq!(kline.open_price, "10000".parse()?);
         assert_eq!(kline.high_price, "10000".parse()?);
         assert_eq!(kline.low_price, "10000".parse()?);
@@ -421,7 +426,7 @@ mod tests {
             .market("spot".to_string())
             .symbol("BTCUSDT".to_string())
             .interval("1m".to_string())
-            .open_time(1721817600)
+            .open_time(open_time)
             .open_price("20000".parse()?)
             .high_price("20000".parse()?)
             .low_price("20000".parse()?)
@@ -502,8 +507,17 @@ mod tests {
     async fn test_time_range_klines_stream(db: PgPool) -> anyhow::Result<()> {
         create_kline(&db).await?;
 
+        let start_datetime = secs_to_datetime(1721817600)?;
+        let end_datetime = secs_to_datetime(1721817600)?;
+
         let klines = time_range_klines_stream(
-            &db, "binance", "spot", "BTCUSDT", "1m", 1721817600, 1721817600,
+            &db,
+            "binance",
+            "spot",
+            "BTCUSDT",
+            "1m",
+            &start_datetime,
+            &end_datetime,
         );
 
         let klines = klines.collect::<Vec<Result<Kline, sqlx::Error>>>().await;
@@ -518,8 +532,17 @@ mod tests {
     async fn test_time_range_klines_count(db: PgPool) -> anyhow::Result<()> {
         create_kline(&db).await?;
 
+        let start_datetime = secs_to_datetime(1721817600)?;
+        let end_datetime = secs_to_datetime(1721817600)?;
+
         let count = time_range_klines_count(
-            &db, "binance", "spot", "BTCUSDT", "1m", 1721817600, 1721817600,
+            &db,
+            "binance",
+            "spot",
+            "BTCUSDT",
+            "1m",
+            &start_datetime,
+            &end_datetime,
         )
         .await?;
         assert_eq!(count, 1);
