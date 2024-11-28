@@ -16,6 +16,7 @@ pub struct StrategySpotStats {
     pub quote_asset: String,             // 计价资产
     pub initial_base_balance: Decimal,   // 初始化基础资产余额
     pub initial_quote_balance: Decimal,  // 初始化计价资产余额
+    pub initial_price: Decimal,          // 初始化价格
     pub maker_commission_rate: Decimal,  // maker手续费率
     pub taker_commission_rate: Decimal,  // taker手续费率
     pub base_asset_balance: Decimal,     // 基础资产持仓量
@@ -47,6 +48,7 @@ impl StrategySpotStats {
         quote_asset: String,
         initial_base_balance: Decimal,
         initial_quote_balance: Decimal,
+        initial_price: Decimal,
         maker_commission_rate: Decimal,
         taker_commission_rate: Decimal,
         base_asset_balance: Decimal,
@@ -72,6 +74,7 @@ impl StrategySpotStats {
             quote_asset,
             initial_base_balance,
             initial_quote_balance,
+            initial_price,
             maker_commission_rate,
             taker_commission_rate,
             base_asset_balance,
@@ -96,8 +99,8 @@ pub async fn create(db: &PgPool, data: &StrategySpotStats) -> Result<StrategySpo
     let strategy_position = sqlx::query_as!(
         StrategySpotStats,
         r#"
-        INSERT INTO strategy_spot_stats (workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset, initial_base_balance, initial_quote_balance, maker_commission_rate, taker_commission_rate, base_asset_balance, quote_asset_balance, avg_price, total_trades, buy_trades, sell_trades, total_base_volume, total_quote_volume, total_base_commission, total_quote_commission, realized_pnl, win_trades, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW(), NOW())
+        INSERT INTO strategy_spot_stats (workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset, initial_base_balance, initial_quote_balance, initial_price, maker_commission_rate, taker_commission_rate, base_asset_balance, quote_asset_balance, avg_price, total_trades, buy_trades, sell_trades, total_base_volume, total_quote_volume, total_base_commission, total_quote_commission, realized_pnl, win_trades, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW())
         RETURNING *
         "#,
         data.workflow_id,
@@ -109,6 +112,7 @@ pub async fn create(db: &PgPool, data: &StrategySpotStats) -> Result<StrategySpo
         data.quote_asset,
         data.initial_base_balance,
         data.initial_quote_balance,
+        data.initial_price,
         data.maker_commission_rate,
         data.taker_commission_rate,
         data.base_asset_balance,
@@ -236,6 +240,7 @@ mod tests {
             .quote_asset("USDT")
             .initial_base_balance("1".parse()?)
             .initial_quote_balance("1000".parse()?)
+            .initial_price("10000".parse()?)
             .maker_commission_rate("0.001".parse()?)
             .taker_commission_rate("0.001".parse()?)
             .base_asset_balance("1".parse()?)
@@ -270,6 +275,7 @@ mod tests {
         assert_eq!(strategy_spot_stats.quote_asset, "USDT");
         assert_eq!(strategy_spot_stats.initial_base_balance, "1".parse()?);
         assert_eq!(strategy_spot_stats.initial_quote_balance, "1000".parse()?);
+        assert_eq!(strategy_spot_stats.initial_price, "10000".parse()?);
         assert_eq!(strategy_spot_stats.maker_commission_rate, "0.001".parse()?);
         assert_eq!(strategy_spot_stats.taker_commission_rate, "0.001".parse()?);
         assert_eq!(strategy_spot_stats.base_asset_balance, "1".parse()?);

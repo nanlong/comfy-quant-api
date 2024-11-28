@@ -34,6 +34,7 @@ impl StrategySpotPosition {
         base_asset_balance: Decimal,
         quote_asset_balance: Decimal,
         realized_pnl: Decimal,
+        created_at: Option<DateTime<Utc>>, // 方便测试
     ) -> Self {
         StrategySpotPosition {
             workflow_id,
@@ -46,6 +47,7 @@ impl StrategySpotPosition {
             base_asset_balance,
             quote_asset_balance,
             realized_pnl,
+            created_at: created_at.unwrap_or_else(Utc::now),
             ..Default::default()
         }
     }
@@ -92,6 +94,7 @@ mod tests {
             .base_asset_balance("1".parse()?)
             .quote_asset_balance("1000".parse()?)
             .realized_pnl("0".parse()?)
+            .created_at(DateTime::<Utc>::from_timestamp(0, 0).unwrap())
             .build();
 
         Ok(strategy_spot_position)

@@ -80,6 +80,9 @@ impl SpotGrid {
         client: &SpotClientKind,
         tick_stream: &TickStream,
     ) -> Result<()> {
+        // 获取初始化价格
+        let initial_price = tick_stream.subscribe().recv_async().await?.price;
+
         // 保存最新的价格
         tick_stream.save_price(self.price_store.clone()).await?;
 
@@ -110,7 +113,7 @@ impl SpotGrid {
             .await?;
 
         // 获取平台名称
-        let platform_name = spot_client_service.platform_name().await?;
+        let exchange = spot_client_service.exchange().await?;
 
         // 检查账户余额是否充足
         if balance.free.parse::<Decimal>()? < self.params.investment {
@@ -121,16 +124,23 @@ impl SpotGrid {
         let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
         let stats_key = client.stats_key(&symbol);
 
+        // 初始化统计信息
         self.stats.initialize(
             &stats_key,
-            &platform_name,
+            &exchange,
             &symbol,
             &pair_info.base_asset,
             &pair_info.quote_asset,
         );
 
+        // 初始化账户余额
         self.stats
-            .initial_quote_balance(&stats_key, &self.params.investment)
+            .initialize_balance(
+                &stats_key,
+                &dec!(0),
+                &self.params.investment,
+                &initial_price,
+            )
             .await?;
 
         // 计算网格价格
@@ -147,7 +157,7 @@ impl SpotGrid {
 
         // 创建网格
         let grid = Grid::builder()
-            .platform_name(platform_name)
+            .exchange(exchange)
             .investment(self.params.investment)
             .grid_prices(grid_prices)
             .current_price(tick.price)
@@ -469,7 +479,7 @@ impl FromStr for Mode {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct Grid {
-    platform_name: String,    // 平台名称
+    exchange: String,         // 平台名称
     rows: Vec<GridRow>,       // 网格行
     cursor: usize,            // 当前网格序号
     prev_sell_price: Decimal, // 上一次的卖出价格
@@ -491,13 +501,13 @@ pub(crate) enum TradeSignal {
 impl Grid {
     #[builder]
     fn new(
-        #[builder(into)] platform_name: String, // 平台名称
-        investment: Decimal,                    // 投资金额
-        grid_prices: Vec<Decimal>,              // 网格价格
-        current_price: Decimal,                 // 当前价格
-        base_asset_precision: u32,              // 基础币种小数点位数
-        quote_asset_precision: u32,             // 报价币种小数点位数
-        commission_rate: Decimal,               // 手续费
+        #[builder(into)] exchange: String, // 平台名称
+        investment: Decimal,               // 投资金额
+        grid_prices: Vec<Decimal>,         // 网格价格
+        current_price: Decimal,            // 当前价格
+        base_asset_precision: u32,         // 基础币种小数点位数
+        quote_asset_precision: u32,        // 报价币种小数点位数
+        commission_rate: Decimal,          // 手续费
     ) -> Self {
         let grid_investment = (investment / (Decimal::from(grid_prices.len()) - dec!(1)))
             .round_dp(quote_asset_precision);
@@ -534,7 +544,7 @@ impl Grid {
         let locked = AtomicBool::new(false);
 
         Grid {
-            platform_name,
+            exchange,
             rows,
             cursor,
             prev_sell_price,
@@ -956,7 +966,7 @@ mod tests {
         );
 
         let mut grid = Grid::builder()
-            .platform_name("Test")
+            .exchange("Test")
             .investment(params.investment)
             .grid_prices(grid_prices)
             .base_asset_precision(base_asset_precision)

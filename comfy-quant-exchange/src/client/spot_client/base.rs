@@ -402,7 +402,7 @@ pub enum SpotClientRequest {
 }
 
 impl SpotClientRequest {
-    pub fn platform_name() -> Self {
+    pub fn exchange() -> Self {
         SpotClientRequest::PlatformName
     }
 
@@ -474,11 +474,11 @@ impl TryFrom<SpotClientResponse> for String {
     type Error = anyhow::Error;
 
     fn try_from(value: SpotClientResponse) -> Result<Self, Self::Error> {
-        let SpotClientResponse::PlatformName(platform_name) = value else {
+        let SpotClientResponse::PlatformName(exchange) = value else {
             anyhow::bail!("try from SpotClientResponse to String failed")
         };
 
-        Ok(platform_name)
+        Ok(exchange)
     }
 }
 

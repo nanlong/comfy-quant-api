@@ -25,7 +25,7 @@ pub struct Kline {
 
 #[bon]
 impl Kline {
-    #[builder]
+    #[builder(on(String, into))]
     pub fn new(
         exchange: String,
         market: String,

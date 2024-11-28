@@ -119,8 +119,8 @@ impl SpotClientService {
         self.ready_call(req).await?.try_into()
     }
 
-    pub async fn platform_name(&mut self) -> Result<String> {
-        let req = SpotClientRequest::platform_name();
+    pub async fn exchange(&mut self) -> Result<String> {
+        let req = SpotClientRequest::exchange();
         self.ready_call(req).await?.try_into()
     }
 

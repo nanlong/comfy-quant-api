@@ -143,7 +143,7 @@ impl BacktestSpotClient {
 }
 
 impl SpotClientExecutable for BacktestSpotClient {
-    fn platform_name(&self) -> &str {
+    fn exchange(&self) -> &str {
         BACKTEST_EXCHANGE_NAME
     }
 

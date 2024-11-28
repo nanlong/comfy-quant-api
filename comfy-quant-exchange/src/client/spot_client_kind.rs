@@ -15,7 +15,7 @@ use tower::Service;
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
 pub trait SpotClientExecutable {
-    fn platform_name(&self) -> &str;
+    fn exchange(&self) -> &str;
 
     fn symbol(&self, base_asset: &str, quote_asset: &str) -> String;
 
@@ -64,7 +64,7 @@ pub trait SpotClientExecutable {
 
     // 获取统计信息key
     fn stats_key(&self, symbol: impl Into<String>) -> String {
-        format!("{}_{}_{}", self.platform_name(), "spot", symbol.into())
+        format!("{}_{}_{}", self.exchange(), "spot", symbol.into())
     }
 }
 
@@ -90,7 +90,7 @@ impl Service<SpotClientRequest> for SpotClientKind {
         let fut = async move {
             let res = match req {
                 SpotClientRequest::PlatformName => {
-                    let name = client.platform_name().to_string();
+                    let name = client.exchange().to_string();
                     SpotClientResponse::PlatformName(name)
                 }
                 SpotClientRequest::Symbol {

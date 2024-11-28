@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS strategy_spot_stats (
     quote_asset VARCHAR(20) NOT NULL,
     initial_base_balance NUMERIC NOT NULL,
     initial_quote_balance NUMERIC NOT NULL,
+    initial_price NUMERIC NOT NULL,
     maker_commission_rate NUMERIC NOT NULL,
     taker_commission_rate NUMERIC NOT NULL,
     base_asset_balance NUMERIC NOT NULL,
@@ -47,6 +48,7 @@ COMMENT ON COLUMN strategy_spot_stats.base_asset IS '基础资产';
 COMMENT ON COLUMN strategy_spot_stats.quote_asset IS '计价资产';
 COMMENT ON COLUMN strategy_spot_stats.initial_base_balance IS '初始化基础资产余额';
 COMMENT ON COLUMN strategy_spot_stats.initial_quote_balance IS '初始化计价资产余额';
+COMMENT ON COLUMN strategy_spot_stats.initial_price IS '初始化价格';
 COMMENT ON COLUMN strategy_spot_stats.maker_commission_rate IS 'maker手续费率';
 COMMENT ON COLUMN strategy_spot_stats.taker_commission_rate IS 'taker手续费率';
 COMMENT ON COLUMN strategy_spot_stats.base_asset_balance IS '基础资产持仓量';

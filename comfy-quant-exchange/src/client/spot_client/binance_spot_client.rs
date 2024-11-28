@@ -38,7 +38,7 @@ impl BinanceSpotClient {
 }
 
 impl SpotClientExecutable for BinanceSpotClient {
-    fn platform_name(&self) -> &str {
+    fn exchange(&self) -> &str {
         BINANCE_EXCHANGE_NAME
     }
 
