@@ -164,7 +164,7 @@ impl<T: NodeStats> NodeStatsInfo for T {
         .await
         .ok()?;
 
-        let net_values = stats_data.calculate_net_value(&positions, &klines);
+        let net_values = stats_data.calculate_net_value(&positions, &klines).ok()?;
 
         Some(SpotStatsData::get_max_drawdown(&net_values))
     }

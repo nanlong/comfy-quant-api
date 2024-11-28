@@ -7,6 +7,13 @@ use comfy_quant_database::{
     SpotStatsQuery,
 };
 use comfy_quant_exchange::client::spot_client::base::{Order, OrderSide};
+use polars::{
+    df,
+    prelude::{
+        col, lit, DataFrameJoinOps, FillNullStrategy, IntoLazy, JoinArgs, JoinType,
+        SortMultipleOptions,
+    },
+};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use sqlx::PgPool;
@@ -279,44 +286,74 @@ impl SpotStatsData {
         &self,
         positions: &[StrategySpotPosition],
         klines: &[Kline],
-    ) -> Vec<NetValue> {
-        let mut results = Vec::new();
-        let mut max_net_value = Decimal::ONE; // 初始净值为1
-        let initial_value =
-            self.initial_base_balance * self.initial_price + self.initial_quote_balance;
+    ) -> Result<Vec<NetValue>> {
+        let initial_value = (self.initial_base_balance * self.initial_price
+            + self.initial_quote_balance)
+            .to_string()
+            .parse::<f64>()?;
 
-        for kline in klines {
-            // 找到该时间点之前的最后一个仓位记录
-            let position = positions
-                .iter()
-                .rev()
-                .find(|p| p.created_at.timestamp() <= kline.open_time)
-                .unwrap_or(&positions[0]); // 如果找不到，使用第一个仓位
+        let pos_len = positions.len();
+        let kline_len = klines.len();
 
-            // 计算当前总资产价值
-            let total_value =
-                position.base_asset_balance * kline.close_price + position.quote_asset_balance;
+        let mut pos_timestamps = Vec::with_capacity(pos_len);
+        let mut pos_base_balances = Vec::with_capacity(pos_len);
+        let mut pos_quote_balances = Vec::with_capacity(pos_len);
+        let mut kline_timestamps = Vec::with_capacity(kline_len);
+        let mut kline_close_prices = Vec::with_capacity(kline_len);
 
-            // 计算净值
-            let net_value = total_value / initial_value;
-
-            // 计算回撤
-            let drawdown: Decimal = if net_value < max_net_value {
-                (max_net_value - net_value) / max_net_value
-            } else {
-                max_net_value = net_value;
-                Decimal::ZERO
-            };
-
-            results.push(NetValue {
-                timestamp: kline.created_at.timestamp(),
-                value: total_value,
-                net_value,
-                drawdown,
-            });
+        for p in positions {
+            pos_timestamps.push(p.created_at.timestamp());
+            pos_base_balances.push(p.base_asset_balance.to_string().parse::<f64>()?);
+            pos_quote_balances.push(p.quote_asset_balance.to_string().parse::<f64>()?);
         }
 
-        results
+        for k in klines {
+            kline_timestamps.push(k.open_time / 1000);
+            kline_close_prices.push(k.close_price.to_string().parse::<f64>()?);
+        }
+
+        let pos_df = df!(
+            "timestamp" => pos_timestamps,
+            "base_balance" => pos_base_balances,
+            "quote_balance" => pos_quote_balances,
+        )?;
+
+        let kline_df = df!(
+            "timestamp" => kline_timestamps,
+            "close" => kline_close_prices,
+        )?;
+
+        let df = kline_df
+            .join(
+                &pos_df,
+                ["timestamp"],
+                ["timestamp"],
+                JoinArgs::new(JoinType::Left),
+            )?
+            .sort(["timestamp"], SortMultipleOptions::default())?
+            .lazy()
+            .with_columns([
+                col("base_balance").fill_null_with_strategy(FillNullStrategy::Forward(None)),
+                col("quote_balance").fill_null_with_strategy(FillNullStrategy::Forward(None)),
+            ])
+            .with_column(
+                (col("base_balance") * col("close") + col("quote_balance")).alias("total_value"),
+            )
+            .with_column((col("total_value") / lit(initial_value)).alias("net_value"))
+            .with_column(col("net_value").cum_max(false).alias("max_net_value"))
+            .with_column((lit(1.0) - col("net_value") / col("max_net_value")).alias("drawdown"))
+            .collect()?;
+
+        Ok(itertools::izip!(
+            df.column("timestamp")?.i64()?.into_iter().flatten(),
+            df.column("total_value")?.f64()?.into_iter().flatten(),
+            df.column("net_value")?.f64()?.into_iter().flatten(),
+            df.column("drawdown")?.f64()?.into_iter().flatten()
+        )
+        .map(|(timestamp, value, net_value, drawdown)| {
+            NetValue::new(timestamp, value, net_value, drawdown)
+        })
+        .collect())
     }
 
     // 获取最大回撤
@@ -417,6 +454,17 @@ pub struct NetValue {
     pub drawdown: Decimal,  // 回撤
 }
 
+impl NetValue {
+    pub fn new(timestamp: i64, value: f64, net_value: f64, drawdown: f64) -> Self {
+        NetValue {
+            timestamp,
+            value: value.try_into().unwrap_or_default(),
+            net_value: net_value.try_into().unwrap_or_default(),
+            drawdown: drawdown.try_into().unwrap_or_default(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -479,7 +527,7 @@ mod tests {
                 .market(market)
                 .symbol(symbol)
                 .interval("1m")
-                .open_time(1000)
+                .open_time(1000000)
                 .open_price(dec!(50000))
                 .high_price(dec!(50000))
                 .low_price(dec!(50000))
@@ -491,7 +539,7 @@ mod tests {
                 .market(market)
                 .symbol(symbol)
                 .interval("1m")
-                .open_time(1500)
+                .open_time(1500000)
                 .open_price(dec!(50000))
                 .high_price(dec!(50000))
                 .low_price(dec!(45000))
@@ -503,11 +551,35 @@ mod tests {
                 .market(market)
                 .symbol(symbol)
                 .interval("1m")
-                .open_time(2000)
+                .open_time(2000000)
                 .open_price(dec!(48000))
                 .high_price(dec!(48000))
                 .low_price(dec!(48000))
                 .close_price(dec!(48000))
+                .volume(dec!(0))
+                .build(),
+            Kline::builder()
+                .exchange(exchange)
+                .market(market)
+                .symbol(symbol)
+                .interval("1m")
+                .open_time(2500000)
+                .open_price(dec!(48000))
+                .high_price(dec!(48000))
+                .low_price(dec!(48000))
+                .close_price(dec!(52000))
+                .volume(dec!(0))
+                .build(),
+            Kline::builder()
+                .exchange(exchange)
+                .market(market)
+                .symbol(symbol)
+                .interval("1m")
+                .open_time(3000000)
+                .open_price(dec!(48000))
+                .high_price(dec!(48000))
+                .low_price(dec!(48000))
+                .close_price(dec!(45000))
                 .volume(dec!(0))
                 .build(),
         ];
@@ -521,10 +593,10 @@ mod tests {
         stats.initial_price = initial_price;
 
         // 计算净值
-        let results = stats.calculate_net_value(&positions, &klines);
+        let results = stats.calculate_net_value(&positions, &klines).unwrap();
 
         // 验证计算结果
-        assert_eq!(results.len(), 3);
+        assert_eq!(results.len(), 5);
 
         // t=1000: 1 BTC * 50000 + 10000 = 60000, 净值 = 1.0
         assert_eq!(results[0].value, dec!(60000));
@@ -551,6 +623,28 @@ mod tests {
         assert_eq!(
             (results[2].drawdown * dec!(10000)).round() / dec!(10000),
             dec!(0.0167)
+        );
+
+        // t=2500: 0.5 BTC * 52000 + 35000 = 61000, 净值 = 1.0167
+        assert_eq!(results[3].value, dec!(61000));
+        assert_eq!(
+            (results[3].net_value * dec!(10000)).round() / dec!(10000),
+            dec!(1.0167)
+        );
+        assert_eq!(
+            (results[3].drawdown * dec!(10000)).round() / dec!(10000),
+            dec!(0)
+        );
+
+        // t=3000: 0.5 BTC * 45000 + 35000 = 57500, 净值 = 0.9583
+        assert_eq!(results[4].value, dec!(57500));
+        assert_eq!(
+            (results[4].net_value * dec!(10000)).round() / dec!(10000),
+            dec!(0.9583)
+        );
+        assert_eq!(
+            (results[4].drawdown * dec!(10000)).round() / dec!(10000),
+            dec!(0.0574)
         );
     }
 

@@ -20,7 +20,9 @@ flume = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 hdrhistogram = { workspace = true }
+itertools = { workspace = true }
 nanoid = { workspace = true }
+polars = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
 serde = { workspace = true }
