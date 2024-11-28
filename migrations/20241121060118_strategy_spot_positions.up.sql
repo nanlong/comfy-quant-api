@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS strategy_spot_positions (
     quote_asset VARCHAR(20) NOT NULL,
     base_asset_balance NUMERIC NOT NULL,
     quote_asset_balance NUMERIC NOT NULL,
+    realized_pnl NUMERIC NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
@@ -32,4 +33,5 @@ COMMENT ON COLUMN strategy_spot_positions.base_asset IS '基础资产';
 COMMENT ON COLUMN strategy_spot_positions.quote_asset IS '计价资产';
 COMMENT ON COLUMN strategy_spot_positions.base_asset_balance IS '基础资产余额';
 COMMENT ON COLUMN strategy_spot_positions.quote_asset_balance IS '计价资产余额';
+COMMENT ON COLUMN strategy_spot_positions.realized_pnl IS '已实现盈亏';
 COMMENT ON COLUMN strategy_spot_positions.created_at IS '创建时间';

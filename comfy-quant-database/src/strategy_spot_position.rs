@@ -16,6 +16,7 @@ pub struct StrategySpotPosition {
     pub quote_asset: String,          // 计价资产
     pub base_asset_balance: Decimal,  // 基础资产持仓量
     pub quote_asset_balance: Decimal, // 计价资产持仓量
+    pub realized_pnl: Decimal,        // 已实现盈亏
     pub created_at: DateTime<Utc>,    // 创建时间
 }
 
@@ -32,6 +33,7 @@ impl StrategySpotPosition {
         quote_asset: String,
         base_asset_balance: Decimal,
         quote_asset_balance: Decimal,
+        realized_pnl: Decimal,
     ) -> Self {
         StrategySpotPosition {
             workflow_id,
@@ -43,6 +45,7 @@ impl StrategySpotPosition {
             quote_asset,
             base_asset_balance,
             quote_asset_balance,
+            realized_pnl,
             ..Default::default()
         }
     }
@@ -52,8 +55,8 @@ pub async fn create(db: &PgPool, data: &StrategySpotPosition) -> Result<Strategy
     let strategy_spot_position = sqlx::query_as!(
         StrategySpotPosition,
         r#"
-        INSERT INTO strategy_spot_positions (workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset, base_asset_balance, quote_asset_balance, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        INSERT INTO strategy_spot_positions (workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset, base_asset_balance, quote_asset_balance, realized_pnl, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
         RETURNING *
         "#,
         data.workflow_id,
@@ -65,6 +68,7 @@ pub async fn create(db: &PgPool, data: &StrategySpotPosition) -> Result<Strategy
         data.quote_asset,
         data.base_asset_balance,
         data.quote_asset_balance,
+        data.realized_pnl,
     )
     .fetch_one(db)
     .await?;
@@ -87,6 +91,7 @@ mod tests {
             .quote_asset("USDT")
             .base_asset_balance("1".parse()?)
             .quote_asset_balance("1000".parse()?)
+            .realized_pnl("0".parse()?)
             .build();
 
         Ok(strategy_spot_position)

@@ -168,8 +168,6 @@ pub struct SpotStatsData {
     pub total_quote_commission: Decimal, // 总手续费
     pub realized_pnl: Decimal,           // 已实现盈亏
     pub win_trades: u64,                 // 盈利交易次数
-    pub max_drawdown: Decimal,           // 最大回撤
-    pub roi: Decimal,                    // 收益率
 }
 
 #[allow(unused)]
@@ -330,6 +328,7 @@ impl SpotStatsData {
             .quote_asset(params.quote_asset)
             .base_asset_balance(self.base_asset_balance)
             .quote_asset_balance(self.quote_asset_balance)
+            .realized_pnl(self.realized_pnl)
             .build();
 
         strategy_spot_position::create(db, &data).await?;
