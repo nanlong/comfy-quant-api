@@ -1,5 +1,6 @@
+use crate::SpotStatsQuery;
 use anyhow::Result;
-use bon::{bon, Builder};
+use bon::bon;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sqlx::{postgres::PgPool, FromRow};
@@ -99,8 +100,12 @@ pub async fn create(db: &PgPool, data: &StrategySpotStats) -> Result<StrategySpo
     let strategy_position = sqlx::query_as!(
         StrategySpotStats,
         r#"
-        INSERT INTO strategy_spot_stats (workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset, initial_base_balance, initial_quote_balance, initial_price, maker_commission_rate, taker_commission_rate, base_asset_balance, quote_asset_balance, avg_price, total_trades, buy_trades, sell_trades, total_base_volume, total_quote_volume, total_base_commission, total_quote_commission, realized_pnl, win_trades, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW())
+        INSERT INTO strategy_spot_stats (
+            workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset, initial_base_balance, initial_quote_balance, initial_price, maker_commission_rate, taker_commission_rate, base_asset_balance, quote_asset_balance, avg_price, total_trades, buy_trades, sell_trades, total_base_volume, total_quote_volume, total_base_commission, total_quote_commission, realized_pnl, win_trades, created_at, updated_at
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW()
+        )
         RETURNING *
         "#,
         data.workflow_id,
@@ -138,8 +143,23 @@ pub async fn update(db: &PgPool, data: &StrategySpotStats) -> Result<StrategySpo
     let strategy_position = sqlx::query_as!(
         StrategySpotStats,
         r#"
-        UPDATE strategy_spot_stats SET base_asset_balance = $1, quote_asset_balance = $2, avg_price = $3, total_trades = $4, buy_trades = $5, sell_trades = $6, total_base_volume = $7, total_quote_volume = $8, total_base_commission = $9, total_quote_commission = $10, realized_pnl = $11, win_trades = $12, updated_at = NOW() WHERE id = $13
-        RETURNING *
+        UPDATE strategy_spot_stats
+            SET
+                base_asset_balance = $1,
+                quote_asset_balance = $2,
+                avg_price = $3,
+                total_trades = $4,
+                buy_trades = $5,
+                sell_trades = $6,
+                total_base_volume = $7,
+                total_quote_volume = $8,
+                total_base_commission = $9,
+                total_quote_commission = $10,
+                realized_pnl = $11,
+                win_trades = $12,
+                updated_at = NOW()
+            WHERE id = $13
+            RETURNING *
         "#,
         data.base_asset_balance,
         data.quote_asset_balance,
@@ -161,25 +181,24 @@ pub async fn update(db: &PgPool, data: &StrategySpotStats) -> Result<StrategySpo
     Ok(strategy_position)
 }
 
-#[derive(Debug, Builder)]
-pub struct SpotStatsUniqueKey<'a> {
-    pub workflow_id: &'a str,
-    pub node_id: i16,
-    pub node_name: &'a str,
-    pub exchange: &'a str,
-    pub symbol: &'a str,
-    pub base_asset: &'a str,
-    pub quote_asset: &'a str,
-}
-
 pub async fn get_by_unique_key(
     db: &PgPool,
-    query: &SpotStatsUniqueKey<'_>,
+    query: &SpotStatsQuery<'_>,
 ) -> Result<Option<StrategySpotStats>> {
     let strategy_spot_stats = sqlx::query_as!(
         StrategySpotStats,
-        r#"SELECT * FROM strategy_spot_stats WHERE workflow_id = $1 AND node_id = $2 AND node_name = $3 AND exchange = $4 AND symbol = $5 AND base_asset = $6 AND quote_asset = $7"#,
-        query.workflow_id, query.node_id, query.node_name, query.exchange, query.symbol, query.base_asset, query.quote_asset
+        r#"
+        SELECT * FROM strategy_spot_stats
+            WHERE
+                workflow_id = $1 AND
+                node_id = $2 AND
+                exchange = $3 AND
+                symbol = $4
+        "#,
+        query.workflow_id,
+        query.node_id,
+        query.exchange,
+        query.symbol,
     )
     .fetch_optional(db)
     .await?;
@@ -188,14 +207,11 @@ pub async fn get_by_unique_key(
 }
 
 pub async fn create_or_update(db: &PgPool, data: &StrategySpotStats) -> Result<StrategySpotStats> {
-    let query = SpotStatsUniqueKey::builder()
+    let query = SpotStatsQuery::builder()
         .workflow_id(&data.workflow_id)
         .node_id(data.node_id)
-        .node_name(&data.node_name)
         .exchange(&data.exchange)
         .symbol(&data.symbol)
-        .base_asset(&data.base_asset)
-        .quote_asset(&data.quote_asset)
         .build();
 
     match get_by_unique_key(db, &query).await? {
@@ -341,14 +357,11 @@ mod tests {
         let strategy_spot_stats = gen_strategy_spot_stats()?;
         let data = create(&db, &strategy_spot_stats).await?;
 
-        let query = SpotStatsUniqueKey::builder()
+        let query = SpotStatsQuery::builder()
             .workflow_id(&data.workflow_id)
             .node_id(data.node_id)
-            .node_name(&data.node_name)
             .exchange(&data.exchange)
             .symbol(&data.symbol)
-            .base_asset(&data.base_asset)
-            .quote_asset(&data.quote_asset)
             .build();
 
         let strategy_spot_stats = get_by_unique_key(&db, &query).await?;

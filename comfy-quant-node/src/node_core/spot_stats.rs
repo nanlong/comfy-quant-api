@@ -3,7 +3,8 @@ use bon::bon;
 use comfy_quant_database::{
     kline::Kline,
     strategy_spot_position::{self, StrategySpotPosition},
-    strategy_spot_stats::{self, SpotStatsUniqueKey, StrategySpotStats},
+    strategy_spot_stats::{self, StrategySpotStats},
+    SpotStatsQuery,
 };
 use comfy_quant_exchange::client::spot_client::base::{Order, OrderSide};
 use rust_decimal::Decimal;
@@ -14,11 +15,11 @@ use std::{collections::HashMap, sync::Arc};
 type SpotStatsDataMap = HashMap<String, SpotStatsData>;
 
 #[derive(Debug, Clone)]
-struct SpotStatsContext {
-    db: Arc<PgPool>,
-    workflow_id: String,
-    node_id: i16,
-    node_name: String,
+pub struct SpotStatsContext {
+    pub db: Arc<PgPool>,
+    pub workflow_id: String,
+    pub node_id: i16,
+    pub node_name: String,
 }
 
 impl SpotStatsContext {
@@ -70,6 +71,14 @@ impl SpotStats {
         }
     }
 
+    pub fn cloned_context(&self) -> SpotStatsContext {
+        self.context.clone()
+    }
+
+    pub fn get(&self, key: impl AsRef<str>) -> Option<&SpotStatsData> {
+        self.data.get(key.as_ref())
+    }
+
     pub fn get_or_insert(&mut self, key: impl Into<String>) -> &mut SpotStatsData {
         self.as_mut().entry(key.into()).or_default()
     }
@@ -97,7 +106,7 @@ impl SpotStats {
         initial_quote: &Decimal,
         initial_price: &Decimal,
     ) -> Result<()> {
-        let ctx = self.context.clone();
+        let ctx = self.cloned_context();
 
         self.get_or_insert(key.as_ref())
             .initialize_balance(&ctx, initial_base, initial_quote, initial_price)
@@ -106,7 +115,7 @@ impl SpotStats {
     }
 
     pub async fn update_with_order(&mut self, key: impl AsRef<str>, order: &Order) -> Result<()> {
-        let ctx = self.context.clone();
+        let ctx = self.cloned_context();
 
         self.get_or_insert(key.as_ref())
             .update_with_order(&ctx, order)
@@ -162,20 +171,12 @@ impl SpotStatsData {
         self.quote_asset = quote_asset.into();
     }
 
-    fn params<'a>(
-        &'a self,
-        workflow_id: &'a str,
-        node_id: i16,
-        node_name: &'a str,
-    ) -> SpotStatsUniqueKey<'a> {
-        SpotStatsUniqueKey::builder()
+    fn params<'a>(&'a self, workflow_id: &'a str, node_id: i16) -> SpotStatsQuery<'a> {
+        SpotStatsQuery::builder()
             .workflow_id(workflow_id)
             .node_id(node_id)
-            .node_name(node_name)
             .exchange(&self.exchange)
             .symbol(&self.symbol)
-            .base_asset(&self.base_asset)
-            .quote_asset(&self.quote_asset)
             .build()
     }
 
@@ -192,8 +193,14 @@ impl SpotStatsData {
         self.base_asset_balance = initial_base.to_owned();
         self.quote_asset_balance = initial_quote.to_owned();
 
-        let params = self.params(&ctx.workflow_id, ctx.node_id, &ctx.node_name);
-        self.save_strategy_spot_stats(&ctx.db, &params).await?;
+        self.save_strategy_spot_stats(
+            &ctx.db,
+            &ctx.node_name,
+            &self.base_asset,
+            &self.quote_asset,
+            &self.params(&ctx.workflow_id, ctx.node_id),
+        )
+        .await?;
 
         Ok(())
     }
@@ -245,10 +252,24 @@ impl SpotStatsData {
             }
         }
 
-        let params = self.params(&ctx.workflow_id, ctx.node_id, &ctx.node_name);
+        let params = self.params(&ctx.workflow_id, ctx.node_id);
 
-        self.save_strategy_spot_stats(&ctx.db, &params).await?;
-        self.save_strategy_spot_position(&ctx.db, &params).await?;
+        self.save_strategy_spot_stats(
+            &ctx.db,
+            &ctx.node_name,
+            &self.base_asset,
+            &self.quote_asset,
+            &params,
+        )
+        .await?;
+        self.save_strategy_spot_position(
+            &ctx.db,
+            &ctx.node_name,
+            &self.base_asset,
+            &self.quote_asset,
+            &params,
+        )
+        .await?;
 
         Ok(())
     }
@@ -323,16 +344,19 @@ impl SpotStatsData {
     pub async fn save_strategy_spot_position(
         &self,
         db: &PgPool,
-        params: &SpotStatsUniqueKey<'_>,
+        node_name: &str,
+        base_asset: &str,
+        quote_asset: &str,
+        params: &SpotStatsQuery<'_>,
     ) -> Result<()> {
         let data = StrategySpotPosition::builder()
             .workflow_id(params.workflow_id)
             .node_id(params.node_id)
-            .node_name(params.node_name)
+            .node_name(node_name)
             .exchange(params.exchange)
             .symbol(params.symbol)
-            .base_asset(params.base_asset)
-            .quote_asset(params.quote_asset)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
             .base_asset_balance(self.base_asset_balance)
             .quote_asset_balance(self.quote_asset_balance)
             .realized_pnl(self.realized_pnl)
@@ -347,16 +371,19 @@ impl SpotStatsData {
     pub async fn save_strategy_spot_stats(
         &self,
         db: &PgPool,
-        params: &SpotStatsUniqueKey<'_>,
+        node_name: &str,
+        base_asset: &str,
+        quote_asset: &str,
+        params: &SpotStatsQuery<'_>,
     ) -> Result<()> {
         let data = StrategySpotStats::builder()
             .workflow_id(params.workflow_id)
             .node_id(params.node_id)
-            .node_name(params.node_name)
+            .node_name(node_name)
             .exchange(params.exchange)
             .symbol(params.symbol)
-            .base_asset(params.base_asset)
-            .quote_asset(params.quote_asset)
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
             .initial_base_balance(self.initial_base_balance)
             .initial_quote_balance(self.initial_quote_balance)
             .initial_price(self.initial_price)

@@ -1,6 +1,10 @@
 use super::spot_stats::{SpotStats, SpotStatsData};
-use crate::{node_core::Port, workflow::Node};
+use crate::{
+    node_core::{stats_key, Port},
+    workflow::Node,
+};
 use anyhow::Result;
+use comfy_quant_database::{kline, strategy_spot_position};
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, SymbolPrice},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
@@ -108,9 +112,62 @@ pub trait NodeInfo {
 
 /// 策略统计信息接口
 /// 需要从context中获取到db
-pub trait NodeStatsInfo: NodeInfo {
+#[allow(async_fn_in_trait)]
+pub trait NodeStatsInfo {
     // 最大回撤
-    fn max_drawdown(&self, start_timestamp: i64, end_timestamp: i64) -> Decimal;
+    async fn spot_max_drawdown(
+        &self,
+        exchange: &str,
+        symbol: &str,
+        interval: &str,
+        start_timestamp: i64,
+        end_timestamp: i64,
+    ) -> Option<Decimal>;
+}
+
+impl<T: NodeStats> NodeStatsInfo for T {
+    async fn spot_max_drawdown(
+        &self,
+        exchange: &str,
+        symbol: &str,
+        interval: &str,
+        start_timestamp: i64,
+        end_timestamp: i64,
+    ) -> Option<Decimal> {
+        let stats = self.spot_stats()?;
+        let ctx = stats.cloned_context();
+        let market = "spot";
+        let stats_key = stats_key(exchange, market, symbol);
+        let stats_data = stats.get(stats_key)?;
+
+        let positions = strategy_spot_position::list(
+            &ctx.db,
+            &ctx.workflow_id,
+            ctx.node_id,
+            exchange,
+            symbol,
+            start_timestamp,
+            end_timestamp,
+        )
+        .await
+        .ok()?;
+
+        let klines = kline::list(
+            &ctx.db,
+            exchange,
+            market,
+            symbol,
+            interval,
+            start_timestamp,
+            end_timestamp,
+        )
+        .await
+        .ok()?;
+
+        let net_values = stats_data.calculate_net_value(&positions, &klines);
+
+        Some(SpotStatsData::get_max_drawdown(&net_values))
+    }
 }
 
 /// 交易接口

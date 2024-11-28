@@ -63,8 +63,8 @@ pub trait SpotClientExecutable {
     async fn get_price(&self, base_asset: &str, quote_asset: &str) -> Result<SymbolPrice>;
 
     // 获取统计信息key
-    fn stats_key(&self, symbol: impl Into<String>) -> String {
-        format!("{}_{}_{}", self.exchange(), "spot", symbol.into())
+    fn stats_key(&self, symbol: &str) -> String {
+        format!("{}_{}_{}", self.exchange(), "spot", symbol)
     }
 }
 

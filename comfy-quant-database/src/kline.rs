@@ -169,6 +169,40 @@ pub async fn get_kline(
     Ok(kline)
 }
 
+pub async fn list(
+    db: &PgPool,
+    exchange: &str,
+    market: &str,
+    symbol: &str,
+    interval: &str,
+    start_timestamp: i64,
+    end_timestamp: i64,
+) -> Result<Vec<Kline>> {
+    let result = sqlx::query_as!(
+        Kline,
+        r#"
+        SELECT * FROM klines
+            WHERE
+                exchange = $1 AND
+                market = $2 AND
+                symbol = $3 AND
+                interval = $4 AND
+                open_time BETWEEN $5 AND $6
+            ORDER BY open_time ASC
+        "#,
+        exchange,
+        market,
+        symbol,
+        interval,
+        start_timestamp * 1000,
+        end_timestamp * 1000
+    )
+    .fetch_all(db)
+    .await?;
+
+    Ok(result)
+}
+
 pub fn time_range_klines_stream<'a>(
     db: &'a PgPool,
     exchange: &str,

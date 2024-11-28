@@ -57,7 +57,9 @@ pub async fn create(db: &PgPool, data: &StrategySpotPosition) -> Result<Strategy
     let strategy_spot_position = sqlx::query_as!(
         StrategySpotPosition,
         r#"
-        INSERT INTO strategy_spot_positions (workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset, base_asset_balance, quote_asset_balance, realized_pnl, created_at)
+        INSERT INTO strategy_spot_positions (
+            workflow_id, node_id, node_name, exchange, symbol, base_asset, quote_asset, base_asset_balance, quote_asset_balance, realized_pnl, created_at
+        )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
         RETURNING *
         "#,
@@ -76,6 +78,45 @@ pub async fn create(db: &PgPool, data: &StrategySpotPosition) -> Result<Strategy
     .await?;
 
     Ok(strategy_spot_position)
+}
+
+pub async fn list(
+    db: &PgPool,
+    workflow_id: &str,
+    node_id: i16,
+    exchange: &str,
+    symbol: &str,
+    start_timestamp: i64,
+    end_timestamp: i64,
+) -> Result<Vec<StrategySpotPosition>> {
+    let start_datetime = DateTime::<Utc>::from_timestamp(start_timestamp, 0)
+        .ok_or_else(|| anyhow::anyhow!("Invalid start timestamp"))?;
+    let end_datetime = DateTime::<Utc>::from_timestamp(end_timestamp, 0)
+        .ok_or_else(|| anyhow::anyhow!("Invalid end timestamp"))?;
+
+    let result = sqlx::query_as!(
+        StrategySpotPosition,
+        r#"
+        SELECT * FROM strategy_spot_positions
+            WHERE
+                workflow_id = $1 AND
+                node_id = $2 AND
+                exchange = $3 AND
+                symbol = $4 AND
+                created_at BETWEEN $5 AND $6
+            ORDER BY created_at ASC
+        "#,
+        workflow_id,
+        node_id,
+        exchange,
+        symbol,
+        start_datetime,
+        end_datetime,
+    )
+    .fetch_all(db)
+    .await?;
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -115,6 +156,47 @@ mod tests {
         assert_eq!(strategy_spot_position.quote_asset, "USDT");
         assert_eq!(strategy_spot_position.base_asset_balance, "1".parse()?);
         assert_eq!(strategy_spot_position.quote_asset_balance, "1000".parse()?);
+
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn test_strategy_spot_position_list(db: PgPool) -> Result<()> {
+        let strategy_spot_position = gen_strategy_spot_position()?;
+        create(&db, &strategy_spot_position).await?;
+
+        let start_timestamp = 0;
+        let end_timestamp = 10000000000;
+
+        let result = list(
+            &db,
+            "jEnbRDqQu4UN6y7cgQgp6",
+            1,
+            "Binance",
+            "BTCUSDT",
+            start_timestamp,
+            end_timestamp,
+        )
+        .await?;
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, 1);
+        assert_eq!(result[0].workflow_id, strategy_spot_position.workflow_id);
+        assert_eq!(result[0].node_id, strategy_spot_position.node_id);
+        assert_eq!(result[0].node_name, strategy_spot_position.node_name);
+        assert_eq!(result[0].exchange, strategy_spot_position.exchange);
+        assert_eq!(result[0].symbol, strategy_spot_position.symbol);
+        assert_eq!(result[0].base_asset, strategy_spot_position.base_asset);
+        assert_eq!(result[0].quote_asset, strategy_spot_position.quote_asset);
+        assert_eq!(
+            result[0].base_asset_balance,
+            strategy_spot_position.base_asset_balance
+        );
+        assert_eq!(
+            result[0].quote_asset_balance,
+            strategy_spot_position.quote_asset_balance
+        );
+        assert_eq!(result[0].realized_pnl, strategy_spot_position.realized_pnl);
 
         Ok(())
     }
