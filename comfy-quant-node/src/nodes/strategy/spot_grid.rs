@@ -122,11 +122,9 @@ impl SpotGrid {
 
         // 初始化统计信息
         let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
-        let stats_key = client.stats_key(&symbol);
 
         // 初始化统计信息
         self.stats.initialize(
-            &stats_key,
             &exchange,
             &symbol,
             &pair_info.base_asset,
@@ -136,7 +134,8 @@ impl SpotGrid {
         // 初始化账户余额
         self.stats
             .initialize_balance(
-                &stats_key,
+                &exchange,
+                &symbol,
                 &dec!(0),
                 &self.params.investment,
                 &initial_price,

@@ -6,7 +6,7 @@ use comfy_quant_database::{
     strategy_spot_stats::{self, StrategySpotStats},
     SpotStatsQuery,
 };
-use comfy_quant_exchange::client::spot_client::base::{Order, OrderSide};
+use comfy_quant_exchange::client::spot_client::base::{Exchange, Order, OrderSide, Symbol};
 use polars::{
     df,
     prelude::{
@@ -19,7 +19,22 @@ use rust_decimal_macros::dec;
 use sqlx::PgPool;
 use std::{collections::HashMap, sync::Arc};
 
-type SpotStatsDataMap = HashMap<String, SpotStatsData>;
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct SpotStatsKey {
+    pub exchange: Exchange,
+    pub symbol: Symbol,
+}
+
+impl SpotStatsKey {
+    pub fn new(exchange: impl Into<Exchange>, symbol: impl Into<Symbol>) -> Self {
+        Self {
+            exchange: exchange.into(),
+            symbol: symbol.into(),
+        }
+    }
+}
+
+type SpotStatsDataMap = HashMap<SpotStatsKey, SpotStatsData>;
 
 #[derive(Debug, Clone)]
 pub struct SpotStatsContext {
@@ -82,49 +97,65 @@ impl SpotStats {
         self.context.clone()
     }
 
-    pub fn get(&self, key: impl AsRef<str>) -> Option<&SpotStatsData> {
-        self.data.get(key.as_ref())
+    pub fn get(
+        &self,
+        exchange: impl AsRef<str>,
+        symbol: impl AsRef<str>,
+    ) -> Option<&SpotStatsData> {
+        let key = SpotStatsKey::new(exchange.as_ref(), symbol.as_ref());
+        self.data.get(&key)
     }
 
-    pub fn get_or_insert(&mut self, key: impl Into<String>) -> &mut SpotStatsData {
-        self.as_mut().entry(key.into()).or_default()
+    pub fn get_or_insert(
+        &mut self,
+        exchange: impl AsRef<str>,
+        symbol: impl AsRef<str>,
+    ) -> &mut SpotStatsData {
+        let key = SpotStatsKey::new(exchange.as_ref(), symbol.as_ref());
+        self.as_mut().entry(key).or_default()
     }
 
     pub fn initialize(
         &mut self,
-        key: impl AsRef<str>,
         exchange: impl AsRef<str>,
         symbol: impl AsRef<str>,
         base_asset: impl AsRef<str>,
         quote_asset: impl AsRef<str>,
     ) {
-        self.get_or_insert(key.as_ref()).initialize(
-            exchange.as_ref(),
-            symbol.as_ref(),
-            base_asset.as_ref(),
-            quote_asset.as_ref(),
-        );
+        self.get_or_insert(exchange.as_ref(), symbol.as_ref())
+            .initialize(
+                exchange.as_ref(),
+                symbol.as_ref(),
+                base_asset.as_ref(),
+                quote_asset.as_ref(),
+            );
     }
 
     pub async fn initialize_balance(
         &mut self,
-        key: impl AsRef<str>,
+        exchange: impl AsRef<str>,
+        symbol: impl AsRef<str>,
         initial_base: &Decimal,
         initial_quote: &Decimal,
         initial_price: &Decimal,
     ) -> Result<()> {
         let ctx = self.cloned_context();
 
-        self.get_or_insert(key.as_ref())
+        self.get_or_insert(exchange.as_ref(), symbol.as_ref())
             .initialize_balance(&ctx, initial_base, initial_quote, initial_price)
             .await?;
         Ok(())
     }
 
-    pub async fn update_with_order(&mut self, key: impl AsRef<str>, order: &Order) -> Result<()> {
+    pub async fn update_with_order(
+        &mut self,
+        exchange: impl AsRef<str>,
+        symbol: impl AsRef<str>,
+        order: &Order,
+    ) -> Result<()> {
         let ctx = self.cloned_context();
 
-        self.get_or_insert(key.as_ref())
+        self.get_or_insert(exchange.as_ref(), symbol.as_ref())
             .update_with_order(&ctx, order)
             .await?;
 
@@ -778,6 +809,8 @@ mod tests {
     #[sqlx::test(migrator = "comfy_quant_database::MIGRATOR")]
     async fn test_spot_stats_get_or_insert(db: PgPool) {
         let db = Arc::new(db);
+        let exchange = "Binance";
+        let symbol = "BTC/USDT";
 
         let mut stats = SpotStats::builder()
             .db(db)
@@ -786,13 +819,13 @@ mod tests {
             .node_name("test_node")
             .build();
 
-        let data = stats.get_or_insert("BTC/USDT");
+        let data = stats.get_or_insert(exchange, symbol);
         assert_eq!(data.total_trades, 0);
         assert_eq!(data.buy_trades, 0);
         assert_eq!(data.sell_trades, 0);
 
         // 测试重复获取相同的key
-        let data2 = stats.get_or_insert("BTC/USDT");
+        let data2 = stats.get_or_insert(exchange, symbol);
         assert_eq!(data2.total_trades, 0);
     }
 }

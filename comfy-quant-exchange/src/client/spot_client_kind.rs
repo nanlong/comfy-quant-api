@@ -61,11 +61,6 @@ pub trait SpotClientExecutable {
 
     // 获取价格
     async fn get_price(&self, base_asset: &str, quote_asset: &str) -> Result<SymbolPrice>;
-
-    // 获取统计信息key
-    fn stats_key(&self, symbol: &str) -> String {
-        format!("{}_{}_{}", self.exchange(), "spot", symbol)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -89,9 +84,9 @@ impl Service<SpotClientRequest> for SpotClientKind {
 
         let fut = async move {
             let res = match req {
-                SpotClientRequest::PlatformName => {
+                SpotClientRequest::Exchange => {
                     let name = client.exchange().to_string();
-                    SpotClientResponse::PlatformName(name)
+                    SpotClientResponse::Exchange(name)
                 }
                 SpotClientRequest::Symbol {
                     base_asset,

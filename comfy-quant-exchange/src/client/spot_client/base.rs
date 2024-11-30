@@ -7,7 +7,7 @@ use binance::model::{
 use bon::Builder;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use rust_decimal_macros::dec;
-use std::{fmt, str::FromStr};
+use std::str::FromStr;
 
 pub const BACKTEST_EXCHANGE_NAME: &str = "Backtest";
 pub const BINANCE_EXCHANGE_NAME: &str = "Binance";
@@ -170,6 +170,27 @@ impl FromStr for OrderSide {
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
+pub struct Exchange(String);
+
+impl Exchange {
+    fn new(s: impl Into<String>) -> Self {
+        Exchange(s.into())
+    }
+}
+
+impl From<String> for Exchange {
+    fn from(value: String) -> Self {
+        Exchange::new(value)
+    }
+}
+
+impl From<&str> for Exchange {
+    fn from(value: &str) -> Self {
+        Exchange::new(value)
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Symbol(String);
 
 impl Symbol {
@@ -190,17 +211,11 @@ impl From<&str> for Symbol {
     }
 }
 
-impl fmt::Display for Symbol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 #[derive(Builder, Debug, Clone)]
-#[builder(on(String, into), on(Symbol, into))]
+#[builder(on(String, into), on(Exchange, into), on(Symbol, into))]
 #[allow(clippy::duplicated_attributes)]
 pub struct Order {
-    pub exchange: String,                // 交易所
+    pub exchange: Exchange,              // 交易所
     pub base_asset: Option<String>,      // 基础货币
     pub quote_asset: Option<String>,     // 计价货币
     pub symbol: Symbol,                  // 交易对
@@ -355,7 +370,7 @@ impl TryFrom<BinanceSymbolPrice> for SymbolPrice {
 
 #[derive(Clone)]
 pub enum SpotClientRequest {
-    PlatformName,
+    Exchange,
     Symbol {
         base_asset: String,
         quote_asset: String,
@@ -403,7 +418,7 @@ pub enum SpotClientRequest {
 
 impl SpotClientRequest {
     pub fn exchange() -> Self {
-        SpotClientRequest::PlatformName
+        SpotClientRequest::Exchange
     }
 
     pub fn get_account() -> Self {
@@ -425,7 +440,7 @@ impl SpotClientRequest {
 }
 
 pub enum SpotClientResponse {
-    PlatformName(String),
+    Exchange(String),
     Symbol(String),
     AccountInformation(AccountInformation),
     SymbolInformation(SymbolInformation),
@@ -436,7 +451,7 @@ pub enum SpotClientResponse {
 
 impl From<String> for SpotClientResponse {
     fn from(value: String) -> Self {
-        SpotClientResponse::PlatformName(value)
+        SpotClientResponse::Exchange(value)
     }
 }
 
@@ -474,7 +489,7 @@ impl TryFrom<SpotClientResponse> for String {
     type Error = anyhow::Error;
 
     fn try_from(value: SpotClientResponse) -> Result<Self, Self::Error> {
-        let SpotClientResponse::PlatformName(exchange) = value else {
+        let SpotClientResponse::Exchange(exchange) = value else {
             anyhow::bail!("try from SpotClientResponse to String failed")
         };
 

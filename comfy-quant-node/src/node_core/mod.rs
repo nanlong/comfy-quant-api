@@ -19,7 +19,3 @@ pub use traits::{
     Connectable, NodeExecutable, NodeInfo, NodePort, NodeStats, NodeStatsInfo, NodeSymbolPrice,
     SpotTradeable,
 };
-
-pub fn stats_key(exchange: &str, market: &str, symbol: &str) -> String {
-    format!("{}_{}_{}", exchange, market, symbol)
-}

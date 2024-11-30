@@ -1,8 +1,5 @@
 use super::spot_stats::{SpotStats, SpotStatsData};
-use crate::{
-    node_core::{stats_key, Port},
-    workflow::Node,
-};
+use crate::{node_core::Port, workflow::Node};
 use anyhow::Result;
 use comfy_quant_database::{kline, strategy_spot_position};
 use comfy_quant_exchange::client::{
@@ -70,24 +67,33 @@ pub trait NodeStats {
         None
     }
 
-    fn spot_stats_data(&self, key: impl AsRef<str>) -> Result<&SpotStatsData> {
+    fn spot_stats_data(
+        &self,
+        exchange: impl AsRef<str>,
+        symbol: impl AsRef<str>,
+    ) -> Result<&SpotStatsData> {
         self.spot_stats()
-            .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?
-            .as_ref()
-            .get(key.as_ref())
-            .ok_or_else(|| anyhow::anyhow!("Stats not found for key: {}", key.as_ref()))
+            .and_then(|stats| stats.get(exchange.as_ref(), symbol.as_ref()))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Stats not found for exchange: {} symbol: {}",
+                    exchange.as_ref(),
+                    symbol.as_ref()
+                )
+            })
     }
 
     async fn update_spot_stats_with_order(
         &mut self,
-        key: impl AsRef<str>,
+        exchange: impl AsRef<str>,
+        symbol: impl AsRef<str>,
         order: &Order,
     ) -> Result<()> {
         let stats = self
             .spot_stats_mut()
             .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?;
 
-        stats.update_with_order(key, order).await?;
+        stats.update_with_order(exchange, symbol, order).await?;
 
         Ok(())
     }
@@ -138,8 +144,7 @@ impl<T: NodeStats> NodeStatsInfo for T {
         let stats = self.spot_stats()?;
         let ctx = stats.cloned_context();
         let market = "spot";
-        let stats_key = stats_key(exchange, market, symbol);
-        let stats_data = stats.get(stats_key)?;
+        let stats_data = stats.get(exchange, symbol)?;
         let start_datetime = secs_to_datetime(start_timestamp).ok()?;
         let end_datetime = secs_to_datetime(end_timestamp).ok()?;
 
@@ -203,8 +208,8 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
         qty: f64,
     ) -> Result<Order> {
         // 用于回测功能的客户端，需要知道当前价格
+        let exchange = client.exchange();
         let symbol = client.symbol(base_asset, quote_asset);
-        let stats_key = client.stats_key(&symbol);
 
         if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
             if let Some(price) = self.price(&symbol).await {
@@ -216,7 +221,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
 
         // 更新统计信息
-        self.update_spot_stats_with_order(&stats_key, &order)
+        self.update_spot_stats_with_order(exchange, &symbol, &order)
             .await?;
 
         Ok(order)
@@ -229,8 +234,8 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
         quote_asset: &str,
         qty: f64,
     ) -> Result<Order> {
+        let exchange = client.exchange();
         let symbol = client.symbol(base_asset, quote_asset);
-        let stats_key = client.stats_key(&symbol);
 
         // 用于回测功能的客户端，需要知道当前价格
         if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
@@ -243,7 +248,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let order = client.market_sell(base_asset, quote_asset, qty).await?;
 
         // 更新统计信息
-        self.update_spot_stats_with_order(&stats_key, &order)
+        self.update_spot_stats_with_order(exchange, &symbol, &order)
             .await?;
 
         Ok(order)
