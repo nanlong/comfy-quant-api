@@ -14,7 +14,7 @@ use polars::{
         SortMultipleOptions,
     },
 };
-use rust_decimal::Decimal;
+use rust_decimal::{prelude::ToPrimitive, Decimal};
 use rust_decimal_macros::dec;
 use sqlx::PgPool;
 use std::{collections::HashMap, sync::Arc};
@@ -62,8 +62,8 @@ impl SpotStatsContext {
 
 #[derive(Debug)]
 pub struct SpotStats {
-    data: SpotStatsDataMap,
     context: SpotStatsContext,
+    data: SpotStatsDataMap,
 }
 
 impl AsRef<SpotStatsDataMap> for SpotStats {
@@ -335,13 +335,13 @@ impl SpotStatsData {
 
         for p in positions {
             pos_timestamps.push(p.created_at.timestamp());
-            pos_base_balances.push(p.base_asset_balance.to_string().parse::<f64>()?);
-            pos_quote_balances.push(p.quote_asset_balance.to_string().parse::<f64>()?);
+            pos_base_balances.push(p.base_asset_balance.to_f64().unwrap_or_default());
+            pos_quote_balances.push(p.quote_asset_balance.to_f64().unwrap_or_default());
         }
 
         for k in klines {
             kline_timestamps.push(k.open_time.timestamp());
-            kline_close_prices.push(k.close_price.to_string().parse::<f64>()?);
+            kline_close_prices.push(k.close_price.to_f64().unwrap_or_default());
         }
 
         let pos_df = df!(

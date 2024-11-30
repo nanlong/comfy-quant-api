@@ -1,4 +1,5 @@
 mod client_service;
+mod exchange_rate;
 mod port;
 mod slot;
 mod slots;

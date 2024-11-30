@@ -13,7 +13,7 @@ use comfy_quant_exchange::client::{
     spot_client::base::{Order, OrderSide},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
-use rust_decimal::{Decimal, MathematicalOps};
+use rust_decimal::{prelude::ToPrimitive, Decimal, MathematicalOps};
 use rust_decimal_macros::dec;
 use std::{convert::Into, sync::Arc};
 use std::{
@@ -264,7 +264,9 @@ impl NodeExecutable for SpotGrid {
                             &client,
                             &pair_info.base_asset,
                             &pair_info.quote_asset,
-                            quantity.to_string().parse::<f64>()?,
+                            quantity
+                                .to_f64()
+                                .ok_or_else(|| anyhow!("Failed to convert quantity to f64"))?,
                         )
                         .await;
 
@@ -287,7 +289,9 @@ impl NodeExecutable for SpotGrid {
                             &client,
                             &pair_info.base_asset,
                             &pair_info.quote_asset,
-                            quantity.to_string().parse::<f64>()?,
+                            quantity
+                                .to_f64()
+                                .ok_or_else(|| anyhow!("Failed to convert quantity to f64"))?,
                         )
                         .await;
 
