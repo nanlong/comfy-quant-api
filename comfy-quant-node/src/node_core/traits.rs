@@ -6,7 +6,7 @@ use crate::node_core::Port;
 use anyhow::Result;
 use comfy_quant_database::{kline, strategy_spot_position};
 use comfy_quant_exchange::client::{
-    spot_client::base::{Order, SymbolPrice},
+    spot_client::base::{Exchange, Order, SymbolPrice},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use comfy_quant_util::secs_to_datetime;
@@ -56,7 +56,7 @@ impl<T: NodePort> Connectable for T {
 
 /// 价格存储介质
 pub(crate) trait SymbolPriceStorable: Send + Sync + 'static {
-    fn save_price(&mut self, symbol_price: SymbolPrice) -> Result<()>;
+    fn save_price(&mut self, exchange: Exchange, symbol_price: SymbolPrice) -> Result<()>;
 }
 
 /// 统计接口
@@ -109,7 +109,7 @@ pub trait NodeStats: NodeInfo {
 /// 价格接口
 #[allow(async_fn_in_trait)]
 pub trait NodeSymbolPrice {
-    async fn price(&self, symbol: impl AsRef<str>) -> Option<Decimal>;
+    async fn price(&self, exchange: impl AsRef<str>, symbol: impl AsRef<str>) -> Option<Decimal>;
 }
 
 /// 节点名称接口
@@ -213,7 +213,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let symbol = client.symbol(base_asset, quote_asset);
 
         if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
-            if let Some(price) = self.price(&symbol).await {
+            if let Some(price) = self.price(&exchange, &symbol).await {
                 backtest_spot_client.save_price(price).await;
             }
         }
@@ -222,7 +222,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
 
         // 更新统计信息
-        self.update_spot_stats_with_order(exchange, &symbol, &order)
+        self.update_spot_stats_with_order(&exchange, &symbol, &order)
             .await?;
 
         Ok(order)
@@ -240,7 +240,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
 
         // 用于回测功能的客户端，需要知道当前价格
         if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
-            if let Some(price) = self.price(&symbol).await {
+            if let Some(price) = self.price(&exchange, &symbol).await {
                 backtest_spot_client.save_price(price).await;
             }
         }
@@ -249,7 +249,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
         let order = client.market_sell(base_asset, quote_asset, qty).await?;
 
         // 更新统计信息
-        self.update_spot_stats_with_order(exchange, &symbol, &order)
+        self.update_spot_stats_with_order(&exchange, &symbol, &order)
             .await?;
 
         Ok(order)

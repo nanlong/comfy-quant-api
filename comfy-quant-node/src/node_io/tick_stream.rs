@@ -2,13 +2,16 @@ use crate::node_core::{SymbolPriceStorable, Tick};
 use anyhow::Result;
 use async_lock::RwLock;
 use bon::Builder;
+use comfy_quant_exchange::client::spot_client::base::Exchange;
 use flume::{Receiver, Sender};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
+type ExchangeTick = (Exchange, Tick);
+
 #[derive(Debug, Builder)]
 pub(crate) struct TickStream {
-    inner: (Sender<Tick>, Receiver<Tick>),
+    inner: (Sender<ExchangeTick>, Receiver<ExchangeTick>),
     token: CancellationToken,
 }
 
@@ -20,12 +23,12 @@ impl TickStream {
         }
     }
 
-    pub(crate) async fn send(&self, tick: Tick) -> Result<()> {
-        self.inner.0.send_async(tick).await?;
+    pub(crate) async fn send(&self, exchange: impl Into<Exchange>, tick: Tick) -> Result<()> {
+        self.inner.0.send_async((exchange.into(), tick)).await?;
         Ok(())
     }
 
-    pub(crate) fn subscribe(&self) -> Receiver<Tick> {
+    pub(crate) fn subscribe(&self) -> Receiver<ExchangeTick> {
         self.inner.1.clone()
     }
 
@@ -39,9 +42,9 @@ impl TickStream {
 
         tokio::spawn(async move {
             tokio::select! {
-                tick = rx.recv_async() => {
-                    if let Ok(tick) = tick {
-                        store.write().await.save_price(tick.into())?;
+                resp = rx.recv_async() => {
+                    if let Ok((exchange, tick)) = resp {
+                        store.write().await.save_price(exchange, tick.into())?;
                     }
 
                     Ok::<_, anyhow::Error>(())
@@ -79,31 +82,32 @@ mod tests {
             symbol: "BTCUSDT".to_string(),
             price: dec!(100.0),
         };
+        let exchange = Exchange::new("Binance");
 
-        tick_stream.send(tick.clone()).await?;
+        tick_stream.send(exchange.clone(), tick.clone()).await?;
 
         let rx = tick_stream.subscribe();
 
         let tick2 = rx.recv_async().await?;
-        assert_eq!(tick, tick2);
+        assert_eq!((exchange, tick), tick2);
 
         Ok(())
     }
 
     #[derive(Debug, Clone, Builder, PartialEq)]
-    struct MockSymbolPriceStore {
-        prices: Vec<SymbolPrice>,
+    struct MockExchangeSymbolPriceStore {
+        prices: Vec<(Exchange, SymbolPrice)>,
     }
 
-    impl MockSymbolPriceStore {
+    impl MockExchangeSymbolPriceStore {
         fn new() -> Self {
-            MockSymbolPriceStore { prices: vec![] }
+            MockExchangeSymbolPriceStore { prices: vec![] }
         }
     }
 
-    impl SymbolPriceStorable for MockSymbolPriceStore {
-        fn save_price(&mut self, price: SymbolPrice) -> Result<()> {
-            self.prices.push(price);
+    impl SymbolPriceStorable for MockExchangeSymbolPriceStore {
+        fn save_price(&mut self, exchange: Exchange, price: SymbolPrice) -> Result<()> {
+            self.prices.push((exchange, price));
             Ok(())
         }
     }
@@ -111,26 +115,27 @@ mod tests {
     #[tokio::test]
     async fn test_save_price_should_work() -> Result<()> {
         let tick_stream = TickStream::new();
-        let store = Arc::new(RwLock::new(MockSymbolPriceStore::new()));
+        let store = Arc::new(RwLock::new(MockExchangeSymbolPriceStore::new()));
         let cloned_store = Arc::clone(&store);
         let tick = Tick {
             timestamp: 1,
             symbol: "BTCUSDT".to_string(),
             price: dec!(100.0),
         };
+        let exchange = Exchange::new("Binance");
 
         // 准备保存
         tick_stream.save_price(cloned_store).await?;
 
         // 发送数据
-        tick_stream.send(tick.clone()).await?;
+        tick_stream.send(exchange.clone(), tick.clone()).await?;
 
         // 等待保存
         sleep(Duration::from_millis(1)).await;
 
         let store = store.read().await;
         assert_eq!(store.prices.len(), 1);
-        assert_eq!(store.prices[0], tick.into());
+        assert_eq!(store.prices[0], (exchange, tick.into()));
 
         Ok(())
     }

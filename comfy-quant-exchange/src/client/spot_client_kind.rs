@@ -1,7 +1,7 @@
 use super::spot_client::{
     backtest_spot_client::BacktestSpotClient,
     base::{
-        AccountInformation, Balance, Order, SpotClientRequest, SpotClientResponse,
+        AccountInformation, Balance, Exchange, Order, SpotClientRequest, SpotClientResponse,
         SymbolInformation, SymbolPrice,
     },
     binance_spot_client::BinanceSpotClient,
@@ -15,7 +15,7 @@ use tower::Service;
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
 pub trait SpotClientExecutable {
-    fn exchange(&self) -> &str;
+    fn exchange(&self) -> Exchange;
 
     fn symbol(&self, base_asset: &str, quote_asset: &str) -> String;
 

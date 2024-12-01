@@ -8,7 +8,7 @@ use bon::Builder;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 pub const BACKTEST_EXCHANGE_NAME: &str = "Backtest";
 pub const BINANCE_EXCHANGE_NAME: &str = "Binance";
@@ -174,7 +174,7 @@ impl FromStr for OrderSide {
 pub struct Exchange(String);
 
 impl Exchange {
-    fn new(s: impl Into<String>) -> Self {
+    pub fn new(s: impl Into<String>) -> Self {
         Exchange(s.into())
     }
 }
@@ -188,6 +188,18 @@ impl From<String> for Exchange {
 impl From<&str> for Exchange {
     fn from(value: &str) -> Self {
         Exchange::new(value)
+    }
+}
+
+impl AsRef<str> for Exchange {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for Exchange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

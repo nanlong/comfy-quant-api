@@ -7,6 +7,7 @@ use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_database::kline;
+use comfy_quant_exchange::client::spot_client::base::BACKTEST_EXCHANGE_NAME;
 use comfy_quant_task::{
     task_core::{status::TaskStatus, traits::Executable as _},
     tasks::binance_klines::BinanceKlinesTask,
@@ -15,7 +16,6 @@ use comfy_quant_util::add_utc_offset;
 use futures::StreamExt;
 use std::sync::Arc;
 
-const EXCHANGE: &str = "binance";
 const MARKET: &str = "spot";
 const INTERVAL: &str = "1s";
 
@@ -147,7 +147,7 @@ impl BacktestSpotTicker {
 
         let mut klines_stream = kline::time_range_klines_stream(
             &db,
-            EXCHANGE,
+            BACKTEST_EXCHANGE_NAME,
             MARKET,
             &symbol,
             INTERVAL,
@@ -162,7 +162,7 @@ impl BacktestSpotTicker {
                 .price(kline.close_price)
                 .build();
 
-            slot1.send(tick).await?;
+            slot1.send(BACKTEST_EXCHANGE_NAME, tick).await?;
         }
 
         Ok(())
