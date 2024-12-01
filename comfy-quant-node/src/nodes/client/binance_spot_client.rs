@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{NodeExecutable, NodePort, Port, Slot},
+    node_core::{NodeExecutable, NodeInfra, NodePort, Port, Slot},
     workflow::Node,
 };
 use anyhow::Result;
@@ -7,6 +7,7 @@ use bon::Builder;
 use comfy_quant_exchange::client::{
     spot_client::binance_spot_client::BinanceSpotClient as Client, spot_client_kind::SpotClientKind,
 };
+use std::sync::Arc;
 
 #[derive(Builder, Debug, Clone)]
 #[builder(on(String, into))]
@@ -16,50 +17,7 @@ pub(crate) struct Params {
     secret_key: String,
 }
 
-#[derive(Debug)]
-#[allow(unused)]
-pub(crate) struct BinanceSpotClient {
-    node: Node,
-    params: Params,
-    // outputs:
-    //      0: SpotClient
-    port: Port,
-}
-
-impl BinanceSpotClient {
-    pub(crate) fn try_new(node: Node, params: Params) -> Result<Self> {
-        let mut port = Port::new();
-
-        let client = Client::builder()
-            .api_key(&params.api_key)
-            .secret_key(&params.secret_key)
-            .build();
-
-        let client_slot = Slot::<SpotClientKind>::new(client.into());
-
-        port.set_output(0, client_slot)?;
-
-        Ok(BinanceSpotClient { node, params, port })
-    }
-}
-
-impl NodePort for BinanceSpotClient {
-    fn port(&self) -> &Port {
-        &self.port
-    }
-
-    fn port_mut(&mut self) -> &mut Port {
-        &mut self.port
-    }
-}
-
-impl NodeExecutable for BinanceSpotClient {
-    async fn execute(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl TryFrom<&Node> for BinanceSpotClient {
+impl TryFrom<&Node> for Params {
     type Error = anyhow::Error;
 
     fn try_from(node: &Node) -> Result<Self> {
@@ -84,7 +42,58 @@ impl TryFrom<&Node> for BinanceSpotClient {
             .secret_key(secret_key)
             .build();
 
-        BinanceSpotClient::try_new(node.clone(), params)
+        Ok(params)
+    }
+}
+
+#[derive(Debug)]
+#[allow(unused)]
+pub(crate) struct BinanceSpotClient {
+    params: Params,
+    // outputs:
+    //      0: SpotClient
+    infra: NodeInfra,
+}
+
+impl BinanceSpotClient {
+    pub(crate) fn try_new(node: Node) -> Result<Self> {
+        let params = Params::try_from(&node)?;
+        let mut infra = NodeInfra::new(node);
+
+        let client = Client::builder()
+            .api_key(&params.api_key)
+            .secret_key(&params.secret_key)
+            .build();
+
+        let client_slot = Arc::new(Slot::<SpotClientKind>::new(client.into()));
+
+        infra.port.set_output(0, client_slot)?;
+
+        Ok(BinanceSpotClient { params, infra })
+    }
+}
+
+impl NodePort for BinanceSpotClient {
+    fn port(&self) -> &Port {
+        &self.infra.port
+    }
+
+    fn port_mut(&mut self) -> &mut Port {
+        &mut self.infra.port
+    }
+}
+
+impl NodeExecutable for BinanceSpotClient {
+    async fn execute(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl TryFrom<Node> for BinanceSpotClient {
+    type Error = anyhow::Error;
+
+    fn try_from(node: Node) -> Result<Self> {
+        BinanceSpotClient::try_new(node)
     }
 }
 
@@ -97,7 +106,7 @@ mod tests {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BinanceSpotClient","params":["api_secret","secret"]}}"#;
 
         let node: Node = serde_json::from_str(json_str)?;
-        let account = BinanceSpotClient::try_from(&node)?;
+        let account = BinanceSpotClient::try_from(node)?;
 
         assert_eq!(account.params.api_key, "api_secret");
         assert_eq!(account.params.secret_key, "secret");

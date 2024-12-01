@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{NodeExecutable, NodeInfo, NodePort, Port, Slot, Tick},
+    node_core::{NodeExecutable, NodeInfra, NodePort, Port, Slot, Tick},
     node_io::{SpotPairInfo, TickStream},
     workflow::Node,
 };
@@ -28,6 +28,52 @@ pub(crate) struct Params {
     end_datetime: DateTime<Utc>,
 }
 
+impl TryFrom<&Node> for Params {
+    type Error = anyhow::Error;
+
+    fn try_from(node: &Node) -> Result<Self> {
+        if node.properties.prop_type != "data.BacktestSpotTicker" {
+            anyhow::bail!(
+                "Try from workflow::Node to BacktestSpotTicker failed: Invalid prop_type"
+            );
+        }
+
+        let [base_asset, quote_asset, start_datetime, end_datetime] =
+            node.properties.params.as_slice()
+        else {
+            anyhow::bail!("Try from workflow::Node to BacktestSpotTicker failed: Invalid params");
+        };
+
+        let base_asset = base_asset.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BacktestSpotTicker failed: Invalid base_asset"
+        ))?;
+
+        let quote_asset = quote_asset.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BacktestSpotTicker failed: Invalid quote_asset"
+        ))?;
+
+        let start_datetime = start_datetime.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BacktestSpotTicker failed: Invalid start_datetime"
+        ))?;
+
+        let end_datetime = end_datetime.as_str().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BacktestSpotTicker failed: Invalid end_datetime"
+        ))?;
+
+        let start_datetime = add_utc_offset(start_datetime)?;
+        let end_datetime = add_utc_offset(end_datetime)?;
+
+        let params = Params::builder()
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
+            .start_datetime(start_datetime)
+            .end_datetime(end_datetime)
+            .build();
+
+        Ok(params)
+    }
+}
+
 /// 回测行情数据
 /// outputs:
 ///      0: SpotPairInfo
@@ -35,14 +81,14 @@ pub(crate) struct Params {
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BacktestSpotTicker {
-    node: Node,
     params: Params,
-    port: Port,
+    infra: NodeInfra,
 }
 
 impl BacktestSpotTicker {
-    pub(crate) fn try_new(node: Node, params: Params) -> Result<Self> {
-        let mut port = Port::new();
+    pub(crate) fn try_new(node: Node) -> Result<Self> {
+        let params = Params::try_from(&node)?;
+        let mut infra = NodeInfra::new(node);
 
         let pair_info = SpotPairInfo::builder()
             .base_asset(&params.base_asset)
@@ -50,13 +96,13 @@ impl BacktestSpotTicker {
             .build();
         let tick_stream = TickStream::new();
 
-        let pair_info_slot = Slot::<SpotPairInfo>::new(pair_info);
-        let tick_stream_slot = Slot::<TickStream>::new(tick_stream);
+        let pair_info_slot = Arc::new(Slot::<SpotPairInfo>::new(pair_info));
+        let tick_stream_slot = Arc::new(Slot::<TickStream>::new(tick_stream));
 
-        port.set_output(0, pair_info_slot)?;
-        port.set_output(1, tick_stream_slot)?;
+        infra.port.set_output(0, pair_info_slot)?;
+        infra.port.set_output(1, tick_stream_slot)?;
 
-        Ok(BacktestSpotTicker { node, params, port })
+        Ok(BacktestSpotTicker { params, infra })
     }
 
     async fn output1(&self) -> Result<()> {
@@ -66,7 +112,8 @@ impl BacktestSpotTicker {
             format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
         let start_timestamp = self.params.start_datetime.timestamp();
         let end_timestamp = self.params.end_datetime.timestamp();
-        let db = self.node().context()?.cloned_db();
+        let ctx = self.infra.node_context()?;
+        let db = ctx.db.clone();
 
         // 等待数据同步完成，如果出错，重试3次
         'retry: for i in 0..3 {
@@ -124,32 +171,18 @@ impl BacktestSpotTicker {
 
 impl NodePort for BacktestSpotTicker {
     fn port(&self) -> &Port {
-        &self.port
+        &self.infra.port
     }
 
     fn port_mut(&mut self) -> &mut Port {
-        &mut self.port
-    }
-}
-
-impl NodeInfo for BacktestSpotTicker {
-    fn node(&self) -> &Node {
-        &self.node
-    }
-
-    fn node_id(&self) -> i16 {
-        self.node.node_id()
-    }
-
-    fn node_name(&self) -> &str {
-        self.node.node_name()
+        &mut self.infra.port
     }
 }
 
 impl NodeExecutable for BacktestSpotTicker {
     async fn execute(&mut self) -> Result<()> {
         // 同步等待其他节点
-        self.node().context()?.wait().await;
+        self.infra.workflow_context()?.wait().await;
 
         self.output1().await?;
         Ok(())
@@ -160,45 +193,15 @@ impl TryFrom<Node> for BacktestSpotTicker {
     type Error = anyhow::Error;
 
     fn try_from(node: Node) -> Result<Self> {
-        if node.properties.prop_type != "data.BacktestSpotTicker" {
-            anyhow::bail!(
-                "Try from workflow::Node to BacktestSpotTicker failed: Invalid prop_type"
-            );
-        }
+        BacktestSpotTicker::try_new(node)
+    }
+}
 
-        let [base_asset, quote_asset, start_datetime, end_datetime] =
-            node.properties.params.as_slice()
-        else {
-            anyhow::bail!("Try from workflow::Node to BacktestSpotTicker failed: Invalid params");
-        };
+impl TryFrom<&BacktestSpotTicker> for Node {
+    type Error = anyhow::Error;
 
-        let base_asset = base_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotTicker failed: Invalid base_asset"
-        ))?;
-
-        let quote_asset = quote_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotTicker failed: Invalid quote_asset"
-        ))?;
-
-        let start_datetime = start_datetime.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotTicker failed: Invalid start_datetime"
-        ))?;
-
-        let end_datetime = end_datetime.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotTicker failed: Invalid end_datetime"
-        ))?;
-
-        let start_datetime = add_utc_offset(start_datetime)?;
-        let end_datetime = add_utc_offset(end_datetime)?;
-
-        let params = Params::builder()
-            .base_asset(base_asset)
-            .quote_asset(quote_asset)
-            .start_datetime(start_datetime)
-            .end_datetime(end_datetime)
-            .build();
-
-        BacktestSpotTicker::try_new(node, params)
+    fn try_from(backtest_spot_ticker: &BacktestSpotTicker) -> Result<Self> {
+        Ok(backtest_spot_ticker.infra.node.clone())
     }
 }
 

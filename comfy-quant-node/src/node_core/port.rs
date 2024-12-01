@@ -38,11 +38,11 @@ impl Port {
         Ok(slot)
     }
 
-    pub fn set_output<T>(&mut self, index: usize, slot: Slot<T>) -> Result<()>
+    pub fn set_output<T>(&mut self, index: usize, slot: Arc<Slot<T>>) -> Result<()>
     where
         T: Send + Sync + 'static,
     {
-        self.outputs.set(index, Arc::new(slot));
+        self.outputs.set(index, slot);
 
         Ok(())
     }
@@ -76,7 +76,7 @@ mod tests {
         assert_eq!(**slot, 5);
 
         // Add output
-        let slot = Slot::<usize>::new(10);
+        let slot = Arc::new(Slot::<usize>::new(10));
         port.set_output(0, slot).unwrap();
         let slot = port.output::<usize>(0).unwrap();
         assert_eq!(**slot, 10);

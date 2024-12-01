@@ -1,12 +1,12 @@
+use super::{ExchangeSymbolKey, NodeContext};
 use anyhow::Result;
-use bon::bon;
 use comfy_quant_database::{
     kline::Kline,
     strategy_spot_position::{self, StrategySpotPosition},
     strategy_spot_stats::{self, StrategySpotStats},
     SpotStatsQuery,
 };
-use comfy_quant_exchange::client::spot_client::base::{Exchange, Order, OrderSide, Symbol};
+use comfy_quant_exchange::client::spot_client::base::{Order, OrderSide};
 use polars::{
     df,
     prelude::{
@@ -16,53 +16,14 @@ use polars::{
 };
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 use rust_decimal_macros::dec;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct SpotStatsKey {
-    pub exchange: Exchange,
-    pub symbol: Symbol,
-}
+type SpotStatsDataMap = HashMap<ExchangeSymbolKey, SpotStatsData>;
 
-impl SpotStatsKey {
-    pub fn new(exchange: impl Into<Exchange>, symbol: impl Into<Symbol>) -> Self {
-        Self {
-            exchange: exchange.into(),
-            symbol: symbol.into(),
-        }
-    }
-}
-
-type SpotStatsDataMap = HashMap<SpotStatsKey, SpotStatsData>;
-
-#[derive(Debug, Clone)]
-pub struct SpotStatsContext {
-    pub db: Arc<PgPool>,
-    pub workflow_id: String,
-    pub node_id: i16,
-    pub node_name: String,
-}
-
-impl SpotStatsContext {
-    fn new(
-        db: Arc<PgPool>,
-        workflow_id: impl Into<String>,
-        node_id: impl Into<i16>,
-        node_name: impl Into<String>,
-    ) -> Self {
-        SpotStatsContext {
-            db,
-            workflow_id: workflow_id.into(),
-            node_id: node_id.into(),
-            node_name: node_name.into(),
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct SpotStats {
-    context: SpotStatsContext,
     data: SpotStatsDataMap,
 }
 
@@ -78,23 +39,11 @@ impl AsMut<SpotStatsDataMap> for SpotStats {
     }
 }
 
-#[bon]
 impl SpotStats {
-    #[builder]
-    pub fn new(
-        db: Arc<PgPool>,
-        workflow_id: impl Into<String>,
-        node_id: impl Into<i16>,
-        node_name: impl Into<String>,
-    ) -> Self {
+    pub fn new() -> Self {
         SpotStats {
             data: SpotStatsDataMap::new(),
-            context: SpotStatsContext::new(db, workflow_id, node_id, node_name),
         }
-    }
-
-    pub fn cloned_context(&self) -> SpotStatsContext {
-        self.context.clone()
     }
 
     pub fn get(
@@ -102,7 +51,7 @@ impl SpotStats {
         exchange: impl AsRef<str>,
         symbol: impl AsRef<str>,
     ) -> Option<&SpotStatsData> {
-        let key = SpotStatsKey::new(exchange.as_ref(), symbol.as_ref());
+        let key = ExchangeSymbolKey::new(exchange.as_ref(), symbol.as_ref());
         self.data.get(&key)
     }
 
@@ -111,7 +60,7 @@ impl SpotStats {
         exchange: impl AsRef<str>,
         symbol: impl AsRef<str>,
     ) -> &mut SpotStatsData {
-        let key = SpotStatsKey::new(exchange.as_ref(), symbol.as_ref());
+        let key = ExchangeSymbolKey::new(exchange.as_ref(), symbol.as_ref());
         self.as_mut().entry(key).or_default()
     }
 
@@ -133,30 +82,28 @@ impl SpotStats {
 
     pub async fn initialize_balance(
         &mut self,
+        ctx: NodeContext,
         exchange: impl AsRef<str>,
         symbol: impl AsRef<str>,
         initial_base: &Decimal,
         initial_quote: &Decimal,
         initial_price: &Decimal,
     ) -> Result<()> {
-        let ctx = self.cloned_context();
-
         self.get_or_insert(exchange.as_ref(), symbol.as_ref())
-            .initialize_balance(&ctx, initial_base, initial_quote, initial_price)
+            .initialize_balance(ctx, initial_base, initial_quote, initial_price)
             .await?;
         Ok(())
     }
 
     pub async fn update_with_order(
         &mut self,
+        ctx: NodeContext,
         exchange: impl AsRef<str>,
         symbol: impl AsRef<str>,
         order: &Order,
     ) -> Result<()> {
-        let ctx = self.cloned_context();
-
         self.get_or_insert(exchange.as_ref(), symbol.as_ref())
-            .update_with_order(&ctx, order)
+            .update_with_order(ctx, order)
             .await?;
 
         Ok(())
@@ -164,7 +111,7 @@ impl SpotStats {
 }
 
 /// 节点统计数据
-#[derive(Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 #[allow(unused)]
 pub struct SpotStatsData {
     pub exchange: String,                // 交易所
@@ -220,7 +167,7 @@ impl SpotStatsData {
 
     async fn initialize_balance(
         &mut self,
-        ctx: &SpotStatsContext,
+        ctx: NodeContext,
         initial_base: &Decimal,
         initial_quote: &Decimal,
         initial_price: &Decimal,
@@ -243,7 +190,7 @@ impl SpotStatsData {
         Ok(())
     }
 
-    async fn update_with_order(&mut self, ctx: &SpotStatsContext, order: &Order) -> Result<()> {
+    async fn update_with_order(&mut self, ctx: NodeContext, order: &Order) -> Result<()> {
         let base_asset_amount = order.base_asset_amount()?;
         let quote_asset_amount = order.quote_asset_amount()?;
         let base_commission = order.base_commission(&self.maker_commission_rate)?;
@@ -513,7 +460,7 @@ mod tests {
     };
     use comfy_quant_util::secs_to_datetime;
     use rust_decimal_macros::dec;
-    use std::str::FromStr;
+    use std::{str::FromStr, sync::Arc};
 
     #[test]
     fn test_net_value_calculation() -> Result<()> {
@@ -739,10 +686,10 @@ mod tests {
         let workflow_id = "test_workflow";
         let node_id = 1_i16;
         let node_name = "test_node";
-        let ctx = SpotStatsContext::new(db, workflow_id, node_id, node_name);
+        let ctx = NodeContext::new(db, workflow_id, node_id, node_name);
 
         // 更新订单信息
-        let result = data.update_with_order(&ctx, &order).await;
+        let result = data.update_with_order(ctx, &order).await;
         assert!(result.is_ok());
 
         // 验证数据更新
@@ -769,10 +716,10 @@ mod tests {
         let workflow_id = "test_workflow";
         let node_id = 1_i16;
         let node_name = "test_node";
-        let ctx = SpotStatsContext::new(db, workflow_id, node_id, node_name);
+        let ctx = NodeContext::new(db, workflow_id, node_id, node_name);
 
         // 更新订单信息
-        let result = data.update_with_order(&ctx, &order).await;
+        let result = data.update_with_order(ctx, &order).await;
         assert!(result.is_ok());
 
         // 验证数据更新
@@ -806,18 +753,12 @@ mod tests {
         assert_eq!(data.realized_pnl(), dec!(0));
     }
 
-    #[sqlx::test(migrator = "comfy_quant_database::MIGRATOR")]
-    async fn test_spot_stats_get_or_insert(db: PgPool) {
-        let db = Arc::new(db);
+    #[test]
+    fn test_spot_stats_get_or_insert() {
         let exchange = "Binance";
         let symbol = "BTC/USDT";
 
-        let mut stats = SpotStats::builder()
-            .db(db)
-            .workflow_id("test_workflow")
-            .node_id(1_i16)
-            .node_name("test_node")
-            .build();
+        let mut stats = SpotStats::new();
 
         let data = stats.get_or_insert(exchange, symbol);
         assert_eq!(data.total_trades, 0);

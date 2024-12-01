@@ -1,5 +1,8 @@
-use super::spot_stats::{SpotStats, SpotStatsData};
-use crate::{node_core::Port, workflow::Node};
+use super::{
+    spot_stats::{SpotStats, SpotStatsData},
+    NodeContext,
+};
+use crate::node_core::Port;
 use anyhow::Result;
 use comfy_quant_database::{kline, strategy_spot_position};
 use comfy_quant_exchange::client::{
@@ -58,7 +61,7 @@ pub(crate) trait SymbolPriceStorable: Send + Sync + 'static {
 
 /// 统计接口
 #[allow(async_fn_in_trait)]
-pub trait NodeStats {
+pub trait NodeStats: NodeInfo {
     fn spot_stats(&self) -> Option<&SpotStats> {
         None
     }
@@ -89,11 +92,15 @@ pub trait NodeStats {
         symbol: impl AsRef<str>,
         order: &Order,
     ) -> Result<()> {
+        let ctx = self.node_context()?;
+
         let stats = self
             .spot_stats_mut()
             .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?;
 
-        stats.update_with_order(exchange, symbol, order).await?;
+        stats
+            .update_with_order(ctx, exchange, symbol, order)
+            .await?;
 
         Ok(())
     }
@@ -108,13 +115,7 @@ pub trait NodeSymbolPrice {
 /// 节点名称接口
 pub trait NodeInfo {
     // 获取节点
-    fn node(&self) -> &Node;
-
-    // 节点id
-    fn node_id(&self) -> i16;
-
-    // 节点名称
-    fn node_name(&self) -> &str;
+    fn node_context(&self) -> Result<NodeContext>;
 }
 
 /// 策略统计信息接口
@@ -132,7 +133,7 @@ pub trait NodeStatsInfo {
     ) -> Option<Decimal>;
 }
 
-impl<T: NodeStats> NodeStatsInfo for T {
+impl<T: NodeInfo + NodeStats> NodeStatsInfo for T {
     async fn spot_max_drawdown(
         &self,
         exchange: &str,
@@ -142,7 +143,7 @@ impl<T: NodeStats> NodeStatsInfo for T {
         end_timestamp: i64,
     ) -> Option<Decimal> {
         let stats = self.spot_stats()?;
-        let ctx = stats.cloned_context();
+        let ctx = self.node_context().ok()?;
         let market = "spot";
         let stats_data = stats.get(exchange, symbol)?;
         let start_datetime = secs_to_datetime(start_timestamp).ok()?;

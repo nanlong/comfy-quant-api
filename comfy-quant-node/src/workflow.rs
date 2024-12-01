@@ -7,12 +7,12 @@ use anyhow::{anyhow, Result};
 use async_lock::{Barrier, Mutex};
 use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
 use comfy_quant_util::generate_workflow_id;
-use serde::{Deserialize, Serialize};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use sqlx::PgPool;
 use std::{collections::HashMap, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct Workflow {
     last_node_id: u32,
     last_link_id: u32,
@@ -33,7 +33,7 @@ pub struct Workflow {
 
 impl Workflow {
     // 初始化上下文
-    pub fn initialize(&mut self, db: PgPool) {
+    pub async fn initialize(&mut self, db: Arc<PgPool>) -> Result<()> {
         let barrier = Barrier::new(self.nodes.len());
         let context = Arc::new(WorkflowContext::new(db, barrier));
 
@@ -43,9 +43,7 @@ impl Workflow {
         for node in &mut self.nodes {
             node.context = Some(Arc::clone(&context));
         }
-    }
 
-    pub async fn execute(&mut self) -> Result<()> {
         // 反序列化节点
         for node in &self.nodes {
             let node_id = node.id;
@@ -79,6 +77,10 @@ impl Workflow {
 
         tracing::info!("Workflow make connection");
 
+        Ok(())
+    }
+
+    pub async fn execute(&mut self) -> Result<()> {
         // 按顺序从前至后执行节点
         for node in self.sorted_nodes().into_iter() {
             let node_id = node.id;
@@ -145,6 +147,39 @@ impl Drop for Workflow {
     }
 }
 
+impl Serialize for Workflow {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // 更新nodes
+        let mut nodes = if self.deserialized_nodes.is_empty() {
+            self.nodes.clone()
+        } else {
+            self.deserialized_nodes
+                .iter()
+                .filter_map(|(_, node_kind)| (&*node_kind.lock_blocking()).try_into().ok())
+                .collect()
+        };
+
+        // 按照 order 排序
+        nodes.sort_by_key(|node| node.order);
+
+        // 序列化所有非skip字段
+        let mut state = serializer.serialize_struct("Workflow", 8)?;
+        state.serialize_field("last_node_id", &self.last_node_id)?;
+        state.serialize_field("last_link_id", &self.last_link_id)?;
+        state.serialize_field("nodes", &nodes)?;
+        state.serialize_field("links", &self.links)?;
+        state.serialize_field("groups", &self.groups)?;
+        state.serialize_field("config", &self.config)?;
+        state.serialize_field("extra", &self.extra)?;
+        state.serialize_field("version", &self.version)?;
+
+        state.end()
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Link {
     link_id: u32,
@@ -157,20 +192,21 @@ pub struct Link {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
-    pub(crate) id: u32,
+    pub id: u32,
     #[serde(rename = "type")]
-    pub(crate) node_type: String,
-    pos: [u32; 2],
+    pub node_type: String,
+    pub pos: [u32; 2],
     // size: HashMap<String, u32>,
     // flags: HashMap<String, String>,
-    order: u32,
-    mode: u32,
-    inputs: Option<Vec<Input>>,
-    outputs: Option<Vec<Output>>,
-    pub(crate) properties: Properties,
+    pub order: u32,
+    pub mode: u32,
+    pub inputs: Option<Vec<Input>>,
+    pub outputs: Option<Vec<Output>>,
+    pub properties: Properties,
+    pub runtime_store: Option<String>,
 
     #[serde(skip)]
-    pub(crate) context: Option<Arc<WorkflowContext>>, // 上下文
+    pub context: Option<Arc<WorkflowContext>>, // 上下文
 }
 
 impl Node {
@@ -223,9 +259,8 @@ pub struct WorkflowContext {
 
 #[allow(unused)]
 impl WorkflowContext {
-    pub(crate) fn new(db: PgPool, barrier: Barrier) -> Self {
+    pub(crate) fn new(db: Arc<PgPool>, barrier: Barrier) -> Self {
         let id = generate_workflow_id();
-        let db = Arc::new(db);
 
         Self { id, db, barrier }
     }
@@ -288,21 +323,28 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_workflow_deserialize() -> anyhow::Result<()> {
-        let json_str = r#"{"last_node_id":3,"last_link_id":3,"nodes":[{"id":2,"type":"加密货币交易所/币安现货(Ticker Mock)","pos":[210,58],"size":[240,150],"flags":{},"order":0,"mode":0,"outputs":[{"name":"现货交易对","type":"SpotPairInfo","links":[1],"slot_index":0},{"name":"Tick数据流","type":"TickStream","links":[2],"slot_index":1}],"properties":{"type":"cryptoExchange.binanceSpotTickerMock","params":["BTC","USDT","2024-01-01 00:00:00","2024-01-02 00:00:00"]}},{"id":1,"type":"账户/币安账户(Mock)","pos":[224,295],"size":{"0":210,"1":106},"flags":{},"order":1,"mode":0,"outputs":[{"name":"现货账户客户端","type":"SpotClient","links":[3],"slot_index":0}],"properties":{"type":"cryptoExchange.binanceSpotAccountMock","params":[0.001, [["USDT",1000]]]}},{"id":3,"type":"交易策略/网格(现货)","pos":[520,93],"size":{"0":210,"1":290},"flags":{},"order":2,"mode":0,"inputs":[{"name":"现货交易对","type":"SpotPairInfo","link":1},{"name":"现货账户客户端","type":"SpotClient","link":3},{"name":"Tick数据流","type":"TickStream","link":2}],"properties":{"type":"strategy.gridSpot","params":["arithmetic","","",8,"","","","",true]}}],"links":[[1,2,0,3,0,"SpotPairInfo"],[2,2,1,3,2,"TickStream"],[3,1,0,3,1,"SpotClient"]],"groups":[],"config":{},"extra":{},"version":0.4}"#;
+    #[sqlx::test]
+    fn test_workflow_deserialize(db: PgPool) -> anyhow::Result<()> {
+        let json_str = r#"{"last_node_id":3,"last_link_id":3,"nodes":[{"id":2,"type":"加密货币交易所/币安现货(Ticker Mock)","pos":[210,58],"size":[240,150],"flags":{},"order":0,"mode":0,"outputs":[{"name":"现货交易对","type":"SpotPairInfo","links":[1],"slot_index":0},{"name":"Tick数据流","type":"TickStream","links":[2],"slot_index":1}],"properties":{"type":"data.BacktestSpotTicker","params":["BTC","USDT","2024-01-01 00:00:00","2024-01-02 00:00:00"]}},{"id":1,"type":"账户/币安账户(Mock)","pos":[224,295],"size":{"0":210,"1":106},"flags":{},"order":1,"mode":0,"outputs":[{"name":"现货账户客户端","type":"SpotClient","links":[3],"slot_index":0}],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["USDT",1000]]]}},{"id":3,"type":"交易策略/网格(现货)","pos":[520,93],"size":{"0":210,"1":290},"flags":{},"order":2,"mode":0,"inputs":[{"name":"现货交易对","type":"SpotPairInfo","link":1},{"name":"现货账户客户端","type":"SpotClient","link":3},{"name":"Tick数据流","type":"TickStream","link":2}],"properties":{"type":"strategy.SpotGrid","params":["arithmetic",1,1.1,8,1,"","","",true]}}],"links":[[1,2,0,3,0,"SpotPairInfo"],[2,2,1,3,2,"TickStream"],[3,1,0,3,1,"SpotClient"]],"groups":[],"config":{},"extra":{},"version":0.4}"#;
 
-        let workflow: Workflow = serde_json::from_str(json_str)?;
+        let mut workflow: Workflow = serde_json::from_str(json_str)?;
+        let db = Arc::new(db);
+        workflow.initialize(db).await?;
 
         assert_eq!(workflow.nodes.len(), 3);
         assert_eq!(workflow.links.len(), 3);
+
+        let workflow_str = serde_json::to_string(&workflow)?;
+
+        assert_eq!(workflow_str, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[{\"id\":2,\"type\":\"加密货币交易所/币安现货(Ticker Mock)\",\"pos\":[210,58],\"order\":0,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"links\":[1],\"slot_index\":0},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"links\":[2],\"slot_index\":1}],\"properties\":{\"type\":\"data.BacktestSpotTicker\",\"params\":[\"BTC\",\"USDT\",\"2024-01-01 00:00:00\",\"2024-01-02 00:00:00\"]},\"runtime_store\":null},{\"id\":1,\"type\":\"账户/币安账户(Mock)\",\"pos\":[224,295],\"order\":1,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"links\":[3],\"slot_index\":0}],\"properties\":{\"type\":\"client.BacktestSpotClient\",\"params\":[0.001,[[\"USDT\",1000]]]},\"runtime_store\":null},{\"id\":3,\"type\":\"交易策略/网格(现货)\",\"pos\":[520,93],\"order\":2,\"mode\":0,\"inputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"link\":1},{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"link\":3},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"link\":2}],\"outputs\":null,\"properties\":{\"type\":\"strategy.SpotGrid\",\"params\":[\"arithmetic\",1,1.1,8,1,\"\",\"\",\"\",true]},\"runtime_store\":\"{\\\"price_store\\\":{\\\"inner\\\":{}},\\\"stats\\\":{\\\"data\\\":{}},\\\"grid\\\":null,\\\"initialized\\\":false}\"}],\"links\":[{\"link_id\":1,\"origin_id\":2,\"origin_slot\":0,\"target_id\":3,\"target_slot\":0,\"link_type\":\"SpotPairInfo\"},{\"link_id\":2,\"origin_id\":2,\"origin_slot\":1,\"target_id\":3,\"target_slot\":2,\"link_type\":\"TickStream\"},{\"link_id\":3,\"origin_id\":1,\"origin_slot\":0,\"target_id\":3,\"target_slot\":1,\"link_type\":\"SpotClient\"}],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4}");
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn test_workflow_context(pool: PgPool) {
-        let context = WorkflowContext::new(pool, Barrier::new(1));
+    async fn test_workflow_context(db: PgPool) {
+        let db = Arc::new(db);
+        let context = WorkflowContext::new(db, Barrier::new(1));
         assert_eq!(context.workflow_id().len(), 21);
 
         let db = context.cloned_db();

@@ -1,7 +1,7 @@
 use crate::{
     node_core::{
-        NodeExecutable, NodeInfo, NodePort, NodeStats, NodeSymbolPrice, Port, SpotClientService,
-        SpotStats, SpotTradeable, SymbolPriceStore,
+        arc_rwlock_serde, NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, NodeStats,
+        NodeSymbolPrice, Port, SpotClientService, SpotStats, SpotTradeable, SymbolPriceStore,
     },
     node_io::{SpotPairInfo, TickStream},
     workflow::Node,
@@ -15,13 +15,14 @@ use comfy_quant_exchange::client::{
 };
 use rust_decimal::{prelude::ToPrimitive, Decimal, MathematicalOps};
 use rust_decimal_macros::dec;
+use serde::{Deserialize, Serialize};
 use std::{convert::Into, sync::Arc};
 use std::{
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
 };
 
-#[derive(Builder, Debug, Clone)]
+#[derive(Builder, Serialize, Deserialize, Debug, Clone)]
 #[allow(unused)]
 pub(crate) struct Params {
     mode: Mode,                     // 网格模式
@@ -35,42 +36,144 @@ pub(crate) struct Params {
     sell_all_on_stop: bool,         // 是否在止损时卖出所有基准币，默认为true
 }
 
+impl TryFrom<&Node> for Params {
+    type Error = anyhow::Error;
+
+    fn try_from(node: &Node) -> Result<Self> {
+        if node.properties.prop_type != "strategy.SpotGrid" {
+            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid prop_type");
+        }
+
+        let [mode, lower_price, upper_price, grid_rows, investment, trigger_price, stop_loss, take_profit, sell_all_on_stop] =
+            node.properties.params.as_slice()
+        else {
+            anyhow::bail!("Try from workflow::Node to BinanceSubAccount failed: Invalid params");
+        };
+
+        let mode = mode
+            .as_str()
+            .ok_or(anyhow::anyhow!(
+                "Try from workflow::Node to SpotGrid failed: Invalid mode"
+            ))?
+            .parse::<Mode>()?;
+
+        let lower_price = lower_price
+            .as_f64()
+            .and_then(|p| Decimal::try_from(p).ok())
+            .ok_or(anyhow::anyhow!(
+                "Try from workflow::Node to SpotGrid failed: Invalid lower_price"
+            ))?;
+
+        let upper_price = upper_price
+            .as_f64()
+            .and_then(|p| Decimal::try_from(p).ok())
+            .ok_or(anyhow::anyhow!(
+                "Try from workflow::Node to SpotGrid failed: Invalid upper_price"
+            ))?;
+
+        if lower_price >= upper_price {
+            anyhow::bail!(
+                "Try from workflow::Node to SpotGrid failed: Invalid lower_price and upper_price"
+            );
+        }
+
+        let grid_rows = grid_rows.as_u64().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to SpotGrid failed: Invalid grid_rows"
+        ))?;
+
+        if !(2..150).contains(&grid_rows) {
+            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid grid_rows");
+        }
+
+        let investment = investment
+            .as_f64()
+            .and_then(|p| Decimal::try_from(p).ok())
+            .ok_or(anyhow::anyhow!(
+                "Try from workflow::Node to SpotGrid failed: Invalid investment"
+            ))?;
+
+        let trigger_price = trigger_price
+            .as_f64()
+            .and_then(|p| Decimal::try_from(p).ok());
+
+        let stop_loss = stop_loss.as_f64().and_then(|p| Decimal::try_from(p).ok());
+
+        let take_profit = take_profit.as_f64().and_then(|p| Decimal::try_from(p).ok());
+
+        let sell_all_on_stop = sell_all_on_stop.as_bool().unwrap_or(true);
+
+        let params = Params::builder()
+            .mode(mode)
+            .lower_price(lower_price)
+            .upper_price(upper_price)
+            .grid_rows(grid_rows)
+            .investment(investment)
+            .maybe_trigger_price(trigger_price)
+            .maybe_stop_loss(stop_loss)
+            .maybe_take_profit(take_profit)
+            .sell_all_on_stop(sell_all_on_stop)
+            .build();
+
+        Ok(params)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct RuntimeStore {
+    #[serde(with = "arc_rwlock_serde")]
+    price_store: Arc<RwLock<SymbolPriceStore>>,
+    stats: SpotStats,
+    grid: Option<Grid>,
+    initialized: bool,
+}
+
+impl RuntimeStore {
+    fn new() -> Self {
+        Self {
+            price_store: Arc::new(RwLock::new(SymbolPriceStore::new())),
+            stats: SpotStats::new(),
+            grid: None,
+            initialized: false,
+        }
+    }
+}
+
+impl TryFrom<&Node> for RuntimeStore {
+    type Error = anyhow::Error;
+
+    fn try_from(node: &Node) -> Result<Self> {
+        if let Some(runtime_store) = &node.runtime_store {
+            Ok(serde_json::from_str(runtime_store)?)
+        } else {
+            Ok(Self::new())
+        }
+    }
+}
+
 /// 网格交易
 /// inputs:
 ///     0: SpotPairInfo
 ///     1: SpotClientKind
 ///     2: TickStream
-#[derive(Debug)]
+#[derive(Serialize, Debug)]
 #[allow(unused)]
 pub(crate) struct SpotGrid {
-    node: Node,                                 // 节点信息
-    params: Params,                             // 前端配置
-    port: Port,                                 // 输入输出
-    price_store: Arc<RwLock<SymbolPriceStore>>, // 价格存储，有独立进程进行写入，为回测中的交易所模拟客户端提供价格信息
-    stats: SpotStats,                           // 统计数据，实时存储数据库
-    grid: Option<Grid>,                         // 网格
-    initialized: bool,                          // 是否已经初始化
+    params: Params,
+    store: RuntimeStore,
+    #[serde(skip)]
+    infra: NodeInfra,
 }
 
 impl SpotGrid {
-    pub(crate) fn new(node: Node, params: Params) -> Result<Self> {
-        let port = Port::new();
-        let price_store = Arc::new(RwLock::new(SymbolPriceStore::new()));
-        let stats = SpotStats::builder()
-            .db(node.context()?.cloned_db())
-            .workflow_id(node.context()?.workflow_id())
-            .node_id(node.node_id())
-            .node_name(node.node_name())
-            .build();
+    pub(crate) fn try_new(node: Node) -> Result<Self> {
+        let params = Params::try_from(&node)?;
+        let store = RuntimeStore::try_from(&node)?;
+        let infra = NodeInfra::new(node);
 
-        Ok(SpotGrid {
-            node,
+        Ok(Self {
             params,
-            port,
-            price_store,
-            stats,
-            grid: None,
-            initialized: false,
+            store,
+            infra,
         })
     }
 
@@ -84,10 +187,12 @@ impl SpotGrid {
         let initial_price = tick_stream.subscribe().recv_async().await?.price;
 
         // 保存最新的价格
-        tick_stream.save_price(self.price_store.clone()).await?;
+        tick_stream
+            .save_price(self.store.price_store.clone())
+            .await?;
 
         // 如果已经初始化，则跳过
-        if self.initialized {
+        if self.store.initialized {
             return Ok(());
         }
 
@@ -124,7 +229,7 @@ impl SpotGrid {
         let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
 
         // 初始化统计信息
-        self.stats.initialize(
+        self.store.stats.initialize(
             &exchange,
             &symbol,
             &pair_info.base_asset,
@@ -132,8 +237,10 @@ impl SpotGrid {
         );
 
         // 初始化账户余额
-        self.stats
+        self.store
+            .stats
             .initialize_balance(
+                self.infra.node_context()?,
                 &exchange,
                 &symbol,
                 &dec!(0),
@@ -165,22 +272,24 @@ impl SpotGrid {
             .commission_rate(account.taker_commission_rate)
             .build();
 
-        self.grid = Some(grid);
+        self.store.grid = Some(grid);
 
         // 初始化完成
-        self.initialized = true;
+        self.store.initialized = true;
 
         Ok(())
     }
 
     fn grid(&self) -> Result<&Grid> {
-        self.grid
+        self.store
+            .grid
             .as_ref()
             .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))
     }
 
     fn grid_mut(&mut self) -> Result<&mut Grid> {
-        self.grid
+        self.store
+            .grid
             .as_mut()
             .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))
     }
@@ -188,27 +297,28 @@ impl SpotGrid {
 
 impl NodePort for SpotGrid {
     fn port(&self) -> &Port {
-        &self.port
+        &self.infra.port
     }
 
     fn port_mut(&mut self) -> &mut Port {
-        &mut self.port
+        &mut self.infra.port
     }
 }
 
 impl NodeStats for SpotGrid {
     fn spot_stats(&self) -> Option<&SpotStats> {
-        Some(&self.stats)
+        Some(&self.store.stats)
     }
 
     fn spot_stats_mut(&mut self) -> Option<&mut SpotStats> {
-        Some(&mut self.stats)
+        Some(&mut self.store.stats)
     }
 }
 
 impl NodeSymbolPrice for SpotGrid {
     async fn price(&self, symbol: impl AsRef<str>) -> Option<Decimal> {
-        self.price_store
+        self.store
+            .price_store
             .read()
             .await
             .price(symbol.as_ref())
@@ -217,16 +327,8 @@ impl NodeSymbolPrice for SpotGrid {
 }
 
 impl NodeInfo for SpotGrid {
-    fn node(&self) -> &Node {
-        &self.node
-    }
-
-    fn node_id(&self) -> i16 {
-        self.node.node_id()
-    }
-
-    fn node_name(&self) -> &str {
-        self.node.node_name()
+    fn node_context(&self) -> Result<NodeContext> {
+        self.infra.node_context()
     }
 }
 
@@ -234,7 +336,7 @@ impl NodeInfo for SpotGrid {
 impl NodeExecutable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
         // 等待其他节点
-        self.node().context()?.wait().await;
+        self.infra.workflow_context()?.wait().await;
 
         // 获取输入
         let port = self.port();
@@ -379,85 +481,21 @@ impl TryFrom<Node> for SpotGrid {
     type Error = anyhow::Error;
 
     fn try_from(node: Node) -> Result<Self> {
-        if node.properties.prop_type != "strategy.SpotGrid" {
-            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid prop_type");
-        }
-
-        let [mode, lower_price, upper_price, grid_rows, investment, trigger_price, stop_loss, take_profit, sell_all_on_stop] =
-            node.properties.params.as_slice()
-        else {
-            anyhow::bail!("Try from workflow::Node to BinanceSubAccount failed: Invalid params");
-        };
-
-        let mode = mode
-            .as_str()
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to SpotGrid failed: Invalid mode"
-            ))?
-            .parse::<Mode>()?;
-
-        let lower_price = lower_price
-            .as_f64()
-            .and_then(|p| Decimal::try_from(p).ok())
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to SpotGrid failed: Invalid lower_price"
-            ))?;
-
-        let upper_price = upper_price
-            .as_f64()
-            .and_then(|p| Decimal::try_from(p).ok())
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to SpotGrid failed: Invalid upper_price"
-            ))?;
-
-        if lower_price >= upper_price {
-            anyhow::bail!(
-                "Try from workflow::Node to SpotGrid failed: Invalid lower_price and upper_price"
-            );
-        }
-
-        let grid_rows = grid_rows.as_u64().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to SpotGrid failed: Invalid grid_rows"
-        ))?;
-
-        if !(2..150).contains(&grid_rows) {
-            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid grid_rows");
-        }
-
-        let investment = investment
-            .as_f64()
-            .and_then(|p| Decimal::try_from(p).ok())
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to SpotGrid failed: Invalid investment"
-            ))?;
-
-        let trigger_price = trigger_price
-            .as_f64()
-            .and_then(|p| Decimal::try_from(p).ok());
-
-        let stop_loss = stop_loss.as_f64().and_then(|p| Decimal::try_from(p).ok());
-
-        let take_profit = take_profit.as_f64().and_then(|p| Decimal::try_from(p).ok());
-
-        let sell_all_on_stop = sell_all_on_stop.as_bool().unwrap_or(true);
-
-        let params = Params::builder()
-            .mode(mode)
-            .lower_price(lower_price)
-            .upper_price(upper_price)
-            .grid_rows(grid_rows)
-            .investment(investment)
-            .maybe_trigger_price(trigger_price)
-            .maybe_stop_loss(stop_loss)
-            .maybe_take_profit(take_profit)
-            .sell_all_on_stop(sell_all_on_stop)
-            .build();
-
-        SpotGrid::new(node.clone(), params)
+        SpotGrid::try_new(node)
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+impl TryFrom<&SpotGrid> for Node {
+    type Error = anyhow::Error;
+
+    fn try_from(spot_grid: &SpotGrid) -> Result<Self> {
+        let mut node = spot_grid.infra.node.clone();
+        node.runtime_store = Some(serde_json::to_string(&spot_grid.store)?);
+        Ok(node)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub(crate) enum Mode {
     // 等差
     Arithmetic,
@@ -479,7 +517,7 @@ impl FromStr for Mode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 #[allow(unused)]
 pub(crate) struct Grid {
     exchange: String,         // 平台名称
@@ -742,7 +780,7 @@ impl Grid {
     }
 }
 
-#[derive(Builder, Debug)]
+#[derive(Builder, Debug, Serialize, Deserialize)]
 #[allow(unused)]
 pub(crate) struct GridRow {
     index: usize,           // 网格序号
@@ -851,6 +889,7 @@ mod tests {
         let json_str = r#"{"id":4,"type":"交易策略/网格(现货)","pos":[367,125],"size":{"0":210,"1":310},"flags":{},"order":1,"mode":0,"inputs":[{"name":"交易所信息","type":"exchangeData","link":null},{"name":"最新成交价格","type":"tickerStream","link":null},{"name":"账户","type":"account","link":null},{"name":"回测","type":"backtest","link":null}],"properties":{"type":"strategy.SpotGrid","params":["arithmetic",1,1.1,8,1,"","","",true]}}"#;
 
         let mut node: Node = serde_json::from_str(json_str)?;
+        let db = Arc::new(db);
         let workflow_context = Arc::new(WorkflowContext::new(db, Barrier::new(0)));
         node.context = Some(workflow_context);
 
@@ -865,6 +904,9 @@ mod tests {
         assert_eq!(spot_grid.params.stop_loss, None);
         assert_eq!(spot_grid.params.take_profit, None);
         assert_eq!(spot_grid.params.sell_all_on_stop, true);
+
+        let node = Node::try_from(&spot_grid)?;
+        assert_eq!(node.runtime_store, Some("{\"price_store\":{\"inner\":{}},\"stats\":{\"data\":{}},\"grid\":null,\"initialized\":false}".to_string()));
 
         Ok(())
     }

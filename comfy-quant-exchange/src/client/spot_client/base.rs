@@ -7,6 +7,7 @@ use binance::model::{
 use bon::Builder;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use rust_decimal_macros::dec;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 pub const BACKTEST_EXCHANGE_NAME: &str = "Backtest";
@@ -169,7 +170,7 @@ impl FromStr for OrderSide {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Exchange(String);
 
 impl Exchange {
@@ -190,7 +191,7 @@ impl From<&str> for Exchange {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Symbol(String);
 
 impl Symbol {

@@ -2,11 +2,12 @@ use super::SymbolPriceStorable;
 use anyhow::Result;
 use comfy_quant_exchange::client::spot_client::base::SymbolPrice;
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 type SymbolPriceStoreMap = HashMap<String, Decimal>;
 
-#[derive(Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub(crate) struct SymbolPriceStore {
     inner: SymbolPriceStoreMap,
 }

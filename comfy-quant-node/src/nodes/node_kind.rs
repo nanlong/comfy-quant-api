@@ -9,7 +9,7 @@ use enum_dispatch::enum_dispatch;
 use std::fmt;
 
 #[enum_dispatch(NodePort, NodeExecutable)]
-pub enum NodeKind {
+pub(crate) enum NodeKind {
     // data
     BacktestSpotTicker(BacktestSpotTicker),
 
@@ -48,6 +48,18 @@ impl TryFrom<Node> for NodeKind {
         };
 
         Ok(node_kind)
+    }
+}
+
+impl TryFrom<&NodeKind> for Node {
+    type Error = anyhow::Error;
+
+    fn try_from(node_kind: &NodeKind) -> Result<Self> {
+        match node_kind {
+            NodeKind::BacktestSpotTicker(node) => node.try_into(),
+            NodeKind::BacktestSpotClient(node) => node.try_into(),
+            NodeKind::SpotGrid(node) => node.try_into(),
+        }
     }
 }
 
