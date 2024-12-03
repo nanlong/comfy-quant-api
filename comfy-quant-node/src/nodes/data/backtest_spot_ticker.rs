@@ -7,7 +7,7 @@ use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_database::kline;
-use comfy_quant_exchange::client::spot_client::base::BACKTEST_EXCHANGE_NAME;
+use comfy_quant_exchange::client::spot_client::base::{Market, BACKTEST_EXCHANGE_NAME};
 use comfy_quant_task::{
     task_core::{status::TaskStatus, traits::Executable as _},
     tasks::binance_klines::BinanceKlinesTask,
@@ -156,13 +156,15 @@ impl BacktestSpotTicker {
         );
 
         while let Some(Ok(kline)) = klines_stream.next().await {
+            let market = Market::Spot;
+
             let tick = Tick::builder()
                 .timestamp(kline.open_time.timestamp())
                 .symbol(symbol.clone())
                 .price(kline.close_price)
                 .build();
 
-            slot1.send(BACKTEST_EXCHANGE_NAME, tick).await?;
+            slot1.send(BACKTEST_EXCHANGE_NAME, market, tick).await?;
         }
 
         Ok(())

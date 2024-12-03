@@ -1,8 +1,7 @@
 use crate::{
     node_core::{
-        arc_rwlock_serde, ExchangeSymbolPriceStore, NodeContext, NodeExecutable, NodeInfo,
-        NodeInfra, NodePort, NodeStats, NodeSymbolPrice, Port, SpotClientService, SpotStats,
-        SpotTradeable,
+        arc_rwlock_serde, NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, NodeStats,
+        NodeSymbolPrice, PairPriceStore, Port, SpotClientService, SpotStats, SpotTradeable,
     },
     node_io::{SpotPairInfo, TickStream},
     workflow::Node,
@@ -122,7 +121,7 @@ impl TryFrom<&Node> for Params {
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct RuntimeStore {
     #[serde(with = "arc_rwlock_serde")]
-    price_store: Arc<RwLock<ExchangeSymbolPriceStore>>,
+    price_store: Arc<RwLock<PairPriceStore>>,
     stats: SpotStats,
     grid: Option<Grid>,
     initialized: bool,
@@ -131,7 +130,7 @@ pub(crate) struct RuntimeStore {
 impl RuntimeStore {
     fn new() -> Self {
         Self {
-            price_store: Arc::new(RwLock::new(ExchangeSymbolPriceStore::new())),
+            price_store: Arc::new(RwLock::new(PairPriceStore::new())),
             stats: SpotStats::new(),
             grid: None,
             initialized: false,
@@ -185,7 +184,7 @@ impl SpotGrid {
         tick_stream: &TickStream,
     ) -> Result<()> {
         // 获取初始化价格
-        let (_, tick) = tick_stream.subscribe().recv_async().await?;
+        let (_, _, tick) = tick_stream.subscribe().recv_async().await?;
         let initial_price = tick.price;
 
         // 保存最新的价格
@@ -261,7 +260,7 @@ impl SpotGrid {
         );
 
         // 获取当前价格
-        let (_, tick) = tick_stream.subscribe().recv_async().await?;
+        let (_, _, tick) = tick_stream.subscribe().recv_async().await?;
 
         // 创建网格
         let grid = Grid::builder()
@@ -318,12 +317,17 @@ impl NodeStats for SpotGrid {
 }
 
 impl NodeSymbolPrice for SpotGrid {
-    async fn price(&self, exchange: impl AsRef<str>, symbol: impl AsRef<str>) -> Option<Decimal> {
+    async fn price(
+        &self,
+        exchange: impl AsRef<str>,
+        market: impl AsRef<str>,
+        symbol: impl AsRef<str>,
+    ) -> Option<Decimal> {
         self.store
             .price_store
             .read()
             .await
-            .price(exchange, symbol)
+            .price(exchange, market, symbol)
             .cloned()
     }
 }
@@ -352,7 +356,7 @@ impl NodeExecutable for SpotGrid {
 
         self.grid()?.start();
 
-        while let Ok((_, tick)) = rx.recv_async().await {
+        while let Ok((_, _, tick)) = rx.recv_async().await {
             let Some(signal) = self
                 .grid_mut()?
                 .evaluate_with_price(&cloned_params, tick.price)

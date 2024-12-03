@@ -170,6 +170,41 @@ impl FromStr for OrderSide {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
+pub enum Market {
+    Spot,
+    Futures,
+}
+
+impl FromStr for Market {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "spot" => Self::Spot,
+            "futures" => Self::Futures,
+            _ => anyhow::bail!("Invalid market"),
+        })
+    }
+}
+
+impl TryFrom<&str> for Market {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
+impl AsRef<str> for Market {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Spot => "spot",
+            Self::Futures => "futures",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Exchange(String);
 
