@@ -10,13 +10,14 @@ async-stream = { workspace = true }
 binance = { workspace = true }
 bon = { workspace = true }
 chrono = { workspace = true }
+comfy-quant-base = { path = "../comfy-quant-base" }
 enum_dispatch = { workspace = true }
 flume = { workspace = true }
 futures = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
-sqlx = { workspace = true }
 serde = { workspace = true }
+sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }

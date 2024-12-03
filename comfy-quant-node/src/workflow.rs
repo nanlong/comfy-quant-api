@@ -5,8 +5,8 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use async_lock::{Barrier, Mutex, RwLock};
+use comfy_quant_base::generate_workflow_id;
 use comfy_quant_exchange::{client::spot_client_kind::SpotClientKind, store::PriceStore};
-use comfy_quant_util::generate_workflow_id;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use sqlx::PgPool;
 use std::{collections::HashMap, sync::Arc};

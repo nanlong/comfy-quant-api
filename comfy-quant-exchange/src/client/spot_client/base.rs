@@ -5,10 +5,10 @@ use binance::model::{
     SymbolPrice as BinanceSymbolPrice,
 };
 use bon::Builder;
+use comfy_quant_base::{Exchange, Symbol};
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use rust_decimal_macros::dec;
-use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
+use std::str::FromStr;
 
 pub const BACKTEST_EXCHANGE_NAME: &str = "Backtest";
 pub const BINANCE_EXCHANGE_NAME: &str = "Binance";
@@ -167,141 +167,6 @@ impl FromStr for OrderSide {
             "SELL" => Ok(OrderSide::Sell),
             _ => anyhow::bail!("OrderSide parse failed. value: {}", s),
         }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
-pub enum Market {
-    Spot,
-    Futures,
-}
-
-impl FromStr for Market {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "spot" => Self::Spot,
-            "futures" => Self::Futures,
-            _ => anyhow::bail!("Invalid market"),
-        })
-    }
-}
-
-impl TryFrom<&str> for Market {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        value.parse()
-    }
-}
-
-impl AsRef<str> for Market {
-    fn as_ref(&self) -> &str {
-        match self {
-            Self::Spot => "spot",
-            Self::Futures => "futures",
-        }
-    }
-}
-
-impl From<Market> for String {
-    fn from(value: Market) -> Self {
-        value.as_ref().to_string()
-    }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
-pub struct Exchange(String);
-
-impl Exchange {
-    pub fn new(s: impl Into<String>) -> Self {
-        Exchange(s.into())
-    }
-}
-
-impl From<String> for Exchange {
-    fn from(value: String) -> Self {
-        Exchange::new(value)
-    }
-}
-
-impl From<&str> for Exchange {
-    fn from(value: &str) -> Self {
-        Exchange::new(value)
-    }
-}
-
-impl AsRef<str> for Exchange {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for Exchange {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
-pub struct Symbol(String);
-
-impl Symbol {
-    fn new(s: impl Into<String>) -> Self {
-        Symbol(s.into())
-    }
-}
-
-impl From<String> for Symbol {
-    fn from(value: String) -> Self {
-        Symbol::new(value)
-    }
-}
-
-impl From<&str> for Symbol {
-    fn from(value: &str) -> Self {
-        Symbol::new(value)
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
-pub struct ExchangeSymbolKey {
-    pub exchange: Exchange,
-    pub symbol: Symbol,
-}
-
-impl ExchangeSymbolKey {
-    pub fn new(exchange: impl Into<Exchange>, symbol: impl Into<Symbol>) -> Self {
-        Self {
-            exchange: exchange.into(),
-            symbol: symbol.into(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
-pub struct ExchangeMarketSymbolKey {
-    pub exchange: Exchange,
-    pub market: Market,
-    pub symbol: Symbol,
-}
-
-impl ExchangeMarketSymbolKey {
-    pub fn try_new(
-        exchange: impl Into<Exchange>,
-        market: impl TryInto<Market>,
-        symbol: impl Into<Symbol>,
-    ) -> Result<Self> {
-        let market = market
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("Invalid market"))?;
-
-        Ok(Self {
-            exchange: exchange.into(),
-            market,
-            symbol: symbol.into(),
-        })
     }
 }
 

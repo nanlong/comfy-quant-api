@@ -1,5 +1,6 @@
-use crate::client::spot_client::base::{Exchange, ExchangeMarketSymbolKey, Market, SymbolPrice};
+use crate::client::spot_client::base::SymbolPrice;
 use anyhow::Result;
+use comfy_quant_base::{Exchange, ExchangeMarketSymbolKey, Market};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

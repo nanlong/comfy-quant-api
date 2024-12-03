@@ -7,29 +7,12 @@ use binance::{
     model::{KlineSummaries, KlineSummary},
 };
 use bon::bon;
+use comfy_quant_base::{KlineInterval, Market, Symbol};
 use futures::Stream;
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 const KLINE_LIMIT: u16 = 1000;
-
-#[derive(Debug, Clone)]
-pub enum Market {
-    Spot,
-    Futures,
-}
-
-impl FromStr for Market {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "spot" => Ok(Market::Spot),
-            "futures" => Ok(Market::Futures),
-            _ => Err(anyhow::anyhow!("Invalid market: {}", s)),
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct BinanceKline {
@@ -56,20 +39,18 @@ impl BinanceKline {
     // 获取K线流
     pub fn klines_stream(
         &self,
-        market: impl Into<String>,   // 市场
-        symbol: impl Into<String>,   // 交易对
-        interval: impl Into<String>, // 时间间隔
-        start_time: i64,             // 开始时间
-        end_time: i64,               // 结束时间
+        market: Market,          // 市场
+        symbol: Symbol,          // 交易对
+        interval: KlineInterval, // 时间间隔
+        start_time: i64,         // 开始时间
+        end_time: i64,           // 结束时间
     ) -> impl Stream<Item = Result<KlineSummary>> {
-        let market = market.into();
-        let symbol = symbol.into();
-        let interval = interval.into();
         let client = Arc::clone(&self.client);
         let (tx, rx) = flume::bounded(1);
         let (error_tx, error_rx) = flume::bounded(1);
         let semaphore = Arc::new(async_lock::Semaphore::new(1));
-        let time_range_groups = calc_time_range_group(&interval, start_time, end_time, KLINE_LIMIT);
+        let time_range_groups =
+            calc_time_range_group(interval.as_ref(), start_time, end_time, KLINE_LIMIT);
         let cloned_token1 = self.token.clone();
         let cloned_token2 = self.token.clone();
 
@@ -78,8 +59,6 @@ impl BinanceKline {
         // 原因: reqwest 的 runtime 在异步上下文中被释放了
         tokio::task::spawn_blocking(move || {
             let result = (move || {
-                let market = market.parse::<Market>()?;
-
                 for (start_time, end_time) in time_range_groups {
                     if cloned_token1.is_cancelled() {
                         return Ok(());

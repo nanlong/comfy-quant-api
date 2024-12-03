@@ -6,13 +6,13 @@ use crate::{
 use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
-use comfy_quant_database::kline::{self, KlineInterval};
-use comfy_quant_exchange::client::spot_client::base::{Exchange, Market, BINANCE_EXCHANGE_NAME};
+use comfy_quant_base::{add_utc_offset, Exchange, KlineInterval, Market};
+use comfy_quant_database::kline::{self};
+use comfy_quant_exchange::client::spot_client::base::BINANCE_EXCHANGE_NAME;
 use comfy_quant_task::{
     task_core::{status::TaskStatus, traits::Executable as _},
     tasks::binance_klines::BinanceKlinesTask,
 };
-use comfy_quant_util::add_utc_offset;
 use futures::StreamExt;
 use std::sync::Arc;
 
@@ -70,12 +70,12 @@ impl BacktestSpotTicker {
         'retry: for i in 0..3 {
             let task = BinanceKlinesTask::builder()
                 .db(Arc::clone(&db))
-                .market(self.market.clone())
+                .market(self.market.as_ref())
                 .symbol(&symbol)
                 .interval(self.interval.as_ref())
                 .start_timestamp(start_timestamp)
                 .end_timestamp(end_timestamp)
-                .build();
+                .build()?;
 
             let mut task_result = task.execute().await?;
 

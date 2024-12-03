@@ -1,11 +1,12 @@
 use super::base::{
-    AccountInformation, Balance, BinanceOrder, BinanceTransaction, Exchange, Order,
-    SymbolInformation, SymbolPrice, BINANCE_EXCHANGE_NAME,
+    AccountInformation, Balance, BinanceOrder, BinanceTransaction, Order, SymbolInformation,
+    SymbolPrice, BINANCE_EXCHANGE_NAME,
 };
 use crate::{client::spot_client_kind::SpotClientExecutable, exchange::binance::BinanceClient};
 use anyhow::Result;
 use binance::config::Config;
 use bon::bon;
+use comfy_quant_base::Exchange;
 use tokio::task::spawn_blocking;
 
 #[derive(Debug, Clone)]

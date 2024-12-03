@@ -116,7 +116,7 @@ pub async fn list(
 
 #[cfg(test)]
 mod tests {
-    use comfy_quant_util::secs_to_datetime;
+    use comfy_quant_base::secs_to_datetime;
 
     use super::*;
 

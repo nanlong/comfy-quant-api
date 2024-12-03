@@ -1,12 +1,13 @@
 use super::spot_client::{
     backtest_spot_client::BacktestSpotClient,
     base::{
-        AccountInformation, Balance, Exchange, Order, SpotClientRequest, SpotClientResponse,
+        AccountInformation, Balance, Order, SpotClientRequest, SpotClientResponse,
         SymbolInformation, SymbolPrice,
     },
     binance_spot_client::BinanceSpotClient,
 };
 use anyhow::Result;
+use comfy_quant_base::Exchange;
 use enum_dispatch::enum_dispatch;
 use futures::future::BoxFuture;
 use std::task::{Context, Poll};

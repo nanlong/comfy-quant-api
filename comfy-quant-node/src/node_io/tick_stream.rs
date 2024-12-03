@@ -1,7 +1,7 @@
 use crate::node_core::Tick;
 use anyhow::Result;
 use bon::Builder;
-use comfy_quant_exchange::client::spot_client::base::{Exchange, Market};
+use comfy_quant_base::{Exchange, Market};
 use flume::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
 

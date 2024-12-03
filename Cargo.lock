@@ -675,6 +675,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "comfy-quant-base"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "nanoid",
+ "serde",
+ "strum",
+ "strum_macros",
+]
+
+[[package]]
 name = "comfy-quant-config"
 version = "0.1.0"
 dependencies = [
@@ -694,14 +706,12 @@ dependencies = [
  "binance",
  "bon",
  "chrono",
+ "comfy-quant-base",
  "comfy-quant-exchange",
- "comfy-quant-util",
  "flume",
  "futures",
  "rust_decimal",
  "sqlx",
- "strum",
- "strum_macros",
  "tokio",
 ]
 
@@ -715,6 +725,7 @@ dependencies = [
  "binance",
  "bon",
  "chrono",
+ "comfy-quant-base",
  "enum_dispatch",
  "flume",
  "futures",
@@ -741,11 +752,11 @@ dependencies = [
  "binance",
  "bon",
  "chrono",
+ "comfy-quant-base",
  "comfy-quant-config",
  "comfy-quant-database",
  "comfy-quant-exchange",
  "comfy-quant-task",
- "comfy-quant-util",
  "dashmap",
  "enum_dispatch",
  "flume",
@@ -776,24 +787,15 @@ dependencies = [
  "async-stream",
  "bon",
  "chrono",
+ "comfy-quant-base",
  "comfy-quant-database",
  "comfy-quant-exchange",
- "comfy-quant-util",
  "flume",
  "futures",
  "rust_decimal",
  "sqlx",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "comfy-quant-util"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "nanoid",
 ]
 
 [[package]]

@@ -4,12 +4,12 @@ use super::{
 };
 use crate::node_core::Port;
 use anyhow::Result;
+use comfy_quant_base::{secs_to_datetime, Market};
 use comfy_quant_database::{kline, strategy_spot_position};
 use comfy_quant_exchange::client::{
     spot_client::base::Order,
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
-use comfy_quant_util::secs_to_datetime;
 use enum_dispatch::enum_dispatch;
 use rust_decimal::Decimal;
 
@@ -133,7 +133,6 @@ impl<T: NodeInfo + NodeStats> NodeStatsInfo for T {
     ) -> Option<Decimal> {
         let stats = self.spot_stats()?;
         let ctx = self.node_context().ok()?;
-        let market = "spot";
         let stats_data = stats.get(exchange, symbol)?;
         let start_datetime = secs_to_datetime(start_timestamp).ok()?;
         let end_datetime = secs_to_datetime(end_timestamp).ok()?;
@@ -153,7 +152,7 @@ impl<T: NodeInfo + NodeStats> NodeStatsInfo for T {
         let klines = kline::list(
             &ctx.db,
             exchange,
-            market,
+            Market::Spot.as_ref(),
             symbol,
             interval,
             &start_datetime,

@@ -2,24 +2,24 @@ use crate::task_core::{status::TaskStatus, traits::Executable};
 use anyhow::Result;
 use async_stream::stream;
 use bon::{bon, Builder};
+use comfy_quant_base::{millis_to_datetime, secs_to_datetime, KlineInterval, Market, Symbol};
 use comfy_quant_database::kline::{self, Kline};
 use comfy_quant_exchange::{
     client::spot_client::base::BINANCE_EXCHANGE_NAME,
     kline_stream::{calc_time_range_kline_count, BinanceKline},
 };
-use comfy_quant_util::{millis_to_datetime, secs_to_datetime};
 use futures::{stream::BoxStream, StreamExt};
 use sqlx::PgPool;
 use std::sync::Arc;
 
 #[derive(Builder, Clone, Debug)]
-#[builder(on(String, into))]
+#[builder(on(_, into))]
 struct TaskParams {
-    market: String,       // 市场
-    symbol: String,       // 交易对
-    interval: String,     // 时间间隔
-    start_timestamp: i64, // 开始时间
-    end_timestamp: i64,   // 结束时间
+    market: Market,          // 市场
+    symbol: Symbol,          // 交易对
+    interval: KlineInterval, // 时间间隔
+    start_timestamp: i64,    // 开始时间
+    end_timestamp: i64,      // 结束时间
 }
 
 pub struct BinanceKlinesTask {
@@ -29,15 +29,18 @@ pub struct BinanceKlinesTask {
 
 #[bon]
 impl BinanceKlinesTask {
-    #[builder(on(String, into))]
+    #[builder]
     pub fn new(
         db: Arc<PgPool>,
-        market: String,
-        symbol: String,
-        interval: String,
+        market: &str,
+        symbol: &str,
+        interval: &str,
         start_timestamp: i64,
         end_timestamp: i64,
-    ) -> Self {
+    ) -> Result<Self> {
+        let market: Market = market.try_into()?;
+        let interval: KlineInterval = interval.try_into()?;
+
         let params = TaskParams::builder()
             .market(market)
             .symbol(symbol)
@@ -46,7 +49,7 @@ impl BinanceKlinesTask {
             .end_timestamp(end_timestamp)
             .build();
 
-        BinanceKlinesTask { db, params }
+        Ok(BinanceKlinesTask { db, params })
     }
 }
 
@@ -60,16 +63,16 @@ impl Executable for BinanceKlinesTask {
         let store_kline_count = kline::time_range_klines_count(
             &self.db,
             "binance",
-            &self.params.market,
-            &self.params.symbol,
-            &self.params.interval,
+            self.params.market.as_ref(),
+            self.params.symbol.as_ref(),
+            self.params.interval.as_ref(),
             &start_datetime,
             &end_datetime,
         )
         .await?;
 
         let kline_count_expect = calc_time_range_kline_count(
-            &self.params.interval,
+            self.params.interval.as_ref(),
             self.params.start_timestamp,
             self.params.end_timestamp,
         );
@@ -107,9 +110,9 @@ impl Executable for BinanceKlinesTask {
                 let client = BinanceKline::default();
 
                 let mut klines_stream = client.klines_stream(
-                    &params.market,
-                    &params.symbol,
-                    &params.interval,
+                    params.market.clone(),
+                    params.symbol.clone(),
+                    params.interval.clone(),
                     params.start_timestamp,
                     params.end_timestamp,
                 );
@@ -120,9 +123,9 @@ impl Executable for BinanceKlinesTask {
 
                     let kline_data = kline::Kline {
                         exchange: BINANCE_EXCHANGE_NAME.to_string(),
-                        market: params.market.clone(),
-                        symbol: params.symbol.clone(),
-                        interval: params.interval.clone(),
+                        market: params.market.to_string(),
+                        symbol: params.symbol.to_string(),
+                        interval: params.interval.to_string(),
                         open_time,
                         open_price: kline_summary.open.parse()?,
                         high_price: kline_summary.high.parse()?,

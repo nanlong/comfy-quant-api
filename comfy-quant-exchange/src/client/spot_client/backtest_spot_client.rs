@@ -1,11 +1,12 @@
 use super::base::{
-    AccountInformation, Balance, Exchange, Order, OrderSide, OrderStatus, OrderType,
-    SymbolInformation, SymbolPrice, BINANCE_EXCHANGE_NAME,
+    AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType, SymbolInformation,
+    SymbolPrice, BINANCE_EXCHANGE_NAME,
 };
 use crate::{client::spot_client_kind::SpotClientExecutable, store::PriceStore};
 use anyhow::Result;
 use async_lock::RwLock;
 use bon::bon;
+use comfy_quant_base::Exchange;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::{collections::HashMap, sync::Arc};

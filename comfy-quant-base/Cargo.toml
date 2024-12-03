@@ -1,5 +1,5 @@
 [package]
-name = "comfy-quant-util"
+name = "comfy-quant-base"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,6 @@ edition = "2021"
 anyhow = { workspace = true }
 chrono = { workspace = true }
 nanoid = { workspace = true }
+serde = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
