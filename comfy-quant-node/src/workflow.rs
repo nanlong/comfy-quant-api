@@ -4,8 +4,8 @@ use crate::{
     nodes::node_kind::NodeKind,
 };
 use anyhow::{anyhow, Result};
-use async_lock::{Barrier, Mutex};
-use comfy_quant_exchange::client::spot_client_kind::SpotClientKind;
+use async_lock::{Barrier, Mutex, RwLock};
+use comfy_quant_exchange::{client::spot_client_kind::SpotClientKind, store::PriceStore};
 use comfy_quant_util::generate_workflow_id;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use sqlx::PgPool;
@@ -252,17 +252,24 @@ pub struct Properties {
 #[allow(unused)]
 #[derive(Debug)]
 pub struct WorkflowContext {
-    id: String,       // 工作流ID
-    db: Arc<PgPool>,  // 数据库
-    barrier: Barrier, // 屏障
+    id: String,                           // 工作流ID
+    db: Arc<PgPool>,                      // 数据库
+    price_store: Arc<RwLock<PriceStore>>, // 价格存储
+    barrier: Barrier,                     // 屏障
 }
 
 #[allow(unused)]
 impl WorkflowContext {
     pub(crate) fn new(db: Arc<PgPool>, barrier: Barrier) -> Self {
         let id = generate_workflow_id();
+        let price_store = Arc::new(RwLock::new(PriceStore::new()));
 
-        Self { id, db, barrier }
+        Self {
+            id,
+            db,
+            price_store,
+            barrier,
+        }
     }
 
     pub(crate) fn workflow_id(&self) -> &str {
@@ -271,6 +278,10 @@ impl WorkflowContext {
 
     pub(crate) fn cloned_db(&self) -> Arc<PgPool> {
         Arc::clone(&self.db)
+    }
+
+    pub(crate) fn cloned_price_store(&self) -> Arc<RwLock<PriceStore>> {
+        Arc::clone(&self.price_store)
     }
 
     pub(crate) async fn wait(&self) {
@@ -336,7 +347,7 @@ mod tests {
 
         let workflow_str = serde_json::to_string(&workflow)?;
 
-        assert_eq!(workflow_str, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[{\"id\":2,\"type\":\"加密货币交易所/币安现货(Ticker Mock)\",\"pos\":[210,58],\"order\":0,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"links\":[1],\"slot_index\":0},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"links\":[2],\"slot_index\":1}],\"properties\":{\"type\":\"data.BacktestSpotTicker\",\"params\":[\"BTC\",\"USDT\",\"2024-01-01 00:00:00\",\"2024-01-02 00:00:00\"]},\"runtime_store\":null},{\"id\":1,\"type\":\"账户/币安账户(Mock)\",\"pos\":[224,295],\"order\":1,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"links\":[3],\"slot_index\":0}],\"properties\":{\"type\":\"client.BacktestSpotClient\",\"params\":[0.001,[[\"USDT\",1000]]]},\"runtime_store\":null},{\"id\":3,\"type\":\"交易策略/网格(现货)\",\"pos\":[520,93],\"order\":2,\"mode\":0,\"inputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"link\":1},{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"link\":3},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"link\":2}],\"outputs\":null,\"properties\":{\"type\":\"strategy.SpotGrid\",\"params\":[\"arithmetic\",1,1.1,8,1,\"\",\"\",\"\",true]},\"runtime_store\":\"{\\\"price_store\\\":{\\\"inner\\\":{}},\\\"stats\\\":{\\\"data\\\":{}},\\\"grid\\\":null,\\\"initialized\\\":false}\"}],\"links\":[{\"link_id\":1,\"origin_id\":2,\"origin_slot\":0,\"target_id\":3,\"target_slot\":0,\"link_type\":\"SpotPairInfo\"},{\"link_id\":2,\"origin_id\":2,\"origin_slot\":1,\"target_id\":3,\"target_slot\":2,\"link_type\":\"TickStream\"},{\"link_id\":3,\"origin_id\":1,\"origin_slot\":0,\"target_id\":3,\"target_slot\":1,\"link_type\":\"SpotClient\"}],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4}");
+        assert_eq!(workflow_str, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[{\"id\":2,\"type\":\"加密货币交易所/币安现货(Ticker Mock)\",\"pos\":[210,58],\"order\":0,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"links\":[1],\"slot_index\":0},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"links\":[2],\"slot_index\":1}],\"properties\":{\"type\":\"data.BacktestSpotTicker\",\"params\":[\"BTC\",\"USDT\",\"2024-01-01 00:00:00\",\"2024-01-02 00:00:00\"]},\"runtime_store\":null},{\"id\":1,\"type\":\"账户/币安账户(Mock)\",\"pos\":[224,295],\"order\":1,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"links\":[3],\"slot_index\":0}],\"properties\":{\"type\":\"client.BacktestSpotClient\",\"params\":[0.001,[[\"USDT\",1000]]]},\"runtime_store\":null},{\"id\":3,\"type\":\"交易策略/网格(现货)\",\"pos\":[520,93],\"order\":2,\"mode\":0,\"inputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"link\":1},{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"link\":3},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"link\":2}],\"outputs\":null,\"properties\":{\"type\":\"strategy.SpotGrid\",\"params\":[\"arithmetic\",1,1.1,8,1,\"\",\"\",\"\",true]},\"runtime_store\":\"{\\\"stats\\\":{\\\"data\\\":{}},\\\"grid\\\":null,\\\"initialized\\\":false}\"}],\"links\":[{\"link_id\":1,\"origin_id\":2,\"origin_slot\":0,\"target_id\":3,\"target_slot\":0,\"link_type\":\"SpotPairInfo\"},{\"link_id\":2,\"origin_id\":2,\"origin_slot\":1,\"target_id\":3,\"target_slot\":2,\"link_type\":\"TickStream\"},{\"link_id\":3,\"origin_id\":1,\"origin_slot\":0,\"target_id\":3,\"target_slot\":1,\"link_type\":\"SpotClient\"}],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4}");
 
         Ok(())
     }

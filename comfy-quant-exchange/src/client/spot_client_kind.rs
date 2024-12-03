@@ -162,12 +162,16 @@ impl Service<SpotClientRequest> for SpotClientKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::PriceStore;
+    use async_lock::RwLock;
     use rust_decimal_macros::dec;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_spot_client_enum() -> Result<()> {
         let client: SpotClientKind = BacktestSpotClient::builder()
             .assets(vec![("BTC".to_string(), 1.), ("USDT".to_string(), 1000.)])
+            .price_store(Arc::new(RwLock::new(PriceStore::new())))
             .build()
             .into();
         let account = client.get_account().await?;

@@ -11,54 +11,6 @@ use comfy_quant_exchange::client::{
     spot_client_kind::SpotClientKind,
 };
 
-#[derive(Builder, Debug, Clone)]
-#[builder(on(String, into))]
-pub(crate) struct Params {
-    assets: Vec<(String, f64)>, // 币种，余额
-    commissions: f64,           // 手续费
-}
-
-impl TryFrom<&Node> for Params {
-    type Error = anyhow::Error;
-
-    fn try_from(node: &Node) -> Result<Self> {
-        if node.properties.prop_type != "client.BacktestSpotClient" {
-            anyhow::bail!(
-                "Try from workflow::Node to BacktestSpotClient failed: Invalid prop_type"
-            );
-        }
-
-        let [commissions, assets] = node.properties.params.as_slice() else {
-            anyhow::bail!("Try from workflow::Node to BacktestSpotClient failed: Invalid params");
-        };
-
-        let commissions = commissions.as_f64().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotClient failed: Invalid commissions"
-        ))?;
-
-        let assets = assets
-            .as_array()
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to BacktestSpotClient failed: Invalid assets"
-            ))?
-            .iter()
-            .filter_map(|asset| {
-                let asset_array = asset.as_array()?;
-                let asset_name = asset_array.first()?.as_str()?.to_string();
-                let asset_balance = asset_array.get(1)?.as_f64()?;
-                Some((asset_name, asset_balance))
-            })
-            .collect::<Vec<(String, f64)>>();
-
-        let params = Params::builder()
-            .assets(assets)
-            .commissions(commissions)
-            .build();
-
-        Ok(params)
-    }
-}
-
 // 模拟账户，用于交易系统回测时使用
 #[derive(Debug)]
 #[allow(unused)]
@@ -72,11 +24,13 @@ pub(crate) struct BacktestSpotClient {
 impl BacktestSpotClient {
     pub(crate) fn try_new(node: Node) -> Result<Self> {
         let params = Params::try_from(&node)?;
+        let price_store = node.context()?.cloned_price_store();
         let mut infra = NodeInfra::new(node);
 
         let client = Client::builder()
             .assets(&params.assets[..])
             .commissions(params.commissions)
+            .price_store(price_store)
             .build();
 
         let client_slot = Arc::new(Slot::<SpotClientKind>::new(client.into()));
@@ -127,6 +81,54 @@ impl TryFrom<&BacktestSpotClient> for Node {
     }
 }
 
+#[derive(Builder, Debug, Clone)]
+#[builder(on(String, into))]
+pub(crate) struct Params {
+    assets: Vec<(String, f64)>, // 币种，余额
+    commissions: f64,           // 手续费
+}
+
+impl TryFrom<&Node> for Params {
+    type Error = anyhow::Error;
+
+    fn try_from(node: &Node) -> Result<Self> {
+        if node.properties.prop_type != "client.BacktestSpotClient" {
+            anyhow::bail!(
+                "Try from workflow::Node to BacktestSpotClient failed: Invalid prop_type"
+            );
+        }
+
+        let [commissions, assets] = node.properties.params.as_slice() else {
+            anyhow::bail!("Try from workflow::Node to BacktestSpotClient failed: Invalid params");
+        };
+
+        let commissions = commissions.as_f64().ok_or(anyhow::anyhow!(
+            "Try from workflow::Node to BacktestSpotClient failed: Invalid commissions"
+        ))?;
+
+        let assets = assets
+            .as_array()
+            .ok_or(anyhow::anyhow!(
+                "Try from workflow::Node to BacktestSpotClient failed: Invalid assets"
+            ))?
+            .iter()
+            .filter_map(|asset| {
+                let asset_array = asset.as_array()?;
+                let asset_name = asset_array.first()?.as_str()?.to_string();
+                let asset_balance = asset_array.get(1)?.as_f64()?;
+                Some((asset_name, asset_balance))
+            })
+            .collect::<Vec<(String, f64)>>();
+
+        let params = Params::builder()
+            .assets(assets)
+            .commissions(commissions)
+            .build();
+
+        Ok(params)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::workflow::WorkflowContext;
@@ -137,11 +139,16 @@ mod tests {
     use rust_decimal_macros::dec;
     use sqlx::PgPool;
 
-    #[test]
-    fn test_try_from_node_to_mock_account() -> anyhow::Result<()> {
+    #[sqlx::test]
+    fn test_try_from_node_to_mock_account(db: PgPool) -> anyhow::Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
-        let node: Node = serde_json::from_str(json_str)?;
+        let mut node: Node = serde_json::from_str(json_str)?;
+        node.context = Some(Arc::new(WorkflowContext::new(
+            Arc::new(db),
+            Barrier::new(0),
+        )));
+
         let account = BacktestSpotClient::try_from(node)?;
 
         assert_eq!(
@@ -153,11 +160,16 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_mock_account_execute() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn test_mock_account_execute(db: PgPool) -> anyhow::Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
-        let node: Node = serde_json::from_str(json_str)?;
+        let mut node: Node = serde_json::from_str(json_str)?;
+        node.context = Some(Arc::new(WorkflowContext::new(
+            Arc::new(db),
+            Barrier::new(0),
+        )));
+
         let account = BacktestSpotClient::try_from(node)?;
         let port = account.port();
 
@@ -226,11 +238,16 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Invalid assets"));
     }
 
-    #[test]
-    fn test_empty_assets() -> anyhow::Result<()> {
+    #[sqlx::test]
+    fn test_empty_assets(db: PgPool) -> anyhow::Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, []]}}"#;
 
-        let node: Node = serde_json::from_str(json_str)?;
+        let mut node: Node = serde_json::from_str(json_str)?;
+        node.context = Some(Arc::new(WorkflowContext::new(
+            Arc::new(db),
+            Barrier::new(0),
+        )));
+
         let account = BacktestSpotClient::try_from(node)?;
 
         assert!(account.params.assets.is_empty());
@@ -254,11 +271,15 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_port_methods() -> anyhow::Result<()> {
+    #[sqlx::test]
+    fn test_port_methods(db: PgPool) -> anyhow::Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10]]]}}"#;
 
-        let node: Node = serde_json::from_str(json_str)?;
+        let mut node: Node = serde_json::from_str(json_str)?;
+        node.context = Some(Arc::new(WorkflowContext::new(
+            Arc::new(db),
+            Barrier::new(0),
+        )));
         let mut account = BacktestSpotClient::try_from(node)?;
 
         // Test port() returns the correct port

@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
 use binance::model::{
     AccountInformation as BinanceAccountInformation, Balance as BinaceBalance,
     Filters as BinanceFilters, Symbol as BinaceSymbolInformation,
@@ -205,6 +205,12 @@ impl AsRef<str> for Market {
     }
 }
 
+impl From<Market> for String {
+    fn from(value: Market) -> Self {
+        value.as_ref().to_string()
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Exchange(String);
 
@@ -256,6 +262,46 @@ impl From<String> for Symbol {
 impl From<&str> for Symbol {
     fn from(value: &str) -> Self {
         Symbol::new(value)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
+pub struct ExchangeSymbolKey {
+    pub exchange: Exchange,
+    pub symbol: Symbol,
+}
+
+impl ExchangeSymbolKey {
+    pub fn new(exchange: impl Into<Exchange>, symbol: impl Into<Symbol>) -> Self {
+        Self {
+            exchange: exchange.into(),
+            symbol: symbol.into(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
+pub struct ExchangeMarketSymbolKey {
+    pub exchange: Exchange,
+    pub market: Market,
+    pub symbol: Symbol,
+}
+
+impl ExchangeMarketSymbolKey {
+    pub fn try_new(
+        exchange: impl Into<Exchange>,
+        market: impl TryInto<Market>,
+        symbol: impl Into<Symbol>,
+    ) -> Result<Self> {
+        let market = market
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Invalid market"))?;
+
+        Ok(Self {
+            exchange: exchange.into(),
+            market,
+            symbol: symbol.into(),
+        })
     }
 }
 

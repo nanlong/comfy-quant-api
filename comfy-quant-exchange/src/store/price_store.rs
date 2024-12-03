@@ -1,32 +1,31 @@
-use super::{ExchangeMarketSymbolKey, SymbolPriceStorable};
+use crate::client::spot_client::base::{Exchange, ExchangeMarketSymbolKey, Market, SymbolPrice};
 use anyhow::Result;
-use comfy_quant_exchange::client::spot_client::base::{Exchange, Market, SymbolPrice};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-type PairPriceStoreMap = HashMap<ExchangeMarketSymbolKey, Decimal>;
+type PriceStoreMap = HashMap<ExchangeMarketSymbolKey, Decimal>;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
-pub(crate) struct PairPriceStore {
-    inner: PairPriceStoreMap,
+pub struct PriceStore {
+    inner: PriceStoreMap,
 }
 
-impl AsRef<PairPriceStoreMap> for PairPriceStore {
-    fn as_ref(&self) -> &PairPriceStoreMap {
+impl AsRef<PriceStoreMap> for PriceStore {
+    fn as_ref(&self) -> &PriceStoreMap {
         &self.inner
     }
 }
 
-impl AsMut<PairPriceStoreMap> for PairPriceStore {
-    fn as_mut(&mut self) -> &mut PairPriceStoreMap {
+impl AsMut<PriceStoreMap> for PriceStore {
+    fn as_mut(&mut self) -> &mut PriceStoreMap {
         &mut self.inner
     }
 }
 
-impl PairPriceStore {
+impl PriceStore {
     pub fn new() -> Self {
-        PairPriceStore {
+        PriceStore {
             inner: HashMap::new(),
         }
     }
@@ -36,16 +35,14 @@ impl PairPriceStore {
         exchange: impl AsRef<str>,
         market: impl AsRef<str>,
         symbol: impl AsRef<str>,
-    ) -> Option<&Decimal> {
+    ) -> Option<Decimal> {
         let key =
             ExchangeMarketSymbolKey::try_new(exchange.as_ref(), market.as_ref(), symbol.as_ref())
                 .ok()?;
-        self.as_ref().get(&key)
+        self.as_ref().get(&key).cloned()
     }
-}
 
-impl SymbolPriceStorable for PairPriceStore {
-    fn save_price(
+    pub fn save_price(
         &mut self,
         exchange: Exchange,
         market: Market,
@@ -67,7 +64,7 @@ mod tests {
     fn test_tick_store() {
         let exchange = Exchange::new("Binance");
         let market = Market::Spot;
-        let mut store = PairPriceStore::new();
+        let mut store = PriceStore::new();
         assert_eq!(store.price(&exchange, &market, "BTCUSDT"), None);
 
         let price = SymbolPrice::builder()
@@ -80,7 +77,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             store.price(&exchange, &market, "BTCUSDT"),
-            Some(&dec!(90000))
+            Some(dec!(90000))
         );
     }
 }

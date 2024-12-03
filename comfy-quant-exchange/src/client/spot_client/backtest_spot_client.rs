@@ -2,15 +2,14 @@ use super::base::{
     AccountInformation, Balance, Exchange, Order, OrderSide, OrderStatus, OrderType,
     SymbolInformation, SymbolPrice, BACKTEST_EXCHANGE_NAME,
 };
-use crate::client::spot_client_kind::SpotClientExecutable;
+use crate::{client::spot_client_kind::SpotClientExecutable, store::PriceStore};
 use anyhow::Result;
+use async_lock::RwLock;
 use bon::bon;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-
-const EXCHANGE_NAME: &str = "Binance";
 
 #[derive(Debug)]
 pub struct BacktestSpotClientData {
@@ -18,19 +17,23 @@ pub struct BacktestSpotClientData {
     commissions: Option<f64>,
     order_id: u64,
     order_history: Vec<Order>,
-    price: Decimal,
 }
 
 #[derive(Debug, Clone)]
 pub struct BacktestSpotClient {
     data: Arc<Mutex<BacktestSpotClientData>>, // 必须使用内部可变性和Sync
+    price_store: Arc<RwLock<PriceStore>>,     // 价格存储
 }
 
 #[bon]
 #[allow(unused)]
 impl BacktestSpotClient {
     #[builder]
-    pub fn new(#[builder(into)] assets: Vec<(String, f64)>, commissions: Option<f64>) -> Self {
+    pub fn new(
+        #[builder(into)] assets: Vec<(String, f64)>,
+        commissions: Option<f64>,
+        price_store: Arc<RwLock<PriceStore>>,
+    ) -> Self {
         let assets = assets
             .into_iter()
             .map(|(asset, amount)| {
@@ -44,22 +47,22 @@ impl BacktestSpotClient {
             })
             .collect();
 
-        let data = BacktestSpotClientData {
+        let data = Arc::new(Mutex::new(BacktestSpotClientData {
             assets,
             commissions,
             order_id: 0,
             order_history: Vec::new(),
-            price: dec!(0),
-        };
+        }));
 
-        BacktestSpotClient {
-            data: Arc::new(Mutex::new(data)),
-        }
+        BacktestSpotClient { data, price_store }
     }
 
-    pub async fn save_price(&self, price: Decimal) {
-        let mut data = self.data.lock().await;
-        data.price = price;
+    async fn price(&self, symbol: &str) -> Decimal {
+        self.price_store
+            .read()
+            .await
+            .price(BACKTEST_EXCHANGE_NAME, "spot", symbol)
+            .unwrap_or(dec!(0))
     }
 
     async fn add_asset(&mut self, asset: &str, amount: Decimal) -> Result<()> {
@@ -221,13 +224,13 @@ impl SpotClientExecutable for BacktestSpotClient {
     async fn market_buy(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
         let symbol = self.symbol(base_asset, quote_asset);
         let qty = Decimal::try_from(qty)?;
+        let price = self.price(&symbol).await;
         let mut data = self.data.lock().await;
-        let price = data.price;
 
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(EXCHANGE_NAME)
+            .exchange(BACKTEST_EXCHANGE_NAME)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -250,13 +253,13 @@ impl SpotClientExecutable for BacktestSpotClient {
     async fn market_sell(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
         let symbol = self.symbol(base_asset, quote_asset);
         let qty = Decimal::try_from(qty)?;
+        let price = self.price(&symbol).await;
         let mut data = self.data.lock().await;
-        let price = data.price;
 
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(EXCHANGE_NAME)
+            .exchange(BACKTEST_EXCHANGE_NAME)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -288,7 +291,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(EXCHANGE_NAME)
+            .exchange(BACKTEST_EXCHANGE_NAME)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -320,7 +323,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(EXCHANGE_NAME)
+            .exchange(BACKTEST_EXCHANGE_NAME)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -342,6 +345,7 @@ impl SpotClientExecutable for BacktestSpotClient {
 
     async fn get_price(&self, base_asset: &str, quote_asset: &str) -> Result<SymbolPrice> {
         let symbol = self.symbol(base_asset, quote_asset);
-        Ok(SymbolPrice::builder().symbol(symbol).price(dec!(0)).build())
+        let price = self.price(&symbol).await;
+        Ok(SymbolPrice::builder().symbol(symbol).price(price).build())
     }
 }

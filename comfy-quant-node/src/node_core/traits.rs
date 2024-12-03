@@ -6,7 +6,7 @@ use crate::node_core::Port;
 use anyhow::Result;
 use comfy_quant_database::{kline, strategy_spot_position};
 use comfy_quant_exchange::client::{
-    spot_client::base::{Exchange, Market, Order, SymbolPrice},
+    spot_client::base::Order,
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use comfy_quant_util::secs_to_datetime;
@@ -54,16 +54,6 @@ impl<T: NodePort> Connectable for T {
     }
 }
 
-/// 价格存储介质
-pub(crate) trait SymbolPriceStorable: Send + Sync + 'static {
-    fn save_price(
-        &mut self,
-        exchange: Exchange,
-        market: Market,
-        symbol_price: SymbolPrice,
-    ) -> Result<()>;
-}
-
 /// 统计接口
 #[allow(async_fn_in_trait)]
 pub trait NodeStats: NodeInfo {
@@ -109,17 +99,6 @@ pub trait NodeStats: NodeInfo {
 
         Ok(())
     }
-}
-
-/// 价格接口
-#[allow(async_fn_in_trait)]
-pub trait NodeSymbolPrice {
-    async fn price(
-        &self,
-        exchange: impl AsRef<str>,
-        market: impl AsRef<str>,
-        symbol: impl AsRef<str>,
-    ) -> Option<Decimal>;
 }
 
 /// 节点名称接口
@@ -210,7 +189,7 @@ pub trait SpotTradeable {
 }
 
 /// 交易接口默认实现
-impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
+impl<T: NodeStats> SpotTradeable for T {
     async fn market_buy(
         &mut self,
         client: &SpotClientKind,
@@ -220,14 +199,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
     ) -> Result<Order> {
         // 用于回测功能的客户端，需要知道当前价格
         let exchange = client.exchange();
-        let market = Market::Spot;
         let symbol = client.symbol(base_asset, quote_asset);
-
-        if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
-            if let Some(price) = self.price(&exchange, &market, &symbol).await {
-                backtest_spot_client.save_price(price).await;
-            }
-        }
 
         // 提交交易
         let order = client.market_buy(base_asset, quote_asset, qty).await?;
@@ -247,15 +219,7 @@ impl<T: NodeStats + NodeSymbolPrice> SpotTradeable for T {
         qty: f64,
     ) -> Result<Order> {
         let exchange = client.exchange();
-        let market = Market::Spot;
         let symbol = client.symbol(base_asset, quote_asset);
-
-        // 用于回测功能的客户端，需要知道当前价格
-        if let SpotClientKind::BacktestSpotClient(backtest_spot_client) = client {
-            if let Some(price) = self.price(&exchange, &market, &symbol).await {
-                backtest_spot_client.save_price(price).await;
-            }
-        }
 
         // 提交交易
         let order = client.market_sell(base_asset, quote_asset, qty).await?;
