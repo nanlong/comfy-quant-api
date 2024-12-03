@@ -7,7 +7,7 @@ use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_database::kline::{self, KlineInterval};
-use comfy_quant_exchange::client::spot_client::base::{Exchange, Market, BACKTEST_EXCHANGE_NAME};
+use comfy_quant_exchange::client::spot_client::base::{Exchange, Market, BINANCE_EXCHANGE_NAME};
 use comfy_quant_task::{
     task_core::{status::TaskStatus, traits::Executable as _},
     tasks::binance_klines::BinanceKlinesTask,
@@ -50,7 +50,7 @@ impl BacktestSpotTicker {
         Ok(BacktestSpotTicker {
             params,
             infra,
-            exchange: BACKTEST_EXCHANGE_NAME.into(),
+            exchange: BINANCE_EXCHANGE_NAME.into(),
             market: Market::Spot,
             interval: KlineInterval::OneSecond,
         })

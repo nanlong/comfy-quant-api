@@ -66,8 +66,6 @@ impl SpotClientExecutable for BinanceSpotClient {
         let symbol = self.symbol(base_asset, quote_asset);
         let symbol = spawn_blocking(move || client.spot().get_symbol_info(symbol)).await??;
 
-        dbg!(&symbol);
-
         Ok(symbol.into())
     }
 

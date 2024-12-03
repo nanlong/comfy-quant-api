@@ -1,6 +1,6 @@
 use super::base::{
     AccountInformation, Balance, Exchange, Order, OrderSide, OrderStatus, OrderType,
-    SymbolInformation, SymbolPrice, BACKTEST_EXCHANGE_NAME,
+    SymbolInformation, SymbolPrice, BINANCE_EXCHANGE_NAME,
 };
 use crate::{client::spot_client_kind::SpotClientExecutable, store::PriceStore};
 use anyhow::Result;
@@ -61,7 +61,7 @@ impl BacktestSpotClient {
         self.price_store
             .read()
             .await
-            .price(BACKTEST_EXCHANGE_NAME, "spot", symbol)
+            .price(BINANCE_EXCHANGE_NAME, "spot", symbol)
             .unwrap_or(dec!(0))
     }
 
@@ -147,7 +147,7 @@ impl BacktestSpotClient {
 
 impl SpotClientExecutable for BacktestSpotClient {
     fn exchange(&self) -> Exchange {
-        Exchange::new(BACKTEST_EXCHANGE_NAME)
+        Exchange::new(BINANCE_EXCHANGE_NAME)
     }
 
     fn symbol(&self, base_asset: &str, quote_asset: &str) -> String {
@@ -230,7 +230,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(BACKTEST_EXCHANGE_NAME)
+            .exchange(BINANCE_EXCHANGE_NAME)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -259,7 +259,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(BACKTEST_EXCHANGE_NAME)
+            .exchange(BINANCE_EXCHANGE_NAME)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -291,7 +291,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(BACKTEST_EXCHANGE_NAME)
+            .exchange(BINANCE_EXCHANGE_NAME)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -323,7 +323,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(BACKTEST_EXCHANGE_NAME)
+            .exchange(BINANCE_EXCHANGE_NAME)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)

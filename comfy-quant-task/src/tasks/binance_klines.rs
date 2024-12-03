@@ -2,14 +2,15 @@ use crate::task_core::{status::TaskStatus, traits::Executable};
 use anyhow::Result;
 use async_stream::stream;
 use bon::{bon, Builder};
-use chrono::{DateTime, Utc};
 use comfy_quant_database::kline::{self, Kline};
-use comfy_quant_exchange::kline_stream::{calc_time_range_kline_count, BinanceKline};
+use comfy_quant_exchange::{
+    client::spot_client::base::BINANCE_EXCHANGE_NAME,
+    kline_stream::{calc_time_range_kline_count, BinanceKline},
+};
+use comfy_quant_util::{millis_to_datetime, secs_to_datetime};
 use futures::{stream::BoxStream, StreamExt};
 use sqlx::PgPool;
 use std::sync::Arc;
-
-const EXCHANGE: &str = "binance";
 
 #[derive(Builder, Clone, Debug)]
 #[builder(on(String, into))]
@@ -53,10 +54,8 @@ impl Executable for BinanceKlinesTask {
     type Output = BoxStream<'static, Result<TaskStatus<Kline>>>;
 
     async fn check_data_complete(&self) -> Result<bool> {
-        let start_datetime = DateTime::<Utc>::from_timestamp(self.params.start_timestamp, 0)
-            .ok_or_else(|| anyhow::anyhow!("start_timestamp is invalid"))?;
-        let end_datetime = DateTime::<Utc>::from_timestamp(self.params.end_timestamp, 0)
-            .ok_or_else(|| anyhow::anyhow!("end_timestamp is invalid"))?;
+        let start_datetime = secs_to_datetime(self.params.start_timestamp)?;
+        let end_datetime = secs_to_datetime(self.params.end_timestamp)?;
 
         let store_kline_count = kline::time_range_klines_count(
             &self.db,
@@ -89,17 +88,19 @@ impl Executable for BinanceKlinesTask {
             if is_data_complete {
                 // let mut klines_stream = kline::time_range_klines_stream(
                 //     &db,
-                //     EXCHANGE,
+                //     BINANCE_EXCHANGE_NAME,
                 //     &params.market,
                 //     &params.symbol,
                 //     &params.interval,
-                //     params.start_timestamp * 1000,
-                //     params.end_timestamp * 1000,
+                //     &start_datetime,
+                //     &end_datetime,
                 // );
+
 
                 // while let Some(Ok(kline)) = klines_stream.next().await {
                 //     yield Ok(TaskStatus::Running(kline));
                 // }
+
                 yield Ok(TaskStatus::Finished);
                 return;
             } else {
@@ -115,10 +116,10 @@ impl Executable for BinanceKlinesTask {
 
                 while let Some(kline_summary) = klines_stream.next().await {
                     let kline_summary = kline_summary?;
-                    let open_time = DateTime::<Utc>::from_timestamp_millis(kline_summary.open_time).unwrap_or_default();
+                    let open_time = millis_to_datetime(kline_summary.open_time)?;
 
                     let kline_data = kline::Kline {
-                        exchange: EXCHANGE.to_string(),
+                        exchange: BINANCE_EXCHANGE_NAME.to_string(),
                         market: params.market.clone(),
                         symbol: params.symbol.clone(),
                         interval: params.interval.clone(),

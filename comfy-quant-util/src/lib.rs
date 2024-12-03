@@ -9,6 +9,11 @@ pub const ALPHABET: &[char] = &[
     'z',
 ];
 
+pub fn convert_to_datetime(datetime: &str) -> Result<DateTime<Utc>> {
+    let datetime = NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S")?.and_utc();
+    Ok(datetime)
+}
+
 pub fn add_utc_offset(datetime: &str) -> Result<DateTime<Utc>> {
     let naive = NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S")?;
     let utc_time = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
@@ -199,6 +204,18 @@ mod tests {
     fn test_get_1month_interval_start() -> Result<()> {
         let start = calc_interval_start(TEST_TIME, IntervalUnit::Month, 1)?;
         assert_eq!(start, 1711929600);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_convert_to_datetime() -> Result<()> {
+        let datetime = convert_to_datetime("2024-10-10 15:18:42")?;
+
+        assert_eq!(
+            datetime,
+            DateTime::<Utc>::from_timestamp(1728573522, 0).unwrap()
+        );
 
         Ok(())
     }

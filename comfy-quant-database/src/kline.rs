@@ -506,7 +506,6 @@ mod tests {
     #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn test_time_range_klines_stream(db: PgPool) -> anyhow::Result<()> {
         create_kline(&db).await?;
-
         let start_datetime = secs_to_datetime(1721817600)?;
         let end_datetime = secs_to_datetime(1721817600)?;
 

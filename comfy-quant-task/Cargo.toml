@@ -10,6 +10,7 @@ bon = { workspace = true }
 chrono = { workspace = true }
 comfy-quant-database = { path = "../comfy-quant-database" }
 comfy-quant-exchange = { path = "../comfy-quant-exchange" }
+comfy-quant-util = { path = "../comfy-quant-util" }
 flume = { workspace = true }
 futures = { workspace = true }
 rust_decimal = { workspace = true }

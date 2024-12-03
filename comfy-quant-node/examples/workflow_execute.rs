@@ -18,9 +18,9 @@ async fn main() -> anyhow::Result<()> {
 
     workflow.execute().await?;
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(1000)).await;
 
-    drop(workflow);
+    // drop(workflow);
     // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
