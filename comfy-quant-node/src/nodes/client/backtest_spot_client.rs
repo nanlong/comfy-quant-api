@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::{
     node_core::{NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, Port, Slot},
     workflow::Node,
@@ -10,6 +8,7 @@ use comfy_quant_exchange::client::{
     spot_client::backtest_spot_client::BacktestSpotClient as Client,
     spot_client_kind::SpotClientKind,
 };
+use std::sync::Arc;
 
 // 模拟账户，用于交易系统回测时使用
 #[derive(Debug)]
@@ -89,28 +88,24 @@ pub(crate) struct Params {
 }
 
 impl TryFrom<&Node> for Params {
-    type Error = anyhow::Error;
+    type Error = BacktestSpotClientError;
 
-    fn try_from(node: &Node) -> Result<Self> {
+    fn try_from(node: &Node) -> Result<Self, Self::Error> {
         if node.properties.prop_type != "client.BacktestSpotClient" {
-            anyhow::bail!(
-                "Try from workflow::Node to BacktestSpotClient failed: Invalid prop_type"
-            );
+            return Err(BacktestSpotClientError::PropertyTypeMismatch);
         }
 
         let [commissions, assets] = node.properties.params.as_slice() else {
-            anyhow::bail!("Try from workflow::Node to BacktestSpotClient failed: Invalid params");
+            return Err(BacktestSpotClientError::ParamsFormatError);
         };
 
-        let commissions = commissions.as_f64().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotClient failed: Invalid commissions"
-        ))?;
+        let commissions = commissions
+            .as_f64()
+            .ok_or(BacktestSpotClientError::CommissionsError)?;
 
         let assets = assets
             .as_array()
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to BacktestSpotClient failed: Invalid assets"
-            ))?
+            .ok_or(BacktestSpotClientError::AssetsError)?
             .iter()
             .filter_map(|asset| {
                 let asset_array = asset.as_array()?;
@@ -127,6 +122,21 @@ impl TryFrom<&Node> for Params {
 
         Ok(params)
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum BacktestSpotClientError {
+    #[error("Invalid property type, expected 'client.BacktestSpotClient'")]
+    PropertyTypeMismatch,
+
+    #[error("Invalid parameters format")]
+    ParamsFormatError,
+
+    #[error("Invalid assets")]
+    AssetsError,
+
+    #[error("Invalid commissions")]
+    CommissionsError,
 }
 
 #[cfg(test)]
@@ -196,10 +206,10 @@ mod tests {
         let result = BacktestSpotClient::try_from(node);
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid prop_type"));
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Invalid property type, expected 'client.BacktestSpotClient'"
+        );
     }
 
     #[test]
@@ -210,7 +220,7 @@ mod tests {
         let result = BacktestSpotClient::try_from(node);
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid params"));
+        assert_eq!(result.unwrap_err().to_string(), "Invalid parameters format");
     }
 
     #[test]
@@ -221,10 +231,7 @@ mod tests {
         let result = BacktestSpotClient::try_from(node);
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid commissions"));
+        assert_eq!(result.unwrap_err().to_string(), "Invalid commissions");
     }
 
     #[test]
@@ -235,7 +242,7 @@ mod tests {
         let result = BacktestSpotClient::try_from(node);
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid assets"));
+        assert_eq!(result.unwrap_err().to_string(), "Invalid assets");
     }
 
     #[sqlx::test]

@@ -12,7 +12,10 @@ use comfy_quant_exchange::client::{
     spot_client::base::{Order, OrderSide},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
-use rust_decimal::{prelude::ToPrimitive, Decimal, MathematicalOps};
+use rust_decimal::{
+    prelude::{FromPrimitive, ToPrimitive},
+    Decimal, MathematicalOps,
+};
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
@@ -365,70 +368,56 @@ pub(crate) struct Params {
 }
 
 impl TryFrom<&Node> for Params {
-    type Error = anyhow::Error;
+    type Error = SpotGridError;
 
-    fn try_from(node: &Node) -> Result<Self> {
+    fn try_from(node: &Node) -> Result<Self, Self::Error> {
         if node.properties.prop_type != "strategy.SpotGrid" {
-            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid prop_type");
+            return Err(SpotGridError::PropertyTypeMismatch);
         }
 
         let [mode, lower_price, upper_price, grid_rows, investment, trigger_price, stop_loss, take_profit, sell_all_on_stop] =
             node.properties.params.as_slice()
         else {
-            anyhow::bail!("Try from workflow::Node to BinanceSubAccount failed: Invalid params");
+            return Err(SpotGridError::ParamsFormatError);
         };
 
         let mode = mode
             .as_str()
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to SpotGrid failed: Invalid mode"
-            ))?
-            .parse::<Mode>()?;
+            .and_then(|mode| mode.parse::<Mode>().ok())
+            .ok_or(SpotGridError::ModeError)?;
 
         let lower_price = lower_price
             .as_f64()
-            .and_then(|p| Decimal::try_from(p).ok())
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to SpotGrid failed: Invalid lower_price"
-            ))?;
+            .and_then(Decimal::from_f64)
+            .ok_or(SpotGridError::LowerPriceError)?;
 
         let upper_price = upper_price
             .as_f64()
-            .and_then(|p| Decimal::try_from(p).ok())
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to SpotGrid failed: Invalid upper_price"
-            ))?;
+            .and_then(Decimal::from_f64)
+            .ok_or(SpotGridError::UpperPriceError)?;
 
-        if lower_price >= upper_price {
-            anyhow::bail!(
-                "Try from workflow::Node to SpotGrid failed: Invalid lower_price and upper_price"
-            );
-        }
-
-        let grid_rows = grid_rows.as_u64().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to SpotGrid failed: Invalid grid_rows"
-        ))?;
-
-        if !(2..150).contains(&grid_rows) {
-            anyhow::bail!("Try from workflow::Node to SpotGrid failed: Invalid grid_rows");
-        }
+        let grid_rows = grid_rows.as_u64().ok_or(SpotGridError::GridRowsError)?;
 
         let investment = investment
             .as_f64()
-            .and_then(|p| Decimal::try_from(p).ok())
-            .ok_or(anyhow::anyhow!(
-                "Try from workflow::Node to SpotGrid failed: Invalid investment"
-            ))?;
+            .and_then(Decimal::from_f64)
+            .ok_or(SpotGridError::InvestmentError)?;
 
-        let trigger_price = trigger_price
-            .as_f64()
-            .and_then(|p| Decimal::try_from(p).ok());
+        let trigger_price = trigger_price.as_f64().and_then(Decimal::from_f64);
 
-        let stop_loss = stop_loss.as_f64().and_then(|p| Decimal::try_from(p).ok());
+        let stop_loss = stop_loss.as_f64().and_then(Decimal::from_f64);
 
-        let take_profit = take_profit.as_f64().and_then(|p| Decimal::try_from(p).ok());
+        let take_profit = take_profit.as_f64().and_then(Decimal::from_f64);
 
         let sell_all_on_stop = sell_all_on_stop.as_bool().unwrap_or(true);
+
+        if lower_price >= upper_price {
+            return Err(SpotGridError::PriceRangeError);
+        }
+
+        if !(2..150).contains(&grid_rows) {
+            return Err(SpotGridError::GridRowsError);
+        }
 
         let params = Params::builder()
             .mode(mode)
@@ -444,6 +433,33 @@ impl TryFrom<&Node> for Params {
 
         Ok(params)
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum SpotGridError {
+    #[error("Invalid property type, expected 'strategy.SpotGrid'")]
+    PropertyTypeMismatch,
+
+    #[error("Invalid parameters format")]
+    ParamsFormatError,
+
+    #[error("Invalid mode")]
+    ModeError,
+
+    #[error("Invalid lower_price")]
+    LowerPriceError,
+
+    #[error("Invalid upper_price")]
+    UpperPriceError,
+
+    #[error("Invalid lower_price must be less than upper_price")]
+    PriceRangeError,
+
+    #[error("Invalid grid_rows")]
+    GridRowsError,
+
+    #[error("Invalid investment")]
+    InvestmentError,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

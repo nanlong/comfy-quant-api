@@ -9,9 +9,11 @@ pub const ALPHABET: &[char] = &[
     'z',
 ];
 
-pub fn convert_to_datetime(datetime: &str) -> Result<DateTime<Utc>> {
-    let datetime = NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S")?.and_utc();
-    Ok(datetime)
+pub fn convert_to_datetime(datetime: &str) -> Option<DateTime<Utc>> {
+    let datetime = NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S")
+        .ok()?
+        .and_utc();
+    Some(datetime)
 }
 
 pub fn add_utc_offset(datetime: &str) -> Result<DateTime<Utc>> {
@@ -210,11 +212,11 @@ mod tests {
 
     #[test]
     fn test_convert_to_datetime() -> Result<()> {
-        let datetime = convert_to_datetime("2024-10-10 15:18:42")?;
+        let datetime = convert_to_datetime("2024-10-10 15:18:42");
 
         assert_eq!(
             datetime,
-            DateTime::<Utc>::from_timestamp(1728573522, 0).unwrap()
+            Some(DateTime::<Utc>::from_timestamp(1728573522, 0).unwrap())
         );
 
         Ok(())

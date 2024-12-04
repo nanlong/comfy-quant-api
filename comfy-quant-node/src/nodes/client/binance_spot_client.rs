@@ -9,43 +9,6 @@ use comfy_quant_exchange::client::{
 };
 use std::sync::Arc;
 
-#[derive(Builder, Debug, Clone)]
-#[builder(on(String, into))]
-#[allow(unused)]
-pub(crate) struct Params {
-    api_key: String,
-    secret_key: String,
-}
-
-impl TryFrom<&Node> for Params {
-    type Error = anyhow::Error;
-
-    fn try_from(node: &Node) -> Result<Self> {
-        if node.properties.prop_type != "client.BinanceSpotClient" {
-            anyhow::bail!("Try from workflow::Node to BinanceSpotClient failed: Invalid prop_type");
-        }
-
-        let [api_key, secret_key] = node.properties.params.as_slice() else {
-            anyhow::bail!("Try from workflow::Node to BinanceSpotClient failed: Invalid params");
-        };
-
-        let api_key = api_key.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotClient failed: Invalid api_key"
-        ))?;
-
-        let secret_key = secret_key.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotClient failed: Invalid secret"
-        ))?;
-
-        let params = Params::builder()
-            .api_key(api_key)
-            .secret_key(secret_key)
-            .build();
-
-        Ok(params)
-    }
-}
-
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BinanceSpotClient {
@@ -95,6 +58,58 @@ impl TryFrom<Node> for BinanceSpotClient {
     fn try_from(node: Node) -> Result<Self> {
         BinanceSpotClient::try_new(node)
     }
+}
+
+#[derive(Builder, Debug, Clone)]
+#[builder(on(String, into))]
+#[allow(unused)]
+pub(crate) struct Params {
+    api_key: String,
+    secret_key: String,
+}
+
+impl TryFrom<&Node> for Params {
+    type Error = BinanceSpotClientError;
+
+    fn try_from(node: &Node) -> Result<Self, Self::Error> {
+        if node.properties.prop_type != "client.BinanceSpotClient" {
+            return Err(BinanceSpotClientError::PropertyTypeMismatch);
+        }
+
+        let [api_key, secret_key] = node.properties.params.as_slice() else {
+            return Err(BinanceSpotClientError::ParamsFormatError);
+        };
+
+        let api_key = api_key
+            .as_str()
+            .ok_or(BinanceSpotClientError::ApiKeyError)?;
+
+        let secret_key = secret_key
+            .as_str()
+            .ok_or(BinanceSpotClientError::SecretKeyError)?;
+
+        let params = Params::builder()
+            .api_key(api_key)
+            .secret_key(secret_key)
+            .build();
+
+        Ok(params)
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum BinanceSpotClientError {
+    #[error("Invalid property type, expected 'client.BinanceSpotClient'")]
+    PropertyTypeMismatch,
+
+    #[error("Invalid parameters format")]
+    ParamsFormatError,
+
+    #[error("Invalid api key")]
+    ApiKeyError,
+
+    #[error("Invalid secret key")]
+    SecretKeyError,
 }
 
 #[cfg(test)]

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::{
     node_core::{NodeExecutable, NodeInfra, NodePort, Port, Slot},
     node_io::SpotPairInfo,
@@ -7,42 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use bon::Builder;
-
-#[derive(Builder, Debug, Clone)]
-#[builder(on(String, into))]
-pub(crate) struct Params {
-    base_asset: String,
-    quote_asset: String,
-}
-
-impl TryFrom<&Node> for Params {
-    type Error = anyhow::Error;
-
-    fn try_from(node: &Node) -> std::result::Result<Self, Self::Error> {
-        if node.properties.prop_type != "data.BinanceSpotTicker" {
-            anyhow::bail!("Try from workflow::Node to BinanceSpotTicker failed: Invalid prop_type");
-        }
-
-        let [base_asset, quote_asset] = node.properties.params.as_slice() else {
-            anyhow::bail!("Try from workflow::Node to BinanceSpotTicker failed: Invalid params");
-        };
-
-        let base_asset = base_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotTicker failed: Invalid base_asset"
-        ))?;
-
-        let quote_asset = quote_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BinanceSpotTicker failed: Invalid quote_asset"
-        ))?;
-
-        let params = Params::builder()
-            .base_asset(base_asset)
-            .quote_asset(quote_asset)
-            .build();
-
-        Ok(params)
-    }
-}
+use std::sync::Arc;
 
 /// 币安现货行情
 /// outputs:
@@ -130,6 +93,57 @@ impl TryFrom<Node> for BinanceSpotTicker {
     fn try_from(node: Node) -> Result<Self> {
         BinanceSpotTicker::try_new(node)
     }
+}
+
+#[derive(Builder, Debug, Clone)]
+#[builder(on(String, into))]
+pub(crate) struct Params {
+    base_asset: String,
+    quote_asset: String,
+}
+
+impl TryFrom<&Node> for Params {
+    type Error = BinanceSpotTickerError;
+
+    fn try_from(node: &Node) -> Result<Self, Self::Error> {
+        if node.properties.prop_type != "data.BinanceSpotTicker" {
+            return Err(BinanceSpotTickerError::PropertyTypeMismatch);
+        }
+
+        let [base_asset, quote_asset] = node.properties.params.as_slice() else {
+            return Err(BinanceSpotTickerError::ParamsFormatError);
+        };
+
+        let base_asset = base_asset
+            .as_str()
+            .ok_or(BinanceSpotTickerError::BaseAssetError)?;
+
+        let quote_asset = quote_asset
+            .as_str()
+            .ok_or(BinanceSpotTickerError::QuoteAssetError)?;
+
+        let params = Params::builder()
+            .base_asset(base_asset)
+            .quote_asset(quote_asset)
+            .build();
+
+        Ok(params)
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum BinanceSpotTickerError {
+    #[error("Invalid property type, expected 'data.BinanceSpotTicker'")]
+    PropertyTypeMismatch,
+
+    #[error("Invalid parameters format")]
+    ParamsFormatError,
+
+    #[error("Invalid base asset")]
+    BaseAssetError,
+
+    #[error("Invalid quote asset")]
+    QuoteAssetError,
 }
 
 #[cfg(test)]

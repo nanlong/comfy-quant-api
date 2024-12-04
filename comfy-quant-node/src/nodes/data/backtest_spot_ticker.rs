@@ -6,7 +6,7 @@ use crate::{
 use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
-use comfy_quant_base::{add_utc_offset, Exchange, KlineInterval, Market};
+use comfy_quant_base::{convert_to_datetime, Exchange, KlineInterval, Market};
 use comfy_quant_database::kline::{self};
 use comfy_quant_exchange::client::spot_client::base::BINANCE_EXCHANGE_NAME;
 use comfy_quant_task::{
@@ -176,39 +176,36 @@ pub(crate) struct Params {
 }
 
 impl TryFrom<&Node> for Params {
-    type Error = anyhow::Error;
+    type Error = BacktestSpotTickerError;
 
-    fn try_from(node: &Node) -> Result<Self> {
+    fn try_from(node: &Node) -> Result<Self, Self::Error> {
         if node.properties.prop_type != "data.BacktestSpotTicker" {
-            anyhow::bail!(
-                "Try from workflow::Node to BacktestSpotTicker failed: Invalid prop_type"
-            );
+            return Err(BacktestSpotTickerError::PropertyTypeMismatch);
         }
 
         let [base_asset, quote_asset, start_datetime, end_datetime] =
             node.properties.params.as_slice()
         else {
-            anyhow::bail!("Try from workflow::Node to BacktestSpotTicker failed: Invalid params");
+            return Err(BacktestSpotTickerError::ParamsFormatError);
         };
 
-        let base_asset = base_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotTicker failed: Invalid base_asset"
-        ))?;
+        let base_asset = base_asset
+            .as_str()
+            .ok_or(BacktestSpotTickerError::BaseAssetError)?;
 
-        let quote_asset = quote_asset.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotTicker failed: Invalid quote_asset"
-        ))?;
+        let quote_asset = quote_asset
+            .as_str()
+            .ok_or(BacktestSpotTickerError::QuoteAssetError)?;
 
-        let start_datetime = start_datetime.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotTicker failed: Invalid start_datetime"
-        ))?;
+        let start_datetime = start_datetime
+            .as_str()
+            .and_then(convert_to_datetime)
+            .ok_or(BacktestSpotTickerError::StartDatetimeError)?;
 
-        let end_datetime = end_datetime.as_str().ok_or(anyhow::anyhow!(
-            "Try from workflow::Node to BacktestSpotTicker failed: Invalid end_datetime"
-        ))?;
-
-        let start_datetime = add_utc_offset(start_datetime)?;
-        let end_datetime = add_utc_offset(end_datetime)?;
+        let end_datetime = end_datetime
+            .as_str()
+            .and_then(convert_to_datetime)
+            .ok_or(BacktestSpotTickerError::EndDatetimeError)?;
 
         let params = Params::builder()
             .base_asset(base_asset)
@@ -219,6 +216,27 @@ impl TryFrom<&Node> for Params {
 
         Ok(params)
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum BacktestSpotTickerError {
+    #[error("Invalid property type, expected 'data.BacktestSpotTicker'")]
+    PropertyTypeMismatch,
+
+    #[error("Invalid parameters format")]
+    ParamsFormatError,
+
+    #[error("Invalid base asset")]
+    BaseAssetError,
+
+    #[error("Invalid quote asset")]
+    QuoteAssetError,
+
+    #[error("Invalid start datetime")]
+    StartDatetimeError,
+
+    #[error("Invalid end datetime")]
+    EndDatetimeError,
 }
 
 #[cfg(test)]
@@ -236,11 +254,11 @@ mod tests {
         assert_eq!(backtest_spot_ticker.params.quote_asset, "USDT");
         assert_eq!(
             backtest_spot_ticker.params.start_datetime,
-            add_utc_offset("2024-10-10 15:18:42")?
+            convert_to_datetime("2024-10-10 15:18:42").unwrap()
         );
         assert_eq!(
             backtest_spot_ticker.params.end_datetime,
-            add_utc_offset("2024-10-10 16:18:42")?
+            convert_to_datetime("2024-10-10 16:18:42").unwrap()
         );
 
         Ok(())
