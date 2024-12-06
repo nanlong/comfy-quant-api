@@ -1,6 +1,8 @@
 use std::{any::Any, collections::HashMap, fmt};
 
-type AnyMap = HashMap<usize, Box<dyn AnyClone + Send + Sync>>;
+type SlotIndex = usize;
+
+type AnyMap = HashMap<SlotIndex, Box<dyn AnyClone + Send + Sync>>;
 
 #[derive(Clone, Default)]
 pub struct Slots {
@@ -14,7 +16,7 @@ impl Slots {
         Slots::default()
     }
 
-    pub fn set<T>(&mut self, key: usize, val: T) -> Option<T>
+    pub fn set<T>(&mut self, key: SlotIndex, val: T) -> Option<T>
     where
         T: Clone + Send + Sync + 'static,
     {
@@ -24,7 +26,7 @@ impl Slots {
             .and_then(|boxed| boxed.into_any().downcast().ok().map(|boxed| *boxed))
     }
 
-    pub fn get<T>(&self, key: usize) -> Option<&T>
+    pub fn get<T>(&self, key: SlotIndex) -> Option<&T>
     where
         T: Send + Sync + 'static,
     {
@@ -34,7 +36,7 @@ impl Slots {
             .and_then(|boxed| (**boxed).as_any().downcast_ref())
     }
 
-    pub fn get_mut<T>(&mut self, key: usize) -> Option<&mut T>
+    pub fn get_mut<T>(&mut self, key: SlotIndex) -> Option<&mut T>
     where
         T: Send + Sync + 'static,
     {

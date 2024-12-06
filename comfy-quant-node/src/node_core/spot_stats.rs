@@ -1,5 +1,6 @@
 use super::NodeContext;
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use comfy_quant_base::ExchangeSymbolKey;
 use comfy_quant_database::{
     kline::Kline,
@@ -15,8 +16,7 @@ use polars::{
         SortMultipleOptions,
     },
 };
-use rust_decimal::{prelude::ToPrimitive, Decimal};
-use rust_decimal_macros::dec;
+use rust_decimal::{prelude::ToPrimitive, Decimal, MathematicalOps};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -115,27 +115,29 @@ impl SpotStats {
 #[derive(Serialize, Deserialize, Debug, Default)]
 #[allow(unused)]
 pub struct SpotStatsData {
-    pub exchange: String,                // 交易所
-    pub symbol: String,                  // 币种
-    pub base_asset: String,              // 基础币种
-    pub quote_asset: String,             // 计价币种
-    pub initial_base_balance: Decimal,   // 初始化base资产余额
-    pub initial_quote_balance: Decimal,  // 初始化quote资产余额
-    pub initial_price: Decimal,          // 初始化价格
-    pub maker_commission_rate: Decimal,  // maker手续费率
-    pub taker_commission_rate: Decimal,  // taker手续费率
-    pub base_asset_balance: Decimal,     // base资产持仓量
-    pub quote_asset_balance: Decimal,    // quote资产持仓量
-    pub avg_price: Decimal,              // base资产持仓均价
-    pub total_trades: u64,               // 总交易次数
-    pub buy_trades: u64,                 // 买入次数
-    pub sell_trades: u64,                // 卖出次数
-    pub total_base_volume: Decimal,      // base资产交易量
-    pub total_quote_volume: Decimal,     // quote资产交易量
-    pub total_base_commission: Decimal,  // 总手续费
-    pub total_quote_commission: Decimal, // 总手续费
-    pub realized_pnl: Decimal,           // 已实现盈亏
-    pub win_trades: u64,                 // 盈利交易次数
+    pub exchange: String,                      // 交易所
+    pub symbol: String,                        // 币种
+    pub base_asset: String,                    // 基础币种
+    pub quote_asset: String,                   // 计价币种
+    pub initial_base_balance: Decimal,         // 初始化base资产余额
+    pub initial_quote_balance: Decimal,        // 初始化quote资产余额
+    pub initial_price: Decimal,                // 初始化价格
+    pub maker_commission_rate: Decimal,        // maker手续费率
+    pub taker_commission_rate: Decimal,        // taker手续费率
+    pub base_asset_balance: Decimal,           // base资产持仓量
+    pub quote_asset_balance: Decimal,          // quote资产持仓量
+    pub avg_price: Decimal,                    // base资产持仓均价
+    pub total_trades: u64,                     // 总交易次数
+    pub buy_trades: u64,                       // 买入次数
+    pub sell_trades: u64,                      // 卖出次数
+    pub total_base_volume: Decimal,            // base资产交易量
+    pub total_quote_volume: Decimal,           // quote资产交易量
+    pub total_base_commission: Decimal,        // 总手续费
+    pub total_quote_commission: Decimal,       // 总手续费
+    pub realized_pnl: Decimal,                 // 已实现盈亏
+    pub win_trades: u64,                       // 盈利交易次数
+    pub first_trade_at: Option<DateTime<Utc>>, // 第一笔交易时间
+    pub last_trade_at: Option<DateTime<Utc>>,  // 最后一笔交易时间
 }
 
 #[allow(unused)]
@@ -192,6 +194,7 @@ impl SpotStatsData {
     }
 
     async fn update_with_order(&mut self, ctx: NodeContext, order: &Order) -> Result<()> {
+        let now = Utc::now();
         let base_asset_amount = order.base_asset_amount()?;
         let quote_asset_amount = order.quote_asset_amount()?;
         let base_commission = order.base_commission(&self.maker_commission_rate)?;
@@ -201,6 +204,12 @@ impl SpotStatsData {
         self.total_trades += 1;
         self.total_base_volume += base_asset_amount;
         self.total_quote_volume += quote_asset_amount;
+
+        // 更新第一笔交易时间和最后一笔交易时间
+        if self.first_trade_at.is_none() {
+            self.first_trade_at = Some(now);
+        }
+        self.last_trade_at = Some(now);
 
         match order.order_side {
             OrderSide::Buy => {
@@ -360,8 +369,38 @@ impl SpotStatsData {
     // 未实现盈亏
     pub fn unrealized_pnl(&self, price: &Decimal) -> Decimal {
         let cost = self.base_asset_balance * self.avg_price;
-        let maybe_sell = self.base_asset_balance * price * (dec!(1) - self.maker_commission_rate);
+        let maybe_sell =
+            self.base_asset_balance * price * (Decimal::ONE - self.maker_commission_rate);
         maybe_sell - cost
+    }
+
+    // 总收益率
+    pub fn total_return(&self, current_price: &Decimal) -> Decimal {
+        (self.realized_pnl() + self.unrealized_pnl(current_price))
+            / (self.initial_quote_balance + self.initial_base_balance * current_price)
+    }
+
+    // 年化收益率 = (1 + 总收益率)^(365/交易天数) - 1
+    pub fn annualized_return(&self, current_price: &Decimal) -> Decimal {
+        let (first_time, last_time) = match (self.first_trade_at, self.last_trade_at) {
+            (Some(first_time), Some(last_time)) => (first_time, last_time),
+            (Some(first_time), None) => (first_time, Utc::now()),
+            _ => return Decimal::ZERO,
+        };
+
+        // 计算交易天数
+        let trading_days = (last_time - first_time).num_days();
+
+        if trading_days == 0 {
+            return Decimal::ZERO;
+        }
+
+        // 计算总收益率
+        let total_return = self.total_return(current_price);
+
+        // 年化收益率
+        let days_ratio = Decimal::from(365) / Decimal::from(trading_days);
+        (Decimal::ONE + total_return).powf(days_ratio.to_f64().unwrap_or(0.0)) - Decimal::ONE
     }
 
     // 保存策略持仓
@@ -475,7 +514,7 @@ mod tests {
         let quote_asset = "USDT";
 
         // 初始资产: 1 BTC + 10000 USDT
-        let initial_base = dec!(1);
+        let initial_base = Decimal::ONE;
         let initial_quote = dec!(10000);
         let initial_price = dec!(50000);
 
@@ -489,7 +528,7 @@ mod tests {
                 .symbol(symbol)
                 .base_asset(base_asset)
                 .quote_asset(quote_asset)
-                .base_asset_balance(dec!(1))
+                .base_asset_balance(Decimal::ONE)
                 .quote_asset_balance(dec!(10000))
                 .realized_pnl(dec!(0))
                 .created_at(DateTime::<Utc>::from_timestamp(1000, 0).unwrap())
@@ -588,7 +627,7 @@ mod tests {
 
         // t=1000: 1 BTC * 50000 + 10000 = 60000, 净值 = 1.0
         assert_eq!(results[0].value, dec!(60000));
-        assert_eq!(results[0].net_value, dec!(1));
+        assert_eq!(results[0].net_value, Decimal::ONE);
         assert_eq!(results[0].drawdown, dec!(0));
 
         // t=1500: 1 BTC * 45000 + 10000 = 55000, 净值 = 0.9167
@@ -747,7 +786,7 @@ mod tests {
         // 测试未实现盈亏计算
         let current_price = dec!(50000);
         let expected_unrealized_pnl =
-            dec!(1.0) * current_price * (dec!(1) - dec!(0.001)) - dec!(1.0) * dec!(45000);
+            dec!(1.0) * current_price * (Decimal::ONE - dec!(0.001)) - dec!(1.0) * dec!(45000);
         assert_eq!(data.unrealized_pnl(&current_price), expected_unrealized_pnl);
 
         // 测试已实现盈亏

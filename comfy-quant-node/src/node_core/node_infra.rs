@@ -23,7 +23,7 @@ impl NodeInfra {
     }
 
     pub fn node_context(&self) -> Result<NodeContext> {
-        let context = self.node.context()?;
+        let context = self.workflow_context()?;
 
         Ok(NodeContext::new(
             context.cloned_db(),
