@@ -5,7 +5,8 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use async_lock::{Barrier, Mutex, RwLock};
-use comfy_quant_base::generate_workflow_id;
+use chrono::{DateTime, Utc};
+use comfy_quant_base::{arc_rwlock, generate_workflow_id};
 use comfy_quant_exchange::{client::spot_client_kind::SpotClientKind, store::PriceStore};
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use sqlx::PgPool;
@@ -22,6 +23,10 @@ pub struct Workflow {
     config: HashMap<String, String>,
     extra: HashMap<String, String>,
     version: f32,
+    #[serde(default)]
+    running_start_at: DateTime<Utc>, // 运行开始时间
+    #[serde(default, with = "arc_rwlock")]
+    running_time: Arc<RwLock<usize>>, // 运行时间(秒)
 
     #[serde(skip)]
     deserialized_nodes: HashMap<u32, Arc<Mutex<NodeKind>>>, // 反序列化节点
@@ -34,11 +39,11 @@ pub struct Workflow {
 impl Workflow {
     // 初始化上下文
     pub async fn initialize(&mut self, db: Arc<PgPool>) -> Result<()> {
+        let cloned_running_time = Arc::clone(&self.running_time);
         let barrier = Barrier::new(self.nodes.len());
-        let context = Arc::new(WorkflowContext::new(db, barrier));
+        let context = Arc::new(WorkflowContext::new(db, cloned_running_time, barrier));
 
         self.context = Some(Arc::clone(&context));
-        self.token = CancellationToken::new();
 
         for node in &mut self.nodes {
             node.context = Some(Arc::clone(&context));
@@ -81,6 +86,26 @@ impl Workflow {
     }
 
     pub async fn execute(&mut self) -> Result<()> {
+        if self.running_start_at.timestamp() == 0 {
+            self.running_start_at = Utc::now();
+        }
+
+        let cloned_running_time = self.running_time.clone();
+        let cloned_token = self.token.clone();
+
+        // 计算运行时间
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = async {
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        *cloned_running_time.write().await += 1;
+                    }
+                } => {}
+                _ = cloned_token.cancelled() => {}
+            }
+        });
+
         // 按顺序从前至后执行节点
         for node in self.sorted_nodes().into_iter() {
             let node_id = node.id;
@@ -166,7 +191,7 @@ impl Serialize for Workflow {
         nodes.sort_by_key(|node| node.order);
 
         // 序列化所有非skip字段
-        let mut state = serializer.serialize_struct("Workflow", 8)?;
+        let mut state = serializer.serialize_struct("Workflow", 10)?;
         state.serialize_field("last_node_id", &self.last_node_id)?;
         state.serialize_field("last_link_id", &self.last_link_id)?;
         state.serialize_field("nodes", &nodes)?;
@@ -175,6 +200,8 @@ impl Serialize for Workflow {
         state.serialize_field("config", &self.config)?;
         state.serialize_field("extra", &self.extra)?;
         state.serialize_field("version", &self.version)?;
+        state.serialize_field("running_start_at", &self.running_start_at)?;
+        state.serialize_field("running_time", &*self.running_time.as_ref().read_blocking())?;
 
         state.end()
     }
@@ -255,12 +282,13 @@ pub struct WorkflowContext {
     id: String,                           // 工作流ID
     db: Arc<PgPool>,                      // 数据库
     price_store: Arc<RwLock<PriceStore>>, // 价格存储
+    running_time: Arc<RwLock<usize>>,     // 运行时间(秒)
     barrier: Barrier,                     // 屏障
 }
 
 #[allow(unused)]
 impl WorkflowContext {
-    pub(crate) fn new(db: Arc<PgPool>, barrier: Barrier) -> Self {
+    pub(crate) fn new(db: Arc<PgPool>, running_time: Arc<RwLock<usize>>, barrier: Barrier) -> Self {
         let id = generate_workflow_id();
         let price_store = Arc::new(RwLock::new(PriceStore::new()));
 
@@ -268,6 +296,7 @@ impl WorkflowContext {
             id,
             db,
             price_store,
+            running_time,
             barrier,
         }
     }
@@ -339,23 +368,29 @@ mod tests {
         let json_str = r#"{"last_node_id":3,"last_link_id":3,"nodes":[{"id":2,"type":"加密货币交易所/币安现货(Ticker Mock)","pos":[210,58],"size":[240,150],"flags":{},"order":0,"mode":0,"outputs":[{"name":"现货交易对","type":"SpotPairInfo","links":[1],"slot_index":0},{"name":"Tick数据流","type":"TickStream","links":[2],"slot_index":1}],"properties":{"type":"data.BacktestSpotTicker","params":["BTC","USDT","2024-01-01 00:00:00","2024-01-02 00:00:00"]}},{"id":1,"type":"账户/币安账户(Mock)","pos":[224,295],"size":{"0":210,"1":106},"flags":{},"order":1,"mode":0,"outputs":[{"name":"现货账户客户端","type":"SpotClient","links":[3],"slot_index":0}],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["USDT",1000]]]}},{"id":3,"type":"交易策略/网格(现货)","pos":[520,93],"size":{"0":210,"1":290},"flags":{},"order":2,"mode":0,"inputs":[{"name":"现货交易对","type":"SpotPairInfo","link":1},{"name":"现货账户客户端","type":"SpotClient","link":3},{"name":"Tick数据流","type":"TickStream","link":2}],"properties":{"type":"strategy.SpotGrid","params":["arithmetic",1,1.1,8,1,"","","",true]}}],"links":[[1,2,0,3,0,"SpotPairInfo"],[2,2,1,3,2,"TickStream"],[3,1,0,3,1,"SpotClient"]],"groups":[],"config":{},"extra":{},"version":0.4}"#;
 
         let mut workflow: Workflow = serde_json::from_str(json_str)?;
-        let db = Arc::new(db);
-        workflow.initialize(db).await?;
 
+        workflow.initialize(Arc::new(db)).await?;
+
+        assert_eq!(*workflow.running_time.as_ref().read_blocking(), 0);
         assert_eq!(workflow.nodes.len(), 3);
         assert_eq!(workflow.links.len(), 3);
 
-        let workflow_str = serde_json::to_string(&workflow)?;
+        assert_eq!(serde_json::to_string(&workflow)?, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[{\"id\":2,\"type\":\"加密货币交易所/币安现货(Ticker Mock)\",\"pos\":[210,58],\"order\":0,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"links\":[1],\"slot_index\":0},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"links\":[2],\"slot_index\":1}],\"properties\":{\"type\":\"data.BacktestSpotTicker\",\"params\":[\"BTC\",\"USDT\",\"2024-01-01 00:00:00\",\"2024-01-02 00:00:00\"]},\"runtime_store\":null},{\"id\":1,\"type\":\"账户/币安账户(Mock)\",\"pos\":[224,295],\"order\":1,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"links\":[3],\"slot_index\":0}],\"properties\":{\"type\":\"client.BacktestSpotClient\",\"params\":[0.001,[[\"USDT\",1000]]]},\"runtime_store\":null},{\"id\":3,\"type\":\"交易策略/网格(现货)\",\"pos\":[520,93],\"order\":2,\"mode\":0,\"inputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"link\":1},{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"link\":3},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"link\":2}],\"outputs\":null,\"properties\":{\"type\":\"strategy.SpotGrid\",\"params\":[\"arithmetic\",1,1.1,8,1,\"\",\"\",\"\",true]},\"runtime_store\":\"{\\\"stats\\\":{\\\"data\\\":{}},\\\"grid\\\":null,\\\"initialized\\\":false}\"}],\"links\":[{\"link_id\":1,\"origin_id\":2,\"origin_slot\":0,\"target_id\":3,\"target_slot\":0,\"link_type\":\"SpotPairInfo\"},{\"link_id\":2,\"origin_id\":2,\"origin_slot\":1,\"target_id\":3,\"target_slot\":2,\"link_type\":\"TickStream\"},{\"link_id\":3,\"origin_id\":1,\"origin_slot\":0,\"target_id\":3,\"target_slot\":1,\"link_type\":\"SpotClient\"}],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4,\"running_start_at\":\"1970-01-01T00:00:00Z\",\"running_time\":0}");
 
-        assert_eq!(workflow_str, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[{\"id\":2,\"type\":\"加密货币交易所/币安现货(Ticker Mock)\",\"pos\":[210,58],\"order\":0,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"links\":[1],\"slot_index\":0},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"links\":[2],\"slot_index\":1}],\"properties\":{\"type\":\"data.BacktestSpotTicker\",\"params\":[\"BTC\",\"USDT\",\"2024-01-01 00:00:00\",\"2024-01-02 00:00:00\"]},\"runtime_store\":null},{\"id\":1,\"type\":\"账户/币安账户(Mock)\",\"pos\":[224,295],\"order\":1,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"links\":[3],\"slot_index\":0}],\"properties\":{\"type\":\"client.BacktestSpotClient\",\"params\":[0.001,[[\"USDT\",1000]]]},\"runtime_store\":null},{\"id\":3,\"type\":\"交易策略/网格(现货)\",\"pos\":[520,93],\"order\":2,\"mode\":0,\"inputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"link\":1},{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"link\":3},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"link\":2}],\"outputs\":null,\"properties\":{\"type\":\"strategy.SpotGrid\",\"params\":[\"arithmetic\",1,1.1,8,1,\"\",\"\",\"\",true]},\"runtime_store\":\"{\\\"stats\\\":{\\\"data\\\":{}},\\\"grid\\\":null,\\\"initialized\\\":false}\"}],\"links\":[{\"link_id\":1,\"origin_id\":2,\"origin_slot\":0,\"target_id\":3,\"target_slot\":0,\"link_type\":\"SpotPairInfo\"},{\"link_id\":2,\"origin_id\":2,\"origin_slot\":1,\"target_id\":3,\"target_slot\":2,\"link_type\":\"TickStream\"},{\"link_id\":3,\"origin_id\":1,\"origin_slot\":0,\"target_id\":3,\"target_slot\":1,\"link_type\":\"SpotClient\"}],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4}");
+        let json_str = r#"{"running_time":100000,"last_node_id":3,"last_link_id":3,"nodes":[],"links":[],"groups":[],"config":{},"extra":{},"version":0.4}"#;
+
+        let workflow: Workflow = serde_json::from_str(json_str)?;
+
+        assert_eq!(*workflow.running_time.as_ref().read_blocking(), 100000);
+
+        assert_eq!(serde_json::to_string(&workflow)?, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[],\"links\":[],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4,\"running_start_at\":\"1970-01-01T00:00:00Z\",\"running_time\":100000}");
 
         Ok(())
     }
 
     #[sqlx::test]
     async fn test_workflow_context(db: PgPool) {
-        let db = Arc::new(db);
-        let context = WorkflowContext::new(db, Barrier::new(1));
+        let context = WorkflowContext::new(Arc::new(db), Arc::new(RwLock::new(0)), Barrier::new(1));
         assert_eq!(context.workflow_id().len(), 21);
 
         let db = context.cloned_db();

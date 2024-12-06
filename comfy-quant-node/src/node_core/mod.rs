@@ -5,10 +5,9 @@ mod port;
 mod slot;
 mod slots;
 mod spot_stats;
+mod stats_data;
 mod tick;
 mod traits;
-
-pub(crate) mod arc_rwlock_serde;
 
 pub(crate) use node_infra::{NodeContext, NodeInfra};
 pub(crate) use port::Port;

@@ -876,7 +876,7 @@ fn calculate_minimum_investment(
 mod tests {
     use super::*;
     use crate::workflow::WorkflowContext;
-    use async_lock::Barrier;
+    use async_lock::{Barrier, RwLock};
     use comfy_quant_exchange::client::spot_client::base::{OrderStatus, OrderType};
     use sqlx::PgPool;
     use std::sync::Arc;
@@ -886,8 +886,11 @@ mod tests {
         let json_str = r#"{"id":4,"type":"交易策略/网格(现货)","pos":[367,125],"size":{"0":210,"1":310},"flags":{},"order":1,"mode":0,"inputs":[{"name":"交易所信息","type":"exchangeData","link":null},{"name":"最新成交价格","type":"tickerStream","link":null},{"name":"账户","type":"account","link":null},{"name":"回测","type":"backtest","link":null}],"properties":{"type":"strategy.SpotGrid","params":["arithmetic",1,1.1,8,1,"","","",true]}}"#;
 
         let mut node: Node = serde_json::from_str(json_str)?;
-        let db = Arc::new(db);
-        let workflow_context = Arc::new(WorkflowContext::new(db, Barrier::new(0)));
+        let workflow_context = Arc::new(WorkflowContext::new(
+            Arc::new(db),
+            Arc::new(RwLock::new(0)),
+            Barrier::new(0),
+        ));
         node.context = Some(workflow_context);
 
         let spot_grid = SpotGrid::try_from(node)?;

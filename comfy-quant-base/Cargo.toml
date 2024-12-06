@@ -1,10 +1,12 @@
 [package]
 name = "comfy-quant-base"
 version = "0.1.0"
+license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
+async-lock = { workspace = true }
 chrono = { workspace = true }
 nanoid = { workspace = true }
 serde = { workspace = true }

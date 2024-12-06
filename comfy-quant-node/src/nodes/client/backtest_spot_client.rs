@@ -144,7 +144,7 @@ mod tests {
     use crate::workflow::WorkflowContext;
 
     use super::*;
-    use async_lock::Barrier;
+    use async_lock::{Barrier, RwLock};
     use comfy_quant_exchange::client::spot_client_kind::SpotClientExecutable;
     use rust_decimal_macros::dec;
     use sqlx::PgPool;
@@ -156,6 +156,7 @@ mod tests {
         let mut node: Node = serde_json::from_str(json_str)?;
         node.context = Some(Arc::new(WorkflowContext::new(
             Arc::new(db),
+            Arc::new(RwLock::new(0)),
             Barrier::new(0),
         )));
 
@@ -177,6 +178,7 @@ mod tests {
         let mut node: Node = serde_json::from_str(json_str)?;
         node.context = Some(Arc::new(WorkflowContext::new(
             Arc::new(db),
+            Arc::new(RwLock::new(0)),
             Barrier::new(0),
         )));
 
@@ -252,6 +254,7 @@ mod tests {
         let mut node: Node = serde_json::from_str(json_str)?;
         node.context = Some(Arc::new(WorkflowContext::new(
             Arc::new(db),
+            Arc::new(RwLock::new(0)),
             Barrier::new(0),
         )));
 
@@ -266,8 +269,11 @@ mod tests {
         let json_str = r#"{"id":42,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10]]]}}"#;
 
         let mut node: Node = serde_json::from_str(json_str)?;
-        let db = Arc::new(db);
-        node.context = Some(Arc::new(WorkflowContext::new(db, Barrier::new(0))));
+        node.context = Some(Arc::new(WorkflowContext::new(
+            Arc::new(db),
+            Arc::new(RwLock::new(0)),
+            Barrier::new(0),
+        )));
 
         let account = BacktestSpotClient::try_from(node)?;
         let ctx = account.node_context()?;
@@ -285,6 +291,7 @@ mod tests {
         let mut node: Node = serde_json::from_str(json_str)?;
         node.context = Some(Arc::new(WorkflowContext::new(
             Arc::new(db),
+            Arc::new(RwLock::new(0)),
             Barrier::new(0),
         )));
         let mut account = BacktestSpotClient::try_from(node)?;
