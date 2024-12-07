@@ -3,7 +3,7 @@ use comfy_quant_exchange::client::spot_client::base::SymbolPrice;
 use rust_decimal::Decimal;
 
 #[derive(Debug, Clone, Builder, PartialEq)]
-pub(crate) struct Tick {
+pub struct Tick {
     pub timestamp: i64,
     pub symbol: String,
     pub price: Decimal,

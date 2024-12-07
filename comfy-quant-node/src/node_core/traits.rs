@@ -1,17 +1,17 @@
-use super::{
-    spot_stats::{SpotStats, SpotStatsData},
-    NodeContext,
+use super::{NodeContext, Tick};
+use crate::{
+    node_core::Port,
+    stats::{SpotStats, SpotStatsData},
 };
-use crate::node_core::Port;
 use anyhow::Result;
-use comfy_quant_base::{secs_to_datetime, Market};
-use comfy_quant_database::{kline, strategy_spot_position};
+// use comfy_quant_base::{secs_to_datetime, Market};
+// use comfy_quant_database::{kline, strategy_spot_position};
 use comfy_quant_exchange::client::{
     spot_client::base::Order,
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use enum_dispatch::enum_dispatch;
-use rust_decimal::Decimal;
+// use rust_decimal::Decimal;
 
 // 节点执行
 #[enum_dispatch]
@@ -54,6 +54,12 @@ impl<T: NodePort> Connectable for T {
     }
 }
 
+/// 节点名称接口
+pub trait NodeInfo {
+    // 获取节点
+    fn node_context(&self) -> Result<NodeContext>;
+}
+
 /// 统计接口
 #[allow(async_fn_in_trait)]
 pub trait NodeStats: NodeInfo {
@@ -81,6 +87,23 @@ pub trait NodeStats: NodeInfo {
             })
     }
 
+    async fn update_spot_stats_with_tick(
+        &mut self,
+        exchange: impl AsRef<str>,
+        symbol: impl AsRef<str>,
+        tick: &Tick,
+    ) -> Result<()> {
+        let ctx = self.node_context()?;
+
+        let stats = self
+            .spot_stats_mut()
+            .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?;
+
+        stats.update_with_tick(ctx, exchange, symbol, tick).await?;
+
+        Ok(())
+    }
+
     async fn update_spot_stats_with_order(
         &mut self,
         exchange: impl AsRef<str>,
@@ -98,72 +121,6 @@ pub trait NodeStats: NodeInfo {
             .await?;
 
         Ok(())
-    }
-}
-
-/// 节点名称接口
-pub trait NodeInfo {
-    // 获取节点
-    fn node_context(&self) -> Result<NodeContext>;
-}
-
-/// 策略统计信息接口
-/// 需要从context中获取到db
-#[allow(async_fn_in_trait)]
-pub trait NodeStatsInfo {
-    // 最大回撤
-    async fn spot_max_drawdown(
-        &self,
-        exchange: &str,
-        symbol: &str,
-        interval: &str,
-        start_timestamp: i64,
-        end_timestamp: i64,
-    ) -> Option<Decimal>;
-}
-
-impl<T: NodeInfo + NodeStats> NodeStatsInfo for T {
-    async fn spot_max_drawdown(
-        &self,
-        exchange: &str,
-        symbol: &str,
-        interval: &str,
-        start_timestamp: i64,
-        end_timestamp: i64,
-    ) -> Option<Decimal> {
-        let stats = self.spot_stats()?;
-        let ctx = self.node_context().ok()?;
-        let stats_data = stats.get(exchange, symbol)?;
-        let start_datetime = secs_to_datetime(start_timestamp).ok()?;
-        let end_datetime = secs_to_datetime(end_timestamp).ok()?;
-
-        let positions = strategy_spot_position::list(
-            &ctx.db,
-            &ctx.workflow_id,
-            ctx.node_id,
-            exchange,
-            symbol,
-            &start_datetime,
-            &end_datetime,
-        )
-        .await
-        .ok()?;
-
-        let klines = kline::list(
-            &ctx.db,
-            exchange,
-            Market::Spot.as_ref(),
-            symbol,
-            interval,
-            &start_datetime,
-            &end_datetime,
-        )
-        .await
-        .ok()?;
-
-        let net_values = stats_data.calculate_net_value(&positions, &klines).ok()?;
-
-        Some(SpotStatsData::get_max_drawdown(&net_values))
     }
 }
 

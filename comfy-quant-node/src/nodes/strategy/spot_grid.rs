@@ -1,9 +1,10 @@
 use crate::{
     node_core::{
         NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, NodeStats, Port,
-        SpotClientService, SpotStats, SpotTradeable,
+        SpotClientService, SpotTradeable,
     },
     node_io::{SpotPairInfo, TickStream},
+    stats::SpotStats,
     workflow::Node,
 };
 use anyhow::{anyhow, Result};
@@ -329,6 +330,14 @@ impl NodeExecutable for SpotGrid {
                     }
                 }
             }
+
+            // 更新统计信息
+            self.update_spot_stats_with_tick(
+                &client.exchange(),
+                &client.symbol(&pair_info.base_asset, &pair_info.quote_asset),
+                &tick,
+            )
+            .await?;
         }
 
         Ok(())
