@@ -6,11 +6,12 @@ use crate::{
 use anyhow::{anyhow, Result};
 use async_lock::{Barrier, Mutex, RwLock};
 use chrono::{DateTime, Utc};
-use comfy_quant_base::{arc_rwlock, generate_workflow_id};
+use comfy_quant_base::{arc_rwlock, generate_workflow_id, vec_arc_rwlock};
 use comfy_quant_exchange::{client::spot_client_kind::SpotClientKind, store::PriceStore};
+use itertools::Itertools;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use sqlx::PgPool;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Deserialize, Debug)]
@@ -23,10 +24,10 @@ pub struct Workflow {
     config: HashMap<String, String>,
     extra: HashMap<String, String>,
     version: f32,
-    #[serde(default)]
-    running_start_at: DateTime<Utc>, // 运行开始时间
+    #[serde(default, with = "vec_arc_rwlock")]
+    execution_history: Vec<Arc<RwLock<ExecutionRecord>>>, // 每一次的执行时间
     #[serde(default, with = "arc_rwlock")]
-    running_time: Arc<RwLock<usize>>, // 运行时间(秒)
+    running_time: Arc<RwLock<u128>>, // 运行持续时间(微妙)
 
     #[serde(skip)]
     deserialized_nodes: HashMap<u32, Arc<Mutex<NodeKind>>>, // 反序列化节点
@@ -86,23 +87,38 @@ impl Workflow {
     }
 
     pub async fn execute(&mut self) -> Result<()> {
-        if self.running_start_at.timestamp() == 0 {
-            self.running_start_at = Utc::now();
-        }
-
+        let start_at = Instant::now();
+        let execute_time = Arc::new(RwLock::new(ExecutionRecord::new()));
+        let cloned_execute_time = Arc::clone(&execute_time);
         let cloned_running_time = self.running_time.clone();
         let cloned_token = self.token.clone();
+        let running_time = *cloned_running_time.read().await;
+
+        self.execution_history.push(execute_time);
 
         // 计算运行时间
         tokio::spawn(async move {
+            let update_times = || async {
+                let mut execute_time_write = cloned_execute_time.write().await;
+                let mut running_time_write = cloned_running_time.write().await;
+
+                let elapsed = start_at.elapsed().as_micros();
+                let time = running_time + elapsed;
+                *running_time_write = time;
+                execute_time_write.running_time = elapsed;
+                execute_time_write.stop_at = Utc::now();
+            };
+
             tokio::select! {
                 _ = async {
                     loop {
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                        *cloned_running_time.write().await += 1;
+                        update_times().await;
                     }
                 } => {}
-                _ = cloned_token.cancelled() => {}
+                _ = cloned_token.cancelled() => {
+                    update_times().await;
+                }
             }
         });
 
@@ -178,17 +194,25 @@ impl Serialize for Workflow {
         S: serde::Serializer,
     {
         // 更新nodes
-        let mut nodes = if self.deserialized_nodes.is_empty() {
-            self.nodes.clone()
+        let nodes = if self.deserialized_nodes.is_empty() {
+            self.nodes
+                .clone()
+                .into_iter()
+                .sorted_by_key(|node| node.order)
+                .collect::<Vec<_>>()
         } else {
             self.deserialized_nodes
                 .iter()
-                .filter_map(|(_, node_kind)| (&*node_kind.lock_blocking()).try_into().ok())
-                .collect()
+                .filter_map(|(_, node_kind)| Node::try_from(&*node_kind.lock_blocking()).ok())
+                .sorted_by_key(|node| node.order)
+                .collect::<Vec<_>>()
         };
 
-        // 按照 order 排序
-        nodes.sort_by_key(|node| node.order);
+        let execution_history = self
+            .execution_history
+            .iter()
+            .map(|execute_time| (*execute_time.read_blocking()).clone())
+            .collect::<Vec<_>>();
 
         // 序列化所有非skip字段
         let mut state = serializer.serialize_struct("Workflow", 10)?;
@@ -200,7 +224,7 @@ impl Serialize for Workflow {
         state.serialize_field("config", &self.config)?;
         state.serialize_field("extra", &self.extra)?;
         state.serialize_field("version", &self.version)?;
-        state.serialize_field("running_start_at", &self.running_start_at)?;
+        state.serialize_field("execution_history", &execution_history)?;
         state.serialize_field("running_time", &*self.running_time.as_ref().read_blocking())?;
 
         state.end()
@@ -276,19 +300,42 @@ pub struct Properties {
     pub(crate) params: Vec<serde_json::Value>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ExecutionRecord {
+    start_at: DateTime<Utc>, // 开始时间
+    stop_at: DateTime<Utc>,  // 结束时间
+    running_time: u128,      // 运行持续时间(微妙)
+}
+
+impl ExecutionRecord {
+    pub fn new() -> Self {
+        Self {
+            start_at: Utc::now(),
+            stop_at: Utc::now(),
+            running_time: 0,
+        }
+    }
+}
+
+impl Default for ExecutionRecord {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[allow(unused)]
 #[derive(Debug)]
 pub struct WorkflowContext {
     id: String,                           // 工作流ID
     db: Arc<PgPool>,                      // 数据库
     price_store: Arc<RwLock<PriceStore>>, // 价格存储
-    running_time: Arc<RwLock<usize>>,     // 运行时间(秒)
+    running_time: Arc<RwLock<u128>>,      // 运行持续时间(微妙)
     barrier: Barrier,                     // 屏障
 }
 
 #[allow(unused)]
 impl WorkflowContext {
-    pub(crate) fn new(db: Arc<PgPool>, running_time: Arc<RwLock<usize>>, barrier: Barrier) -> Self {
+    pub(crate) fn new(db: Arc<PgPool>, running_time: Arc<RwLock<u128>>, barrier: Barrier) -> Self {
         let id = generate_workflow_id();
         let price_store = Arc::new(RwLock::new(PriceStore::new()));
 
@@ -375,7 +422,7 @@ mod tests {
         assert_eq!(workflow.nodes.len(), 3);
         assert_eq!(workflow.links.len(), 3);
 
-        assert_eq!(serde_json::to_string(&workflow)?, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[{\"id\":2,\"type\":\"加密货币交易所/币安现货(Ticker Mock)\",\"pos\":[210,58],\"order\":0,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"links\":[1],\"slot_index\":0},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"links\":[2],\"slot_index\":1}],\"properties\":{\"type\":\"data.BacktestSpotTicker\",\"params\":[\"BTC\",\"USDT\",\"2024-01-01 00:00:00\",\"2024-01-02 00:00:00\"]},\"runtime_store\":null},{\"id\":1,\"type\":\"账户/币安账户(Mock)\",\"pos\":[224,295],\"order\":1,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"links\":[3],\"slot_index\":0}],\"properties\":{\"type\":\"client.BacktestSpotClient\",\"params\":[0.001,[[\"USDT\",1000]]]},\"runtime_store\":null},{\"id\":3,\"type\":\"交易策略/网格(现货)\",\"pos\":[520,93],\"order\":2,\"mode\":0,\"inputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"link\":1},{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"link\":3},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"link\":2}],\"outputs\":null,\"properties\":{\"type\":\"strategy.SpotGrid\",\"params\":[\"arithmetic\",1,1.1,8,1,\"\",\"\",\"\",true]},\"runtime_store\":\"{\\\"stats\\\":{\\\"data\\\":{}},\\\"grid\\\":null,\\\"initialized\\\":false}\"}],\"links\":[{\"link_id\":1,\"origin_id\":2,\"origin_slot\":0,\"target_id\":3,\"target_slot\":0,\"link_type\":\"SpotPairInfo\"},{\"link_id\":2,\"origin_id\":2,\"origin_slot\":1,\"target_id\":3,\"target_slot\":2,\"link_type\":\"TickStream\"},{\"link_id\":3,\"origin_id\":1,\"origin_slot\":0,\"target_id\":3,\"target_slot\":1,\"link_type\":\"SpotClient\"}],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4,\"running_start_at\":\"1970-01-01T00:00:00Z\",\"running_time\":0}");
+        assert_eq!(serde_json::to_string(&workflow)?, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[{\"id\":2,\"type\":\"加密货币交易所/币安现货(Ticker Mock)\",\"pos\":[210,58],\"order\":0,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"links\":[1],\"slot_index\":0},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"links\":[2],\"slot_index\":1}],\"properties\":{\"type\":\"data.BacktestSpotTicker\",\"params\":[\"BTC\",\"USDT\",\"2024-01-01 00:00:00\",\"2024-01-02 00:00:00\"]},\"runtime_store\":null},{\"id\":1,\"type\":\"账户/币安账户(Mock)\",\"pos\":[224,295],\"order\":1,\"mode\":0,\"inputs\":null,\"outputs\":[{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"links\":[3],\"slot_index\":0}],\"properties\":{\"type\":\"client.BacktestSpotClient\",\"params\":[0.001,[[\"USDT\",1000]]]},\"runtime_store\":null},{\"id\":3,\"type\":\"交易策略/网格(现货)\",\"pos\":[520,93],\"order\":2,\"mode\":0,\"inputs\":[{\"name\":\"现货交易对\",\"type\":\"SpotPairInfo\",\"link\":1},{\"name\":\"现货账户客户端\",\"type\":\"SpotClient\",\"link\":3},{\"name\":\"Tick数据流\",\"type\":\"TickStream\",\"link\":2}],\"outputs\":null,\"properties\":{\"type\":\"strategy.SpotGrid\",\"params\":[\"arithmetic\",1,1.1,8,1,\"\",\"\",\"\",true]},\"runtime_store\":\"{\\\"stats\\\":{\\\"data\\\":{}},\\\"grid\\\":null,\\\"initialized\\\":false}\"}],\"links\":[{\"link_id\":1,\"origin_id\":2,\"origin_slot\":0,\"target_id\":3,\"target_slot\":0,\"link_type\":\"SpotPairInfo\"},{\"link_id\":2,\"origin_id\":2,\"origin_slot\":1,\"target_id\":3,\"target_slot\":2,\"link_type\":\"TickStream\"},{\"link_id\":3,\"origin_id\":1,\"origin_slot\":0,\"target_id\":3,\"target_slot\":1,\"link_type\":\"SpotClient\"}],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4,\"execution_history\":[],\"running_time\":0}");
 
         let json_str = r#"{"running_time":100000,"last_node_id":3,"last_link_id":3,"nodes":[],"links":[],"groups":[],"config":{},"extra":{},"version":0.4}"#;
 
@@ -383,7 +430,7 @@ mod tests {
 
         assert_eq!(*workflow.running_time.as_ref().read_blocking(), 100000);
 
-        assert_eq!(serde_json::to_string(&workflow)?, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[],\"links\":[],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4,\"running_start_at\":\"1970-01-01T00:00:00Z\",\"running_time\":100000}");
+        assert_eq!(serde_json::to_string(&workflow)?, "{\"last_node_id\":3,\"last_link_id\":3,\"nodes\":[],\"links\":[],\"groups\":[],\"config\":{},\"extra\":{},\"version\":0.4,\"execution_history\":[],\"running_time\":100000}");
 
         Ok(())
     }

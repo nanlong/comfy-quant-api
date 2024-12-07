@@ -18,11 +18,13 @@ async fn main() -> anyhow::Result<()> {
 
     workflow.execute().await?;
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(1000)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    dbg!(&workflow);
 
     // drop(workflow);
     // tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(100000)).await;
     Ok(())
 }
