@@ -51,6 +51,10 @@ impl ExchangeRate {
             weight: self.weight,
         }
     }
+
+    pub fn rate(&self) -> &Decimal {
+        &self.rate
+    }
 }
 
 // 汇率来源数据
@@ -292,6 +296,12 @@ impl ExchangeRateManager {
     }
 }
 
+impl Default for ExchangeRateManager {
+    fn default() -> Self {
+        Self::builder().build()
+    }
+}
+
 // 测试用例
 #[cfg(test)]
 mod tests {
@@ -299,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_merged_rates() {
-        let mut manager = ExchangeRateManager::builder().build();
+        let mut manager = ExchangeRateManager::default();
         let now = Utc::now();
 
         // 添加多个数据源的数据

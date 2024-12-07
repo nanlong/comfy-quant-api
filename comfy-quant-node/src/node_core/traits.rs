@@ -11,6 +11,7 @@ use comfy_quant_exchange::client::{
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use enum_dispatch::enum_dispatch;
+use rust_decimal::Decimal;
 // use rust_decimal::Decimal;
 
 // 节点执行
@@ -187,3 +188,54 @@ impl<T: NodeStats> SpotTradeable for T {
         Ok(order)
     }
 }
+
+pub struct RealizedPnl {
+    asset: String,
+    value: Decimal,
+}
+
+impl RealizedPnl {
+    pub fn new(asset: impl Into<String>, value: Decimal) -> Self {
+        Self {
+            asset: asset.into(),
+            value,
+        }
+    }
+
+    pub fn asset(&self) -> &str {
+        &self.asset
+    }
+
+    pub fn value(&self) -> &Decimal {
+        &self.value
+    }
+}
+
+// 基础交易统计trait
+#[allow(unused)]
+pub trait TradeStats {
+    // 已实现盈亏
+    fn realized_pnl(&self) -> Result<RealizedPnl>;
+    // // 未实现盈亏
+    // fn unrealized_pnl(&self) -> Decimal;
+    // // 总盈亏
+    // fn total_pnl(&self) -> Decimal;
+    // // 收益率
+    // fn total_return(&self) -> Decimal;
+    // // 年化收益率
+    // fn annualized_return(&self) -> Decimal;
+    // // 最大回撤
+    // fn max_drawdown(&self) -> Decimal;
+    // // 夏普比率
+    // fn sharpe_ratio(&self) -> Decimal;
+    // // 收益率曲线
+    // fn return_chart(&self) -> Vec<(i64, Decimal)>;
+    // // 资金曲线
+    // fn equity_curve(&self) -> Vec<(i64, Decimal)>;
+}
+
+// impl<T: NodeExecutable> TradeStats for T {
+//     fn realized_pnl(&self) -> RealizedPnl {
+//         RealizedPnl::new("USDT", Decimal::ZERO)
+//     }
+// }

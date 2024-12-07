@@ -21,26 +21,3 @@ pub struct BaseStatsData {
     pub realized_pnl: Decimal,           // 已实现盈亏
     pub unrealized_pnl: Decimal,         // 未实现盈亏
 }
-
-// 基础交易统计trait
-#[allow(unused)]
-pub trait TradeStats {
-    // 已实现盈亏
-    fn realized_pnl(&self) -> Decimal;
-    // 未实现盈亏
-    fn unrealized_pnl(&self, current_price: &Decimal) -> Decimal;
-    // 总盈亏
-    fn total_pnl(&self) -> Decimal;
-    // 收益率
-    fn total_return(&self) -> Decimal;
-    // 年化收益率
-    fn annualized_return(&self) -> Decimal;
-    // 最大回撤
-    fn max_drawdown(&self) -> Decimal;
-    // 夏普比率
-    fn sharpe_ratio(&self) -> Decimal;
-    // 收益率曲线
-    fn return_chart(&self) -> Vec<(i64, Decimal)>;
-    // 资金曲线
-    fn equity_curve(&self) -> Vec<(i64, Decimal)>;
-}

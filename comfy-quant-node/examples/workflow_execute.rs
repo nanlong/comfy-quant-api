@@ -1,4 +1,5 @@
-use comfy_quant_node::workflow::Workflow;
+use async_lock::RwLock;
+use comfy_quant_node::{node_core::ExchangeRateManager, workflow::Workflow};
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 
@@ -14,7 +15,13 @@ async fn main() -> anyhow::Result<()> {
 
     let mut workflow: Workflow = serde_json::from_str(json_str)?;
 
-    workflow.initialize(Arc::new(db)).await?;
+    workflow
+        .initialize(
+            Arc::new(db),
+            Arc::new(RwLock::new(ExchangeRateManager::default())),
+            "USDT",
+        )
+        .await?;
 
     workflow.execute().await?;
 

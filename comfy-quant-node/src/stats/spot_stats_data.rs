@@ -16,7 +16,7 @@ use sqlx::PgPool;
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct SpotStatsData {
     #[serde(flatten)]
-    base: BaseStatsData,
+    pub base: BaseStatsData,
 
     // 现货特有字段
     pub initial_base_balance: Decimal,  // 初始基础资产余额
@@ -29,7 +29,7 @@ pub struct SpotStatsData {
 
 #[allow(unused)]
 impl SpotStatsData {
-    fn new() -> Self {
+    pub fn new() -> Self {
         SpotStatsData::default()
     }
 

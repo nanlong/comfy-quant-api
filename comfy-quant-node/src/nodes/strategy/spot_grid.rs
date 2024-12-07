@@ -1,7 +1,7 @@
 use crate::{
     node_core::{
-        NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, NodeStats, Port,
-        SpotClientService, SpotTradeable,
+        NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, NodeStats, Port, RealizedPnl,
+        SpotClientService, SpotTradeable, TradeStats,
     },
     node_io::{SpotPairInfo, TickStream},
     stats::SpotStats,
@@ -341,6 +341,26 @@ impl NodeExecutable for SpotGrid {
         }
 
         Ok(())
+    }
+}
+
+impl TradeStats for SpotGrid {
+    fn realized_pnl(&self) -> Result<RealizedPnl> {
+        let port = self.port();
+        let pair_info = port.input::<SpotPairInfo>(0)?;
+        let client = port.input::<SpotClientKind>(1)?;
+        let exchange = client.exchange();
+        let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
+        let stats = self
+            .store
+            .stats
+            .get(exchange, symbol)
+            .ok_or_else(|| anyhow!("SpotGrid stats not found"))?;
+
+        Ok(RealizedPnl::new(
+            &pair_info.quote_asset,
+            stats.base.realized_pnl,
+        ))
     }
 }
 

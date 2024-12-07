@@ -1,11 +1,12 @@
 use super::client::BacktestSpotClient;
 use crate::{
-    node_core::{NodeExecutable, NodePort, Port},
+    node_core::{NodeExecutable, NodePort, Port, RealizedPnl, TradeStats},
     nodes::{data::BacktestSpotTicker, strategy::SpotGrid},
     workflow::Node,
 };
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
+use rust_decimal_macros::dec;
 use std::fmt;
 
 #[enum_dispatch(NodePort, NodeExecutable)]
@@ -26,6 +27,16 @@ impl NodeKind {
             NodeKind::BacktestSpotTicker(_) => "BacktestSpotTicker",
             NodeKind::BacktestSpotClient(_) => "BacktestSpotClient",
             NodeKind::SpotGrid(_) => "SpotGrid",
+        }
+    }
+}
+
+impl TradeStats for NodeKind {
+    fn realized_pnl(&self) -> Result<RealizedPnl> {
+        match self {
+            NodeKind::SpotGrid(spot_grid) => spot_grid.realized_pnl(),
+            // 其他节点使用默认实现
+            _ => Ok(RealizedPnl::new("USDT", dec!(0))),
         }
     }
 }
