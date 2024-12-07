@@ -37,8 +37,6 @@ pub struct Workflow {
     #[serde(skip)]
     context: Option<Arc<WorkflowContext>>, // 上下文
     #[serde(skip)]
-    exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>, // 汇率
-    #[serde(skip)]
     token: CancellationToken, // 取消令牌
 }
 
@@ -46,17 +44,19 @@ impl Workflow {
     // 初始化上下文
     pub async fn initialize(
         &mut self,
-        db: Arc<PgPool>,
-        exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>,
-        quote_asset: impl Into<QuoteAsset>,
+        db: Arc<PgPool>,                                         // 数据库
+        exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>, // 汇率管理器
+        quote_asset: impl Into<QuoteAsset>,                      // 报价资产
     ) -> Result<()> {
-        let cloned_running_time = Arc::clone(&self.running_time);
-        let barrier = Barrier::new(self.nodes.len());
-        let context = Arc::new(WorkflowContext::new(db, cloned_running_time, barrier));
+        let context = Arc::new(WorkflowContext::new(
+            db,
+            exchange_rate_manager,
+            Arc::clone(&self.running_time),
+            Barrier::new(self.nodes.len()),
+        ));
 
         self.quote_asset = quote_asset.into();
         self.context = Some(Arc::clone(&context));
-        self.exchange_rate_manager = exchange_rate_manager;
 
         for node in &mut self.nodes {
             node.context = Some(Arc::clone(&context));
@@ -196,18 +196,25 @@ impl Workflow {
 
         Ok(())
     }
+
+    fn context(&self) -> Result<&Arc<WorkflowContext>> {
+        self.context
+            .as_ref()
+            .ok_or_else(|| anyhow!("Context not set"))
+    }
 }
 
 impl TradeStats for Workflow {
     // 已实现盈亏
-    fn realized_pnl(&self) -> Result<RealizedPnl> {
+    async fn realized_pnl(&self) -> Result<RealizedPnl> {
         let mut realized_pnl = Decimal::ZERO;
+        let context = self.context()?;
 
         for node in self.deserialized_nodes.values() {
             let node_kind = node.read_blocking();
-            let node_realized_pnl = node_kind.realized_pnl()?;
+            let node_realized_pnl = node_kind.realized_pnl().await?;
 
-            let exchange_rate = self
+            let exchange_rate = context
                 .exchange_rate_manager
                 .write_blocking()
                 .get_rate(node_realized_pnl.asset(), &self.quote_asset);
@@ -400,16 +407,22 @@ impl Default for ExecutionRecord {
 #[allow(unused)]
 #[derive(Debug)]
 pub struct WorkflowContext {
-    id: String,                           // 工作流ID
-    db: Arc<PgPool>,                      // 数据库
-    price_store: Arc<RwLock<PriceStore>>, // 价格存储
-    running_time: Arc<RwLock<u128>>,      // 运行持续时间(微妙)
-    barrier: Barrier,                     // 屏障
+    id: String,                                              // 工作流ID
+    db: Arc<PgPool>,                                         // 数据库
+    price_store: Arc<RwLock<PriceStore>>,                    // 价格存储
+    exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>, // 汇率管理器
+    running_time: Arc<RwLock<u128>>,                         // 运行持续时间(微妙)
+    barrier: Barrier,                                        // 屏障
 }
 
 #[allow(unused)]
 impl WorkflowContext {
-    pub(crate) fn new(db: Arc<PgPool>, running_time: Arc<RwLock<u128>>, barrier: Barrier) -> Self {
+    pub(crate) fn new(
+        db: Arc<PgPool>,
+        exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>,
+        running_time: Arc<RwLock<u128>>,
+        barrier: Barrier,
+    ) -> Self {
         let id = generate_workflow_id();
         let price_store = Arc::new(RwLock::new(PriceStore::new()));
 
@@ -417,6 +430,7 @@ impl WorkflowContext {
             id,
             db,
             price_store,
+            exchange_rate_manager,
             running_time,
             barrier,
         }
@@ -442,6 +456,15 @@ impl WorkflowContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn default_context(db: PgPool) -> Arc<WorkflowContext> {
+        Arc::new(WorkflowContext::new(
+            Arc::new(db),
+            Arc::new(RwLock::new(ExchangeRateManager::default())),
+            Arc::new(RwLock::new(0)),
+            Barrier::new(0),
+        ))
+    }
 
     #[test]
     fn test_link_deserialize() -> anyhow::Result<()> {
@@ -516,7 +539,7 @@ mod tests {
 
     #[sqlx::test]
     async fn test_workflow_context(db: PgPool) {
-        let context = WorkflowContext::new(Arc::new(db), Arc::new(RwLock::new(0)), Barrier::new(1));
+        let context = default_context(db);
         assert_eq!(context.workflow_id().len(), 21);
 
         let db = context.cloned_db();

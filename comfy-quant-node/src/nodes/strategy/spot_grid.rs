@@ -345,7 +345,7 @@ impl NodeExecutable for SpotGrid {
 }
 
 impl TradeStats for SpotGrid {
-    fn realized_pnl(&self) -> Result<RealizedPnl> {
+    async fn realized_pnl(&self) -> Result<RealizedPnl> {
         let port = self.port();
         let pair_info = port.input::<SpotPairInfo>(0)?;
         let client = port.input::<SpotClientKind>(1)?;
@@ -904,7 +904,7 @@ fn calculate_minimum_investment(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::WorkflowContext;
+    use crate::{node_core::ExchangeRateManager, workflow::WorkflowContext};
     use async_lock::{Barrier, RwLock};
     use comfy_quant_exchange::client::spot_client::base::{OrderStatus, OrderType};
     use sqlx::PgPool;
@@ -917,6 +917,7 @@ mod tests {
         let mut node: Node = serde_json::from_str(json_str)?;
         let workflow_context = Arc::new(WorkflowContext::new(
             Arc::new(db),
+            Arc::new(RwLock::new(ExchangeRateManager::default())),
             Arc::new(RwLock::new(0)),
             Barrier::new(0),
         ));

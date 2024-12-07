@@ -212,12 +212,12 @@ impl RealizedPnl {
 }
 
 // 基础交易统计trait
-#[allow(unused)]
+#[allow(async_fn_in_trait)]
 pub trait TradeStats {
     // 已实现盈亏
-    fn realized_pnl(&self) -> Result<RealizedPnl>;
-    // // 未实现盈亏
-    // fn unrealized_pnl(&self) -> Decimal;
+    async fn realized_pnl(&self) -> Result<RealizedPnl>;
+    // 未实现盈亏
+    // async fn unrealized_pnl(&self) -> Result<RealizedPnl>;
     // // 总盈亏
     // fn total_pnl(&self) -> Decimal;
     // // 收益率

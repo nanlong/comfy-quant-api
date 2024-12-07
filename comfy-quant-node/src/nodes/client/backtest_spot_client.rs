@@ -141,24 +141,28 @@ pub enum BacktestSpotClientError {
 
 #[cfg(test)]
 mod tests {
-    use crate::workflow::WorkflowContext;
-
     use super::*;
+    use crate::{node_core::ExchangeRateManager, workflow::WorkflowContext};
     use async_lock::{Barrier, RwLock};
     use comfy_quant_exchange::client::spot_client_kind::SpotClientExecutable;
     use rust_decimal_macros::dec;
     use sqlx::PgPool;
 
+    fn default_context(db: PgPool) -> Arc<WorkflowContext> {
+        Arc::new(WorkflowContext::new(
+            Arc::new(db),
+            Arc::new(RwLock::new(ExchangeRateManager::default())),
+            Arc::new(RwLock::new(0)),
+            Barrier::new(0),
+        ))
+    }
+
     #[sqlx::test]
-    fn test_try_from_node_to_mock_account(db: PgPool) -> anyhow::Result<()> {
+    fn test_try_from_node_to_mock_account(db: PgPool) -> Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let mut node: Node = serde_json::from_str(json_str)?;
-        node.context = Some(Arc::new(WorkflowContext::new(
-            Arc::new(db),
-            Arc::new(RwLock::new(0)),
-            Barrier::new(0),
-        )));
+        node.context = Some(default_context(db));
 
         let account = BacktestSpotClient::try_from(node)?;
 
@@ -172,15 +176,11 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_mock_account_execute(db: PgPool) -> anyhow::Result<()> {
+    async fn test_mock_account_execute(db: PgPool) -> Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10], ["USDT", 10000]]]}}"#;
 
         let mut node: Node = serde_json::from_str(json_str)?;
-        node.context = Some(Arc::new(WorkflowContext::new(
-            Arc::new(db),
-            Arc::new(RwLock::new(0)),
-            Barrier::new(0),
-        )));
+        node.context = Some(default_context(db));
 
         let account = BacktestSpotClient::try_from(node)?;
         let port = account.port();
@@ -248,15 +248,11 @@ mod tests {
     }
 
     #[sqlx::test]
-    fn test_empty_assets(db: PgPool) -> anyhow::Result<()> {
+    fn test_empty_assets(db: PgPool) -> Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, []]}}"#;
 
         let mut node: Node = serde_json::from_str(json_str)?;
-        node.context = Some(Arc::new(WorkflowContext::new(
-            Arc::new(db),
-            Arc::new(RwLock::new(0)),
-            Barrier::new(0),
-        )));
+        node.context = Some(default_context(db));
 
         let account = BacktestSpotClient::try_from(node)?;
 
@@ -265,15 +261,11 @@ mod tests {
     }
 
     #[sqlx::test]
-    fn test_node_info(db: PgPool) -> anyhow::Result<()> {
+    fn test_node_info(db: PgPool) -> Result<()> {
         let json_str = r#"{"id":42,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10]]]}}"#;
 
         let mut node: Node = serde_json::from_str(json_str)?;
-        node.context = Some(Arc::new(WorkflowContext::new(
-            Arc::new(db),
-            Arc::new(RwLock::new(0)),
-            Barrier::new(0),
-        )));
+        node.context = Some(default_context(db));
 
         let account = BacktestSpotClient::try_from(node)?;
         let ctx = account.node_context()?;
@@ -285,15 +277,11 @@ mod tests {
     }
 
     #[sqlx::test]
-    fn test_port_methods(db: PgPool) -> anyhow::Result<()> {
+    fn test_port_methods(db: PgPool) -> Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["BTC", 10]]]}}"#;
 
         let mut node: Node = serde_json::from_str(json_str)?;
-        node.context = Some(Arc::new(WorkflowContext::new(
-            Arc::new(db),
-            Arc::new(RwLock::new(0)),
-            Barrier::new(0),
-        )));
+        node.context = Some(default_context(db));
         let mut account = BacktestSpotClient::try_from(node)?;
 
         // Test port() returns the correct port
