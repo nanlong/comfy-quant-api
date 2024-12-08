@@ -1,5 +1,7 @@
 use crate::{
-    node_core::{Connectable, ExchangeRateManager, NodeExecutable, RealizedPnl, TradeStats},
+    node_core::{
+        Connectable, ExchangeRate, ExchangeRateManager, NodeExecutable, RealizedPnl, TradeStats,
+    },
     node_io::{SpotPairInfo, TickStream},
     nodes::node_kind::NodeKind,
 };
@@ -208,29 +210,39 @@ impl TradeStats for Workflow {
     // 已实现盈亏
     async fn realized_pnl(&self) -> Result<RealizedPnl> {
         let mut realized_pnl = Decimal::ZERO;
-        let context = self.context()?;
 
         for node in self.deserialized_nodes.values() {
-            let node_kind = node.read_blocking();
-            let node_realized_pnl = node_kind.realized_pnl().await?;
-
-            let exchange_rate = context
-                .exchange_rate_manager
-                .write_blocking()
-                .get_rate(node_realized_pnl.asset(), &self.quote_asset);
+            let node_realized_pnl = node.read().await.realized_pnl().await?;
+            let exchange_rate = self
+                .context()?
+                .exchange_rate(node_realized_pnl.asset(), &self.quote_asset)
+                .await;
 
             if let Some(exchange_rate) = exchange_rate {
                 realized_pnl += node_realized_pnl.value() * exchange_rate.rate();
-            } else {
-                tracing::warn!(
-                    "Exchange rate not found for asset: {}, quote asset: {}",
-                    node_realized_pnl.asset(),
-                    self.quote_asset.as_ref()
-                );
             }
         }
 
         Ok(RealizedPnl::new(self.quote_asset.as_ref(), realized_pnl))
+    }
+
+    // 未实现盈亏
+    async fn unrealized_pnl(&self) -> Result<RealizedPnl> {
+        let mut unrealized_pnl = Decimal::ZERO;
+
+        for node in self.deserialized_nodes.values() {
+            let node_unrealized_pnl = node.read().await.unrealized_pnl().await?;
+            let exchange_rate = self
+                .context()?
+                .exchange_rate(node_unrealized_pnl.asset(), &self.quote_asset)
+                .await;
+
+            if let Some(exchange_rate) = exchange_rate {
+                unrealized_pnl += node_unrealized_pnl.value() * exchange_rate.rate();
+            }
+        }
+
+        Ok(RealizedPnl::new(self.quote_asset.as_ref(), unrealized_pnl))
     }
 }
 
@@ -450,6 +462,17 @@ impl WorkflowContext {
 
     pub(crate) async fn wait(&self) {
         self.barrier.wait().await;
+    }
+
+    pub async fn exchange_rate(
+        &self,
+        base_asset: impl AsRef<str>,
+        quote_asset: impl AsRef<str>,
+    ) -> Option<ExchangeRate> {
+        self.exchange_rate_manager
+            .write()
+            .await
+            .get_rate(base_asset, quote_asset)
     }
 }
 

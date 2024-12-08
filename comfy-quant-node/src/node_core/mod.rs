@@ -13,7 +13,7 @@ pub(crate) use slot::Slot;
 pub(crate) use tick::Tick;
 
 pub use client_service::SpotClientService;
-pub use exchange_rate::ExchangeRateManager;
+pub use exchange_rate::{ExchangeRate, ExchangeRateManager};
 pub use traits::{
     Connectable, NodeExecutable, NodeInfo, NodePort, NodeStats, RealizedPnl, SpotTradeable,
     TradeStats,

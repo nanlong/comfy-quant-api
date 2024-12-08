@@ -9,6 +9,7 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use bon::{bon, Builder};
+use comfy_quant_base::{Exchange, Market, Symbol};
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, OrderSide},
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
@@ -19,7 +20,6 @@ use rust_decimal::{
 };
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
-
 use std::{
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
@@ -162,6 +162,18 @@ impl SpotGrid {
             .grid
             .as_mut()
             .ok_or_else(|| anyhow!("SpotGrid grid not initializer"))
+    }
+
+    fn exchange_pair_symbol(&self) -> Result<(Exchange, SpotPairInfo, Symbol)> {
+        let port = self.port();
+        let client = port.input::<SpotClientKind>(1)?;
+        let pair_info = port.input::<SpotPairInfo>(0)?;
+
+        let exchange = client.exchange();
+        let pair_info = (**pair_info).clone();
+        let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
+
+        Ok((exchange, pair_info, symbol))
     }
 }
 
@@ -346,21 +358,20 @@ impl NodeExecutable for SpotGrid {
 
 impl TradeStats for SpotGrid {
     async fn realized_pnl(&self) -> Result<RealizedPnl> {
-        let port = self.port();
-        let pair_info = port.input::<SpotPairInfo>(0)?;
-        let client = port.input::<SpotClientKind>(1)?;
-        let exchange = client.exchange();
-        let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
-        let stats = self
-            .store
-            .stats
-            .get(exchange, symbol)
-            .ok_or_else(|| anyhow!("SpotGrid stats not found"))?;
+        let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
+        let stats = self.spot_stats_data(exchange, symbol)?;
 
-        Ok(RealizedPnl::new(
-            &pair_info.quote_asset,
-            stats.base.realized_pnl,
-        ))
+        Ok(RealizedPnl::new(&pair.quote_asset, stats.base.realized_pnl))
+    }
+
+    async fn unrealized_pnl(&self) -> Result<RealizedPnl> {
+        let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
+        let price = self.infra.price(&exchange, Market::Spot, &symbol).await?;
+        let stats = self.spot_stats_data(&exchange, &symbol)?;
+        let maker_commission_rate = Decimal::ONE - stats.base.maker_commission_rate;
+        let cost = stats.base_asset_balance * stats.avg_price;
+        let maybe_sell = stats.base_asset_balance * price * maker_commission_rate;
+        Ok(RealizedPnl::new(&pair.quote_asset, maybe_sell - cost))
     }
 }
 

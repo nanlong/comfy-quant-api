@@ -1,6 +1,7 @@
 use super::Port;
 use crate::workflow::{Node, WorkflowContext};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -31,6 +32,20 @@ impl NodeInfra {
             self.node.node_id(),
             self.node.node_name(),
         ))
+    }
+
+    pub async fn price(
+        &self,
+        exchange: impl AsRef<str>,
+        market: impl AsRef<str>,
+        symbol: impl AsRef<str>,
+    ) -> Result<Decimal> {
+        self.workflow_context()?
+            .cloned_price_store()
+            .read()
+            .await
+            .price(exchange, market, symbol)
+            .ok_or_else(|| anyhow!("price not found"))
     }
 }
 

@@ -39,6 +39,14 @@ impl TradeStats for NodeKind {
             _ => Ok(RealizedPnl::new("USDT", dec!(0))),
         }
     }
+
+    async fn unrealized_pnl(&self) -> Result<RealizedPnl> {
+        match self {
+            NodeKind::SpotGrid(spot_grid) => spot_grid.unrealized_pnl().await,
+            // 其他节点使用默认实现
+            _ => Ok(RealizedPnl::new("USDT", dec!(0))),
+        }
+    }
 }
 
 impl fmt::Debug for NodeKind {

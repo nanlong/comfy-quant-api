@@ -6,7 +6,7 @@ use crate::{client::spot_client_kind::SpotClientExecutable, exchange::binance::B
 use anyhow::Result;
 use binance::config::Config;
 use bon::bon;
-use comfy_quant_base::Exchange;
+use comfy_quant_base::{Exchange, Symbol};
 use tokio::task::spawn_blocking;
 
 #[derive(Debug, Clone)]
@@ -43,12 +43,13 @@ impl SpotClientExecutable for BinanceSpotClient {
         Exchange::new(BINANCE_EXCHANGE_NAME)
     }
 
-    fn symbol(&self, base_asset: &str, quote_asset: &str) -> String {
+    fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol {
         format!(
             "{}{}",
             base_asset.to_uppercase(),
             quote_asset.to_uppercase()
         )
+        .into()
     }
 
     async fn get_account(&self) -> Result<AccountInformation> {

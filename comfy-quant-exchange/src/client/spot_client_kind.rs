@@ -7,7 +7,7 @@ use super::spot_client::{
     binance_spot_client::BinanceSpotClient,
 };
 use anyhow::Result;
-use comfy_quant_base::Exchange;
+use comfy_quant_base::{Exchange, Symbol};
 use enum_dispatch::enum_dispatch;
 use futures::future::BoxFuture;
 use std::task::{Context, Poll};
@@ -18,7 +18,7 @@ use tower::Service;
 pub trait SpotClientExecutable {
     fn exchange(&self) -> Exchange;
 
-    fn symbol(&self, base_asset: &str, quote_asset: &str) -> String;
+    fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol;
 
     // 获取账户信息，手续费
     async fn get_account(&self) -> Result<AccountInformation>;
@@ -93,7 +93,7 @@ impl Service<SpotClientRequest> for SpotClientKind {
                     base_asset,
                     quote_asset,
                 } => {
-                    let symbol = client.symbol(&base_asset, &quote_asset);
+                    let symbol = client.symbol(&base_asset, &quote_asset).to_string();
                     SpotClientResponse::Symbol(symbol)
                 }
                 SpotClientRequest::GetAccount => client.get_account().await?.into(),

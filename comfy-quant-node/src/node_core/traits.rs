@@ -217,7 +217,7 @@ pub trait TradeStats {
     // 已实现盈亏
     async fn realized_pnl(&self) -> Result<RealizedPnl>;
     // 未实现盈亏
-    // async fn unrealized_pnl(&self) -> Result<RealizedPnl>;
+    async fn unrealized_pnl(&self) -> Result<RealizedPnl>;
     // // 总盈亏
     // fn total_pnl(&self) -> Decimal;
     // // 收益率

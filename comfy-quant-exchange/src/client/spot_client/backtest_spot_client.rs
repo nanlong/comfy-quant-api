@@ -6,7 +6,7 @@ use crate::{client::spot_client_kind::SpotClientExecutable, store::PriceStore};
 use anyhow::Result;
 use async_lock::RwLock;
 use bon::bon;
-use comfy_quant_base::Exchange;
+use comfy_quant_base::{Exchange, Symbol};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::{collections::HashMap, sync::Arc};
@@ -58,7 +58,7 @@ impl BacktestSpotClient {
         BacktestSpotClient { data, price_store }
     }
 
-    async fn price(&self, symbol: &str) -> Decimal {
+    async fn price(&self, symbol: &Symbol) -> Decimal {
         self.price_store
             .read()
             .await
@@ -151,12 +151,13 @@ impl SpotClientExecutable for BacktestSpotClient {
         Exchange::new(BINANCE_EXCHANGE_NAME)
     }
 
-    fn symbol(&self, base_asset: &str, quote_asset: &str) -> String {
+    fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol {
         format!(
             "{}{}",
             base_asset.to_uppercase(),
             quote_asset.to_uppercase()
         )
+        .into()
     }
 
     async fn get_account(&self) -> Result<AccountInformation> {
