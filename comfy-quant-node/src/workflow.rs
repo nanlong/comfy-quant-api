@@ -1,7 +1,5 @@
 use crate::{
-    node_core::{
-        Connectable, ExchangeRate, ExchangeRateManager, NodeExecutable, RealizedPnl, TradeStats,
-    },
+    node_core::{Connectable, ExchangeRate, ExchangeRateManager, NodeExecutable, Pnl, TradeStats},
     node_io::{SpotPairInfo, TickStream},
     nodes::node_kind::NodeKind,
 };
@@ -208,7 +206,7 @@ impl Workflow {
 
 impl TradeStats for Workflow {
     // 已实现盈亏
-    async fn realized_pnl(&self) -> Result<RealizedPnl> {
+    async fn realized_pnl(&self) -> Result<Pnl> {
         let mut realized_pnl = Decimal::ZERO;
 
         for node in self.deserialized_nodes.values() {
@@ -223,11 +221,11 @@ impl TradeStats for Workflow {
             }
         }
 
-        Ok(RealizedPnl::new(self.quote_asset.as_ref(), realized_pnl))
+        Ok(Pnl::new(self.quote_asset.as_ref(), realized_pnl))
     }
 
     // 未实现盈亏
-    async fn unrealized_pnl(&self) -> Result<RealizedPnl> {
+    async fn unrealized_pnl(&self) -> Result<Pnl> {
         let mut unrealized_pnl = Decimal::ZERO;
 
         for node in self.deserialized_nodes.values() {
@@ -242,7 +240,26 @@ impl TradeStats for Workflow {
             }
         }
 
-        Ok(RealizedPnl::new(self.quote_asset.as_ref(), unrealized_pnl))
+        Ok(Pnl::new(self.quote_asset.as_ref(), unrealized_pnl))
+    }
+
+    // 总盈亏
+    async fn total_pnl(&self) -> Result<Pnl> {
+        let mut total_pnl = Decimal::ZERO;
+
+        for node in self.deserialized_nodes.values() {
+            let node_total_pnl = node.read().await.total_pnl().await?;
+            let exchange_rate = self
+                .context()?
+                .exchange_rate(node_total_pnl.asset(), &self.quote_asset)
+                .await;
+
+            if let Some(exchange_rate) = exchange_rate {
+                total_pnl += node_total_pnl.value() * exchange_rate.rate();
+            }
+        }
+
+        Ok(Pnl::new(self.quote_asset.as_ref(), total_pnl))
     }
 }
 

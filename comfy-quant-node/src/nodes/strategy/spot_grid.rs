@@ -1,6 +1,6 @@
 use crate::{
     node_core::{
-        NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, NodeStats, Port, RealizedPnl,
+        NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, NodeStats, Pnl, Port,
         SpotClientService, SpotTradeable, TradeStats,
     },
     node_io::{SpotPairInfo, TickStream},
@@ -357,21 +357,32 @@ impl NodeExecutable for SpotGrid {
 }
 
 impl TradeStats for SpotGrid {
-    async fn realized_pnl(&self) -> Result<RealizedPnl> {
+    async fn realized_pnl(&self) -> Result<Pnl> {
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
         let stats = self.spot_stats_data(exchange, symbol)?;
 
-        Ok(RealizedPnl::new(&pair.quote_asset, stats.base.realized_pnl))
+        Ok(Pnl::new(&pair.quote_asset, stats.base.realized_pnl))
     }
 
-    async fn unrealized_pnl(&self) -> Result<RealizedPnl> {
+    async fn unrealized_pnl(&self) -> Result<Pnl> {
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
         let price = self.infra.price(&exchange, Market::Spot, &symbol).await?;
         let stats = self.spot_stats_data(&exchange, &symbol)?;
         let maker_commission_rate = Decimal::ONE - stats.base.maker_commission_rate;
         let cost = stats.base_asset_balance * stats.avg_price;
         let maybe_sell = stats.base_asset_balance * price * maker_commission_rate;
-        Ok(RealizedPnl::new(&pair.quote_asset, maybe_sell - cost))
+
+        Ok(Pnl::new(&pair.quote_asset, maybe_sell - cost))
+    }
+
+    async fn total_pnl(&self) -> Result<Pnl> {
+        let realized_pnl = self.realized_pnl().await?;
+        let unrealized_pnl = self.unrealized_pnl().await?;
+
+        Ok(Pnl::new(
+            realized_pnl.asset(),
+            realized_pnl.value() + unrealized_pnl.value(),
+        ))
     }
 }
 
