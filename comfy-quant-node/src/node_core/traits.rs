@@ -222,6 +222,8 @@ pub trait TradeStats {
     async fn unrealized_pnl(&self) -> Result<AssetAmount>;
     // 总盈亏
     async fn total_pnl(&self) -> Result<AssetAmount>;
+    // 运行时间
+    async fn running_time(&self) -> Result<u128>;
     // // 年化收益率
     // fn annualized_return(&self) -> Decimal;
     // // 最大回撤
@@ -256,5 +258,11 @@ pub trait TradeStatsExt: TradeStats {
         let return_rate = (realized_pnl_value + unrealized_pnl_value) / initial_capital_value;
 
         Ok(return_rate)
+    }
+
+    // 运行天数
+    async fn running_days(&self) -> Result<u16> {
+        let running_time = self.running_time().await?;
+        Ok((running_time / 1_000_000 / 86_400) as u16)
     }
 }

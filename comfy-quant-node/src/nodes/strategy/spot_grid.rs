@@ -393,6 +393,10 @@ impl TradeStats for SpotGrid {
             realized_pnl.value() + unrealized_pnl.value(),
         ))
     }
+
+    async fn running_time(&self) -> Result<u128> {
+        Ok(self.infra.workflow_context()?.running_time().await)
+    }
 }
 
 impl TryFrom<Node> for SpotGrid {

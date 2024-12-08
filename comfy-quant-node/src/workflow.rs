@@ -294,6 +294,11 @@ impl TradeStats for Workflow {
 
         Ok(AssetAmount::new(self.quote_asset.as_ref(), value))
     }
+
+    // 运行时间
+    async fn running_time(&self) -> Result<u128> {
+        Ok(self.context()?.running_time().await)
+    }
 }
 
 impl Serialize for Workflow {
@@ -523,6 +528,10 @@ impl WorkflowContext {
             .write()
             .await
             .get_rate(base_asset, quote_asset)
+    }
+
+    pub async fn running_time(&self) -> u128 {
+        *self.running_time.read().await
     }
 }
 

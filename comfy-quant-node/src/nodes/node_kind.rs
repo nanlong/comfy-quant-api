@@ -59,6 +59,13 @@ impl TradeStats for NodeKind {
             _ => Ok(AssetAmount::new("USDT", dec!(0))),
         }
     }
+
+    async fn running_time(&self) -> Result<u128> {
+        match self {
+            NodeKind::SpotGrid(spot_grid) => spot_grid.running_time().await,
+            _ => Ok(0),
+        }
+    }
 }
 
 impl fmt::Debug for NodeKind {
