@@ -1,6 +1,6 @@
 use super::client::BacktestSpotClient;
 use crate::{
-    node_core::{NodeExecutable, NodePort, Pnl, Port, TradeStats},
+    node_core::{AssetAmount, NodeExecutable, NodePort, Port, TradeStats},
     nodes::{data::BacktestSpotTicker, strategy::SpotGrid},
     workflow::Node,
 };
@@ -32,27 +32,31 @@ impl NodeKind {
 }
 
 impl TradeStats for NodeKind {
-    async fn realized_pnl(&self) -> Result<Pnl> {
+    async fn initial_capital(&self) -> Result<AssetAmount> {
+        match self {
+            NodeKind::SpotGrid(spot_grid) => spot_grid.initial_capital().await,
+            _ => Ok(AssetAmount::new("USDT", dec!(0))),
+        }
+    }
+
+    async fn realized_pnl(&self) -> Result<AssetAmount> {
         match self {
             NodeKind::SpotGrid(spot_grid) => spot_grid.realized_pnl().await,
-            // 其他节点使用默认实现
-            _ => Ok(Pnl::new("USDT", dec!(0))),
+            _ => Ok(AssetAmount::new("USDT", dec!(0))),
         }
     }
 
-    async fn unrealized_pnl(&self) -> Result<Pnl> {
+    async fn unrealized_pnl(&self) -> Result<AssetAmount> {
         match self {
             NodeKind::SpotGrid(spot_grid) => spot_grid.unrealized_pnl().await,
-            // 其他节点使用默认实现
-            _ => Ok(Pnl::new("USDT", dec!(0))),
+            _ => Ok(AssetAmount::new("USDT", dec!(0))),
         }
     }
 
-    async fn total_pnl(&self) -> Result<Pnl> {
+    async fn total_pnl(&self) -> Result<AssetAmount> {
         match self {
             NodeKind::SpotGrid(spot_grid) => spot_grid.total_pnl().await,
-            // 其他节点使用默认实现
-            _ => Ok(Pnl::new("USDT", dec!(0))),
+            _ => Ok(AssetAmount::new("USDT", dec!(0))),
         }
     }
 }

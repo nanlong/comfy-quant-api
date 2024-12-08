@@ -1,6 +1,6 @@
 use crate::{
     node_core::{
-        NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, NodeStats, Pnl, Port,
+        AssetAmount, NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, NodeStats, Port,
         SpotClientService, SpotTradeable, TradeStats,
     },
     node_io::{SpotPairInfo, TickStream},
@@ -357,29 +357,38 @@ impl NodeExecutable for SpotGrid {
 }
 
 impl TradeStats for SpotGrid {
-    async fn realized_pnl(&self) -> Result<Pnl> {
+    async fn initial_capital(&self) -> Result<AssetAmount> {
+        let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
+        let stats = self.spot_stats_data(&exchange, &symbol)?;
+        let price = self.infra.price(&exchange, Market::Spot, &symbol).await?;
+        let capital = stats.initial_base_balance * price + stats.initial_base_balance;
+
+        Ok(AssetAmount::new(&pair.quote_asset, capital))
+    }
+
+    async fn realized_pnl(&self) -> Result<AssetAmount> {
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
         let stats = self.spot_stats_data(exchange, symbol)?;
 
-        Ok(Pnl::new(&pair.quote_asset, stats.base.realized_pnl))
+        Ok(AssetAmount::new(&pair.quote_asset, stats.base.realized_pnl))
     }
 
-    async fn unrealized_pnl(&self) -> Result<Pnl> {
+    async fn unrealized_pnl(&self) -> Result<AssetAmount> {
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
-        let price = self.infra.price(&exchange, Market::Spot, &symbol).await?;
         let stats = self.spot_stats_data(&exchange, &symbol)?;
+        let price = self.infra.price(&exchange, Market::Spot, &symbol).await?;
         let maker_commission_rate = Decimal::ONE - stats.base.maker_commission_rate;
         let cost = stats.base_asset_balance * stats.avg_price;
         let maybe_sell = stats.base_asset_balance * price * maker_commission_rate;
 
-        Ok(Pnl::new(&pair.quote_asset, maybe_sell - cost))
+        Ok(AssetAmount::new(&pair.quote_asset, maybe_sell - cost))
     }
 
-    async fn total_pnl(&self) -> Result<Pnl> {
+    async fn total_pnl(&self) -> Result<AssetAmount> {
         let realized_pnl = self.realized_pnl().await?;
         let unrealized_pnl = self.unrealized_pnl().await?;
 
-        Ok(Pnl::new(
+        Ok(AssetAmount::new(
             realized_pnl.asset(),
             realized_pnl.value() + unrealized_pnl.value(),
         ))

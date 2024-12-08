@@ -189,12 +189,12 @@ impl<T: NodeStats> SpotTradeable for T {
     }
 }
 
-pub struct Pnl {
+pub struct AssetAmount {
     asset: String,
     value: Decimal,
 }
 
-impl Pnl {
+impl AssetAmount {
     pub fn new(asset: impl Into<String>, value: Decimal) -> Self {
         Self {
             asset: asset.into(),
@@ -214,12 +214,14 @@ impl Pnl {
 // 基础交易统计trait
 #[allow(async_fn_in_trait)]
 pub trait TradeStats {
+    // 初始资金
+    async fn initial_capital(&self) -> Result<AssetAmount>;
     // 已实现盈亏
-    async fn realized_pnl(&self) -> Result<Pnl>;
+    async fn realized_pnl(&self) -> Result<AssetAmount>;
     // 未实现盈亏
-    async fn unrealized_pnl(&self) -> Result<Pnl>;
+    async fn unrealized_pnl(&self) -> Result<AssetAmount>;
     // 总盈亏
-    async fn total_pnl(&self) -> Result<Pnl>;
+    async fn total_pnl(&self) -> Result<AssetAmount>;
     // // 收益率
     // fn total_return(&self) -> Decimal;
     // // 年化收益率
@@ -235,7 +237,7 @@ pub trait TradeStats {
 }
 
 // impl<T: NodeExecutable> TradeStats for T {
-//     fn realized_pnl(&self) -> Pnl {
-//         Pnl::new("USDT", Decimal::ZERO)
+//     fn realized_pnl(&self) -> AssetAmount {
+//         AssetAmount::new("USDT", Decimal::ZERO)
 //     }
 // }
