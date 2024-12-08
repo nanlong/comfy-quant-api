@@ -222,8 +222,6 @@ pub trait TradeStats {
     async fn unrealized_pnl(&self) -> Result<AssetAmount>;
     // 总盈亏
     async fn total_pnl(&self) -> Result<AssetAmount>;
-    // // 收益率
-    // fn total_return(&self) -> Decimal;
     // // 年化收益率
     // fn annualized_return(&self) -> Decimal;
     // // 最大回撤
@@ -236,8 +234,27 @@ pub trait TradeStats {
     // fn equity_curve(&self) -> Vec<(i64, Decimal)>;
 }
 
-// impl<T: NodeExecutable> TradeStats for T {
-//     fn realized_pnl(&self) -> AssetAmount {
-//         AssetAmount::new("USDT", Decimal::ZERO)
-//     }
-// }
+impl<T: ?Sized> TradeStatsExt for T where T: TradeStats {}
+
+#[allow(unused)]
+pub trait TradeStatsExt: TradeStats {
+    // 总收益率
+    async fn total_return(&self) -> Result<Decimal> {
+        let initial_capital = self.initial_capital().await?;
+        let realized_pnl = self.realized_pnl().await?;
+        let unrealized_pnl = self.unrealized_pnl().await?;
+        let initial_capital_value = initial_capital.value();
+        let realized_pnl_value = realized_pnl.value();
+        let unrealized_pnl_value = unrealized_pnl.value();
+
+        // 防止除以零
+        if initial_capital_value.is_zero() {
+            return Ok(Decimal::ZERO);
+        }
+
+        // 收益率 = (已实现盈亏 + 未实现盈亏) / 初始资金
+        let return_rate = (realized_pnl_value + unrealized_pnl_value) / initial_capital_value;
+
+        Ok(return_rate)
+    }
+}
