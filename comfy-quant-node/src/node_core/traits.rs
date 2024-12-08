@@ -4,14 +4,12 @@ use crate::{
     stats::{SpotStats, SpotStatsData},
 };
 use anyhow::Result;
-// use comfy_quant_base::{secs_to_datetime, Market};
-// use comfy_quant_database::{kline, strategy_spot_position};
 use comfy_quant_exchange::client::{
     spot_client::base::Order,
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
 };
 use enum_dispatch::enum_dispatch;
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, MathematicalOps};
 // use rust_decimal::Decimal;
 
 // 节点执行
@@ -224,8 +222,6 @@ pub trait TradeStats {
     async fn total_pnl(&self) -> Result<AssetAmount>;
     // 运行时间
     async fn running_time(&self) -> Result<u128>;
-    // // 年化收益率
-    // fn annualized_return(&self) -> Decimal;
     // // 最大回撤
     // fn max_drawdown(&self) -> Decimal;
     // // 夏普比率
@@ -261,8 +257,31 @@ pub trait TradeStatsExt: TradeStats {
     }
 
     // 运行天数
-    async fn running_days(&self) -> Result<u16> {
+    async fn running_days(&self) -> Result<Decimal> {
         let running_time = self.running_time().await?;
-        Ok((running_time / 1_000_000 / 86_400) as u16)
+        let running_days = Decimal::from(running_time / 1_000_000 / 86_400);
+        Ok(running_days)
+    }
+
+    // 年化收益率
+    async fn annualized_return(&self) -> Result<Decimal> {
+        let total_return = self.total_return().await?;
+        let running_days = self.running_days().await?;
+
+        // 如果运行时间太短，返回0
+        if running_days < Decimal::new(1, 0) {
+            return Ok(Decimal::ZERO);
+        }
+
+        // 年化收益率 = (1 + r)^(365/t) - 1
+        // 其中 r 是总收益率(小数形式), t 是运行天数
+        let base = Decimal::ONE + total_return;
+        let power = Decimal::from(365) / running_days;
+
+        // 使用自然对数计算幂
+        let result = base.ln() * power;
+        let annualized = result.exp() - Decimal::ONE;
+
+        Ok(annualized)
     }
 }
