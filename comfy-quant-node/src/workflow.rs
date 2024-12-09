@@ -14,7 +14,7 @@ use itertools::Itertools;
 use rust_decimal::Decimal;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use sqlx::PgPool;
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, future::Future, sync::Arc, time::Instant};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Deserialize, Debug)]
@@ -207,115 +207,61 @@ impl Workflow {
             .as_ref()
             .ok_or_else(|| anyhow!("Context not set"))
     }
+
+    // 计算资产金额
+    async fn calculate_asset_amount<F, Fut>(&self, f: F) -> Result<AssetAmount>
+    where
+        F: Fn(Arc<RwLock<NodeKind>>) -> Fut,
+        Fut: Future<Output = Result<AssetAmount>>,
+    {
+        let mut value = Decimal::ZERO;
+        let quote_asset = self.context()?.quote_asset().await;
+
+        for node in self.deserialized_nodes.values() {
+            let asset_amount = f(Arc::clone(node)).await?;
+
+            if asset_amount.value() > &Decimal::ZERO {
+                if asset_amount.asset() != quote_asset.as_ref() {
+                    if let Ok(exchange_rate) = self
+                        .context()?
+                        .exchange_rate(asset_amount.asset(), &quote_asset)
+                        .await
+                    {
+                        value += asset_amount.value() * exchange_rate.rate();
+                    }
+                } else {
+                    value += asset_amount.value();
+                }
+            }
+        }
+
+        Ok(AssetAmount::new(quote_asset, value))
+    }
 }
 
 impl TradeStats for Workflow {
     // 初始资金
     async fn initial_capital(&self) -> Result<AssetAmount> {
-        let mut value = Decimal::ZERO;
-        let quote_asset = self.context()?.quote_asset().await;
-
-        for node in self.deserialized_nodes.values() {
-            let asset_amount = node.read().await.initial_capital().await?;
-
-            if asset_amount.value() > &Decimal::ZERO {
-                if asset_amount.asset() != quote_asset.as_ref() {
-                    let exchange_rate = self
-                        .context()?
-                        .exchange_rate(asset_amount.asset(), &quote_asset)
-                        .await;
-
-                    if let Ok(exchange_rate) = exchange_rate {
-                        value += asset_amount.value() * exchange_rate.rate();
-                    }
-                } else {
-                    value += asset_amount.value();
-                }
-            }
-        }
-
-        Ok(AssetAmount::new(quote_asset, value))
+        self.calculate_asset_amount(|node| async move { node.read().await.initial_capital().await })
+            .await
     }
 
     // 已实现盈亏
     async fn realized_pnl(&self) -> Result<AssetAmount> {
-        let mut value = Decimal::ZERO;
-        let quote_asset = self.context()?.quote_asset().await;
-
-        for node in self.deserialized_nodes.values() {
-            let asset_amount = node.read().await.realized_pnl().await?;
-
-            if asset_amount.value() > &Decimal::ZERO {
-                if asset_amount.asset() != quote_asset.as_ref() {
-                    let exchange_rate = self
-                        .context()?
-                        .exchange_rate(asset_amount.asset(), &quote_asset)
-                        .await;
-
-                    if let Ok(exchange_rate) = exchange_rate {
-                        value += asset_amount.value() * exchange_rate.rate();
-                    }
-                } else {
-                    value += asset_amount.value();
-                }
-            }
-        }
-
-        Ok(AssetAmount::new(quote_asset, value))
+        self.calculate_asset_amount(|node| async move { node.read().await.realized_pnl().await })
+            .await
     }
 
     // 未实现盈亏
     async fn unrealized_pnl(&self) -> Result<AssetAmount> {
-        let mut value = Decimal::ZERO;
-        let quote_asset = self.context()?.quote_asset().await;
-
-        for node in self.deserialized_nodes.values() {
-            let asset_amount = node.read().await.unrealized_pnl().await?;
-
-            if asset_amount.value() > &Decimal::ZERO {
-                if asset_amount.asset() != quote_asset.as_ref() {
-                    let exchange_rate = self
-                        .context()?
-                        .exchange_rate(asset_amount.asset(), &quote_asset)
-                        .await;
-
-                    if let Ok(exchange_rate) = exchange_rate {
-                        value += asset_amount.value() * exchange_rate.rate();
-                    }
-                } else {
-                    value += asset_amount.value();
-                }
-            }
-        }
-
-        Ok(AssetAmount::new(quote_asset, value))
+        self.calculate_asset_amount(|node| async move { node.read().await.unrealized_pnl().await })
+            .await
     }
 
     // 总盈亏
     async fn total_pnl(&self) -> Result<AssetAmount> {
-        let mut value = Decimal::ZERO;
-        let quote_asset = self.context()?.quote_asset().await;
-
-        for node in self.deserialized_nodes.values() {
-            let asset_amount = node.read().await.total_pnl().await?;
-
-            if asset_amount.value() > &Decimal::ZERO {
-                if asset_amount.asset() != quote_asset.as_ref() {
-                    let exchange_rate = self
-                        .context()?
-                        .exchange_rate(asset_amount.asset(), &quote_asset)
-                        .await;
-
-                    if let Ok(exchange_rate) = exchange_rate {
-                        value += asset_amount.value() * exchange_rate.rate();
-                    }
-                } else {
-                    value += asset_amount.value();
-                }
-            }
-        }
-
-        Ok(AssetAmount::new(quote_asset, value))
+        self.calculate_asset_amount(|node| async move { node.read().await.total_pnl().await })
+            .await
     }
 
     // 运行时间
