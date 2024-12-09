@@ -358,38 +358,59 @@ impl NodeExecutable for SpotGrid {
 
 impl TradeStats for SpotGrid {
     async fn initial_capital(&self) -> Result<AssetAmount> {
+        let ctx = self.infra.workflow_context()?;
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
+        let quote_asset = ctx.quote_asset().await;
+        let exchange_rate = ctx.exchange_rate(&pair.quote_asset, &quote_asset).await?;
         let stats = self.spot_stats_data(&exchange, &symbol)?;
         let price = self.infra.price(&exchange, Market::Spot, &symbol).await?;
         let capital = stats.initial_base_balance * price + stats.initial_base_balance;
 
-        Ok(AssetAmount::new(&pair.quote_asset, capital))
+        Ok(AssetAmount::new(
+            quote_asset,
+            capital * exchange_rate.rate(),
+        ))
     }
 
     async fn realized_pnl(&self) -> Result<AssetAmount> {
+        let ctx = self.infra.workflow_context()?;
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
+        let quote_asset = ctx.quote_asset().await;
+        let exchange_rate = ctx.exchange_rate(&pair.quote_asset, &quote_asset).await?;
         let stats = self.spot_stats_data(exchange, symbol)?;
 
-        Ok(AssetAmount::new(&pair.quote_asset, stats.base.realized_pnl))
+        Ok(AssetAmount::new(
+            quote_asset,
+            stats.base.realized_pnl * exchange_rate.rate(),
+        ))
     }
 
     async fn unrealized_pnl(&self) -> Result<AssetAmount> {
+        let ctx = self.infra.workflow_context()?;
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
+        let quote_asset = ctx.quote_asset().await;
+        let exchange_rate = ctx.exchange_rate(&pair.quote_asset, &quote_asset).await?;
         let stats = self.spot_stats_data(&exchange, &symbol)?;
         let price = self.infra.price(&exchange, Market::Spot, &symbol).await?;
         let maker_commission_rate = Decimal::ONE - stats.base.maker_commission_rate;
         let cost = stats.base_asset_balance * stats.avg_price;
         let maybe_sell = stats.base_asset_balance * price * maker_commission_rate;
+        let unrealized_pnl = maybe_sell - cost;
 
-        Ok(AssetAmount::new(&pair.quote_asset, maybe_sell - cost))
+        Ok(AssetAmount::new(
+            quote_asset,
+            unrealized_pnl * exchange_rate.rate(),
+        ))
     }
 
     async fn total_pnl(&self) -> Result<AssetAmount> {
+        let ctx = self.infra.workflow_context()?;
+        let quote_asset = ctx.quote_asset().await;
         let realized_pnl = self.realized_pnl().await?;
         let unrealized_pnl = self.unrealized_pnl().await?;
 
         Ok(AssetAmount::new(
-            realized_pnl.asset(),
+            quote_asset,
             realized_pnl.value() + unrealized_pnl.value(),
         ))
     }
@@ -939,7 +960,10 @@ fn calculate_minimum_investment(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{node_core::ExchangeRateManager, workflow::WorkflowContext};
+    use crate::{
+        node_core::ExchangeRateManager,
+        workflow::{QuoteAsset, WorkflowContext},
+    };
     use async_lock::{Barrier, RwLock};
     use comfy_quant_exchange::client::spot_client::base::{OrderStatus, OrderType};
     use sqlx::PgPool;
@@ -952,6 +976,7 @@ mod tests {
         let mut node: Node = serde_json::from_str(json_str)?;
         let workflow_context = Arc::new(WorkflowContext::new(
             Arc::new(db),
+            Arc::new(RwLock::new(QuoteAsset::new())),
             Arc::new(RwLock::new(ExchangeRateManager::default())),
             Arc::new(RwLock::new(0)),
             Barrier::new(0),

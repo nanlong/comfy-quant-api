@@ -27,8 +27,8 @@ pub struct Workflow {
     config: HashMap<String, String>,
     extra: HashMap<String, String>,
     version: f32,
-    #[serde(default)]
-    quote_asset: QuoteAsset, // 报价资产, 默认USDT
+    #[serde(default, with = "arc_rwlock")]
+    quote_asset: Arc<RwLock<QuoteAsset>>, // 报价资产, 默认USDT
     #[serde(default, with = "vec_arc_rwlock")]
     execution_history: Vec<Arc<RwLock<ExecutionRecord>>>, // 每一次的执行时间
     #[serde(default, with = "arc_rwlock")]
@@ -50,14 +50,16 @@ impl Workflow {
         exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>, // 汇率管理器
         quote_asset: impl Into<QuoteAsset>,                      // 报价资产
     ) -> Result<()> {
+        let quote_asset = Arc::new(RwLock::new(quote_asset.into()));
         let context = Arc::new(WorkflowContext::new(
             db,
+            Arc::clone(&quote_asset),
             exchange_rate_manager,
             Arc::clone(&self.running_time),
             Barrier::new(self.nodes.len()),
         ));
 
-        self.quote_asset = quote_asset.into();
+        self.quote_asset = Arc::clone(&quote_asset);
         self.context = Some(Arc::clone(&context));
 
         for node in &mut self.nodes {
@@ -100,8 +102,9 @@ impl Workflow {
         Ok(())
     }
 
-    pub fn update_quote_asset(&mut self, quote_asset: impl Into<QuoteAsset>) {
-        self.quote_asset = quote_asset.into();
+    pub async fn update_quote_asset(&mut self, quote_asset: impl Into<QuoteAsset>) -> Result<()> {
+        *self.context()?.quote_asset.write().await = quote_asset.into();
+        Ok(())
     }
 
     pub async fn execute(&mut self) -> Result<()> {
@@ -210,89 +213,109 @@ impl TradeStats for Workflow {
     // 初始资金
     async fn initial_capital(&self) -> Result<AssetAmount> {
         let mut value = Decimal::ZERO;
+        let quote_asset = self.context()?.quote_asset().await;
 
         for node in self.deserialized_nodes.values() {
-            let assert_amount = node.read().await.initial_capital().await?;
+            let asset_amount = node.read().await.initial_capital().await?;
 
-            if assert_amount.value() > &Decimal::ZERO {
-                let exchange_rate = self
-                    .context()?
-                    .exchange_rate(assert_amount.asset(), &self.quote_asset)
-                    .await;
+            if asset_amount.value() > &Decimal::ZERO {
+                if asset_amount.asset() != quote_asset.as_ref() {
+                    let exchange_rate = self
+                        .context()?
+                        .exchange_rate(asset_amount.asset(), &quote_asset)
+                        .await;
 
-                if let Some(exchange_rate) = exchange_rate {
-                    value += assert_amount.value() * exchange_rate.rate();
+                    if let Ok(exchange_rate) = exchange_rate {
+                        value += asset_amount.value() * exchange_rate.rate();
+                    }
+                } else {
+                    value += asset_amount.value();
                 }
             }
         }
 
-        Ok(AssetAmount::new(self.quote_asset.as_ref(), value))
+        Ok(AssetAmount::new(quote_asset, value))
     }
 
     // 已实现盈亏
     async fn realized_pnl(&self) -> Result<AssetAmount> {
         let mut value = Decimal::ZERO;
+        let quote_asset = self.context()?.quote_asset().await;
 
         for node in self.deserialized_nodes.values() {
-            let assert_amount = node.read().await.realized_pnl().await?;
+            let asset_amount = node.read().await.realized_pnl().await?;
 
-            if assert_amount.value() > &Decimal::ZERO {
-                let exchange_rate = self
-                    .context()?
-                    .exchange_rate(assert_amount.asset(), &self.quote_asset)
-                    .await;
+            if asset_amount.value() > &Decimal::ZERO {
+                if asset_amount.asset() != quote_asset.as_ref() {
+                    let exchange_rate = self
+                        .context()?
+                        .exchange_rate(asset_amount.asset(), &quote_asset)
+                        .await;
 
-                if let Some(exchange_rate) = exchange_rate {
-                    value += assert_amount.value() * exchange_rate.rate();
+                    if let Ok(exchange_rate) = exchange_rate {
+                        value += asset_amount.value() * exchange_rate.rate();
+                    }
+                } else {
+                    value += asset_amount.value();
                 }
             }
         }
 
-        Ok(AssetAmount::new(self.quote_asset.as_ref(), value))
+        Ok(AssetAmount::new(quote_asset, value))
     }
 
     // 未实现盈亏
     async fn unrealized_pnl(&self) -> Result<AssetAmount> {
         let mut value = Decimal::ZERO;
+        let quote_asset = self.context()?.quote_asset().await;
 
         for node in self.deserialized_nodes.values() {
-            let assert_amount = node.read().await.unrealized_pnl().await?;
+            let asset_amount = node.read().await.unrealized_pnl().await?;
 
-            if assert_amount.value() > &Decimal::ZERO {
-                let exchange_rate = self
-                    .context()?
-                    .exchange_rate(assert_amount.asset(), &self.quote_asset)
-                    .await;
+            if asset_amount.value() > &Decimal::ZERO {
+                if asset_amount.asset() != quote_asset.as_ref() {
+                    let exchange_rate = self
+                        .context()?
+                        .exchange_rate(asset_amount.asset(), &quote_asset)
+                        .await;
 
-                if let Some(exchange_rate) = exchange_rate {
-                    value += assert_amount.value() * exchange_rate.rate();
+                    if let Ok(exchange_rate) = exchange_rate {
+                        value += asset_amount.value() * exchange_rate.rate();
+                    }
+                } else {
+                    value += asset_amount.value();
                 }
             }
         }
 
-        Ok(AssetAmount::new(self.quote_asset.as_ref(), value))
+        Ok(AssetAmount::new(quote_asset, value))
     }
 
     // 总盈亏
     async fn total_pnl(&self) -> Result<AssetAmount> {
         let mut value = Decimal::ZERO;
+        let quote_asset = self.context()?.quote_asset().await;
 
         for node in self.deserialized_nodes.values() {
-            let assert_amount = node.read().await.total_pnl().await?;
+            let asset_amount = node.read().await.total_pnl().await?;
 
-            if assert_amount.value() > &Decimal::ZERO {
-                let exchange_rate = self
-                    .context()?
-                    .exchange_rate(assert_amount.asset(), &self.quote_asset)
-                    .await;
+            if asset_amount.value() > &Decimal::ZERO {
+                if asset_amount.asset() != quote_asset.as_ref() {
+                    let exchange_rate = self
+                        .context()?
+                        .exchange_rate(asset_amount.asset(), &quote_asset)
+                        .await;
 
-                if let Some(exchange_rate) = exchange_rate {
-                    value += assert_amount.value() * exchange_rate.rate();
+                    if let Ok(exchange_rate) = exchange_rate {
+                        value += asset_amount.value() * exchange_rate.rate();
+                    }
+                } else {
+                    value += asset_amount.value();
                 }
             }
         }
 
-        Ok(AssetAmount::new(self.quote_asset.as_ref(), value))
+        Ok(AssetAmount::new(quote_asset, value))
     }
 
     // 运行时间
@@ -337,7 +360,7 @@ impl Serialize for Workflow {
         state.serialize_field("config", &self.config)?;
         state.serialize_field("extra", &self.extra)?;
         state.serialize_field("version", &self.version)?;
-        state.serialize_field("quote_asset", &self.quote_asset)?;
+        state.serialize_field("quote_asset", &*self.quote_asset.as_ref().read_blocking())?;
         state.serialize_field("execution_history", &execution_history)?;
         state.serialize_field("running_time", &*self.running_time.as_ref().read_blocking())?;
 
@@ -351,12 +374,18 @@ impl Drop for Workflow {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QuoteAsset(String);
+
+impl QuoteAsset {
+    pub fn new() -> Self {
+        Self("USDT".to_string())
+    }
+}
 
 impl Default for QuoteAsset {
     fn default() -> Self {
-        Self("USDT".to_string())
+        Self::new()
     }
 }
 
@@ -375,6 +404,12 @@ impl From<&str> for QuoteAsset {
 impl From<String> for QuoteAsset {
     fn from(value: String) -> Self {
         Self(value)
+    }
+}
+
+impl From<QuoteAsset> for String {
+    fn from(value: QuoteAsset) -> Self {
+        value.0
     }
 }
 
@@ -476,6 +511,7 @@ impl Default for ExecutionRecord {
 pub struct WorkflowContext {
     id: String,                                              // 工作流ID
     db: Arc<PgPool>,                                         // 数据库
+    quote_asset: Arc<RwLock<QuoteAsset>>,                    // 计价货币
     price_store: Arc<RwLock<PriceStore>>,                    // 价格存储
     exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>, // 汇率管理器
     running_time: Arc<RwLock<u128>>,                         // 运行持续时间(微妙)
@@ -486,6 +522,7 @@ pub struct WorkflowContext {
 impl WorkflowContext {
     pub(crate) fn new(
         db: Arc<PgPool>,
+        quote_asset: Arc<RwLock<QuoteAsset>>,
         exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>,
         running_time: Arc<RwLock<u128>>,
         barrier: Barrier,
@@ -496,6 +533,7 @@ impl WorkflowContext {
         Self {
             id,
             db,
+            quote_asset,
             price_store,
             exchange_rate_manager,
             running_time,
@@ -523,15 +561,21 @@ impl WorkflowContext {
         &self,
         base_asset: impl AsRef<str>,
         quote_asset: impl AsRef<str>,
-    ) -> Option<ExchangeRate> {
+    ) -> Result<ExchangeRate> {
         self.exchange_rate_manager
             .write()
             .await
             .get_rate(base_asset, quote_asset)
+            .ok_or_else(|| anyhow!(""))
     }
 
     pub async fn running_time(&self) -> u128 {
         *self.running_time.read().await
+    }
+
+    pub async fn quote_asset(&self) -> QuoteAsset {
+        let quote_asset = &*self.quote_asset.read().await;
+        quote_asset.clone()
     }
 }
 
@@ -542,6 +586,7 @@ mod tests {
     fn default_context(db: PgPool) -> Arc<WorkflowContext> {
         Arc::new(WorkflowContext::new(
             Arc::new(db),
+            Arc::new(RwLock::new(QuoteAsset::new())),
             Arc::new(RwLock::new(ExchangeRateManager::default())),
             Arc::new(RwLock::new(0)),
             Barrier::new(0),

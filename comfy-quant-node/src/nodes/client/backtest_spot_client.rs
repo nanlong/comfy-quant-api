@@ -142,7 +142,10 @@ pub enum BacktestSpotClientError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{node_core::ExchangeRateManager, workflow::WorkflowContext};
+    use crate::{
+        node_core::ExchangeRateManager,
+        workflow::{QuoteAsset, WorkflowContext},
+    };
     use async_lock::{Barrier, RwLock};
     use comfy_quant_exchange::client::spot_client_kind::SpotClientExecutable;
     use rust_decimal_macros::dec;
@@ -151,6 +154,7 @@ mod tests {
     fn default_context(db: PgPool) -> Arc<WorkflowContext> {
         Arc::new(WorkflowContext::new(
             Arc::new(db),
+            Arc::new(RwLock::new(QuoteAsset::new())),
             Arc::new(RwLock::new(ExchangeRateManager::default())),
             Arc::new(RwLock::new(0)),
             Barrier::new(0),

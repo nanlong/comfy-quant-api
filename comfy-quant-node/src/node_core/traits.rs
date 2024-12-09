@@ -222,6 +222,8 @@ pub trait TradeStats {
     async fn total_pnl(&self) -> Result<AssetAmount>;
     // 运行时间
     async fn running_time(&self) -> Result<u128>;
+    // 资产历史
+    // async fn asset_history(&self, interval: KlineInterval) -> Result<Vec<AssetPoint>>;
     // // 最大回撤
     // fn max_drawdown(&self) -> Decimal;
     // // 夏普比率
