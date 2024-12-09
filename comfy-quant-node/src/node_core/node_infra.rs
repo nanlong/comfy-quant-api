@@ -13,28 +13,27 @@ pub struct NodeInfra {
 
 impl NodeInfra {
     pub fn new(node: Node) -> Self {
-        Self {
-            port: Port::new(),
-            node,
-        }
+        let port = Port::new();
+
+        Self { port, node }
     }
 
-    pub fn workflow_context(&self) -> Result<&Arc<WorkflowContext>> {
-        self.node.context()
+    pub(super) fn workflow_context(&self) -> Result<&Arc<WorkflowContext>> {
+        self.node.workflow_context()
     }
 
-    pub fn node_context(&self) -> Result<NodeContext> {
+    pub(super) fn node_context(&self) -> Result<NodeContext> {
         let context = self.workflow_context()?;
 
         Ok(NodeContext::new(
             context.cloned_db(),
             context.workflow_id(),
-            self.node.node_id(),
-            self.node.node_name(),
+            self.node.id as i16,
+            &self.node.properties.prop_type,
         ))
     }
 
-    pub async fn price(
+    pub(super) async fn price(
         &self,
         exchange: impl AsRef<str>,
         market: impl AsRef<str>,

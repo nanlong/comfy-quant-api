@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{NodeContext, NodeExecutable, NodeInfo, NodeInfra, NodePort, Port, Slot},
+    node_core::{NodeCore, NodeCoreExt, NodeExecutable, NodeInfra, Slot},
     workflow::Node,
 };
 use anyhow::Result;
@@ -20,10 +20,20 @@ pub(crate) struct BacktestSpotClient {
     infra: NodeInfra,
 }
 
+impl NodeCore for BacktestSpotClient {
+    fn node_infra(&self) -> &NodeInfra {
+        &self.infra
+    }
+
+    fn node_infra_mut(&mut self) -> &mut NodeInfra {
+        &mut self.infra
+    }
+}
+
 impl BacktestSpotClient {
     pub(crate) fn try_new(node: Node) -> Result<Self> {
         let params = Params::try_from(&node)?;
-        let price_store = node.context()?.cloned_price_store();
+        let price_store = node.workflow_context()?.cloned_price_store();
         let mut infra = NodeInfra::new(node);
 
         let client = Client::builder()
@@ -40,25 +50,9 @@ impl BacktestSpotClient {
     }
 }
 
-impl NodePort for BacktestSpotClient {
-    fn port(&self) -> &Port {
-        &self.infra.port
-    }
-
-    fn port_mut(&mut self) -> &mut Port {
-        &mut self.infra.port
-    }
-}
-
-impl NodeInfo for BacktestSpotClient {
-    fn node_context(&self) -> Result<NodeContext> {
-        self.infra.node_context()
-    }
-}
-
 impl NodeExecutable for BacktestSpotClient {
     async fn execute(&mut self) -> Result<()> {
-        self.infra.workflow_context()?.wait().await;
+        self.workflow_context()?.wait().await;
 
         Ok(())
     }
@@ -143,7 +137,7 @@ pub enum BacktestSpotClientError {
 mod tests {
     use super::*;
     use crate::{
-        node_core::ExchangeRateManager,
+        node_core::{ExchangeRateManager, NodeCoreExt},
         workflow::{QuoteAsset, WorkflowContext},
     };
     use async_lock::{Barrier, RwLock};

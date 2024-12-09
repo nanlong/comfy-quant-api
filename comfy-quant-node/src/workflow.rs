@@ -1,6 +1,6 @@
 use crate::{
     node_core::{
-        AssetAmount, Connectable, ExchangeRate, ExchangeRateManager, NodeExecutable, TradeStats,
+        AssetAmount, ExchangeRate, ExchangeRateManager, NodeCoreExt, NodeExecutable, TradeStats,
     },
     node_io::{SpotPairInfo, TickStream},
     nodes::node_kind::NodeKind,
@@ -389,18 +389,10 @@ pub struct Node {
 }
 
 impl Node {
-    pub(crate) fn context(&self) -> Result<&Arc<WorkflowContext>> {
+    pub(crate) fn workflow_context(&self) -> Result<&Arc<WorkflowContext>> {
         self.context
             .as_ref()
             .ok_or_else(|| anyhow!("Context not set"))
-    }
-
-    pub(crate) fn node_id(&self) -> i16 {
-        self.id as i16
-    }
-
-    pub(crate) fn node_name(&self) -> &str {
-        &self.properties.prop_type
     }
 }
 

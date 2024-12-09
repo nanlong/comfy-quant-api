@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{NodeExecutable, NodeInfra, NodePort, Port, Slot},
+    node_core::{NodeCore, NodeCoreExt, NodeExecutable, NodeInfra, Slot},
     workflow::Node,
 };
 use anyhow::Result;
@@ -16,6 +16,16 @@ pub(crate) struct BinanceSpotClient {
     // outputs:
     //      0: SpotClient
     infra: NodeInfra,
+}
+
+impl NodeCore for BinanceSpotClient {
+    fn node_infra(&self) -> &NodeInfra {
+        &self.infra
+    }
+
+    fn node_infra_mut(&mut self) -> &mut NodeInfra {
+        &mut self.infra
+    }
 }
 
 impl BinanceSpotClient {
@@ -36,18 +46,9 @@ impl BinanceSpotClient {
     }
 }
 
-impl NodePort for BinanceSpotClient {
-    fn port(&self) -> &Port {
-        &self.infra.port
-    }
-
-    fn port_mut(&mut self) -> &mut Port {
-        &mut self.infra.port
-    }
-}
-
 impl NodeExecutable for BinanceSpotClient {
     async fn execute(&mut self) -> Result<()> {
+        self.workflow_context()?.wait().await;
         Ok(())
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{NodeExecutable, NodeInfra, NodePort, Port, Slot, Tick},
+    node_core::{NodeCore, NodeCoreExt, NodeExecutable, NodeInfra, Slot, Tick},
     node_io::{SpotPairInfo, TickStream},
     workflow::Node,
 };
@@ -28,6 +28,16 @@ pub(crate) struct BacktestSpotTicker {
     exchange: Exchange,
     market: Market,
     interval: KlineInterval,
+}
+
+impl NodeCore for BacktestSpotTicker {
+    fn node_infra(&self) -> &NodeInfra {
+        &self.infra
+    }
+
+    fn node_infra_mut(&mut self) -> &mut NodeInfra {
+        &mut self.infra
+    }
 }
 
 impl BacktestSpotTicker {
@@ -63,7 +73,7 @@ impl BacktestSpotTicker {
             format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
         let start_timestamp = self.params.start_datetime.timestamp();
         let end_timestamp = self.params.end_datetime.timestamp();
-        let ctx = self.infra.node_context()?;
+        let ctx = self.node_context()?;
         let db = ctx.db.clone();
 
         // 等待数据同步完成，如果出错，重试3次
@@ -106,7 +116,7 @@ impl BacktestSpotTicker {
             &self.params.end_datetime,
         );
 
-        let price_store = self.infra.workflow_context()?.cloned_price_store();
+        let price_store = self.workflow_context()?.cloned_price_store();
 
         while let Some(Ok(kline)) = klines_stream.next().await {
             let tick = Tick::builder()
@@ -130,20 +140,10 @@ impl BacktestSpotTicker {
     }
 }
 
-impl NodePort for BacktestSpotTicker {
-    fn port(&self) -> &Port {
-        &self.infra.port
-    }
-
-    fn port_mut(&mut self) -> &mut Port {
-        &mut self.infra.port
-    }
-}
-
 impl NodeExecutable for BacktestSpotTicker {
     async fn execute(&mut self) -> Result<()> {
         // 同步等待其他节点
-        self.infra.workflow_context()?.wait().await;
+        self.workflow_context()?.wait().await;
 
         self.output1().await?;
         Ok(())

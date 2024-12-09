@@ -1,7 +1,8 @@
-use super::{NodeContext, Tick};
+use super::{NodeContext, NodeInfra, Tick};
 use crate::{
     node_core::Port,
     stats::{SpotStats, SpotStatsData},
+    workflow::WorkflowContext,
 };
 use anyhow::Result;
 use comfy_quant_exchange::client::{
@@ -10,39 +11,38 @@ use comfy_quant_exchange::client::{
 };
 use enum_dispatch::enum_dispatch;
 use rust_decimal::{Decimal, MathematicalOps};
-// use rust_decimal::Decimal;
+use std::sync::Arc;
 
-// 节点执行
 #[enum_dispatch]
+pub trait NodeCore {
+    fn node_infra(&self) -> &NodeInfra;
+
+    fn node_infra_mut(&mut self) -> &mut NodeInfra;
+}
+
+impl<T: ?Sized> NodeCoreExt for T where T: NodeCore {}
+
 #[allow(async_fn_in_trait)]
-pub trait NodeExecutable {
-    async fn execute(&mut self) -> Result<()>;
-}
+pub trait NodeCoreExt: NodeCore {
+    fn port(&self) -> &Port {
+        &self.node_infra().port
+    }
 
-// 节点插槽
-#[enum_dispatch]
-pub trait NodePort {
-    fn port(&self) -> &Port;
+    fn port_mut(&mut self) -> &mut Port {
+        &mut self.node_infra_mut().port
+    }
 
-    fn port_mut(&mut self) -> &mut Port;
-}
+    fn workflow_context(&self) -> Result<&Arc<WorkflowContext>> {
+        self.node_infra().workflow_context()
+    }
 
-// 节点连接
-#[enum_dispatch]
-pub trait Connectable {
+    fn node_context(&self) -> Result<NodeContext> {
+        self.node_infra().node_context()
+    }
+
     fn connection<U: Send + Sync + 'static>(
         &self,                     // 当前节点
-        target: &mut dyn NodePort, // 目标节点
-        origin_slot: usize,        // 当前节点输出槽位
-        target_slot: usize,        // 目标节点输入槽位
-    ) -> Result<()>;
-}
-
-// 节点连接默认实现
-impl<T: NodePort> Connectable for T {
-    fn connection<U: Send + Sync + 'static>(
-        &self,                     // 当前节点
-        target: &mut dyn NodePort, // 目标节点
+        target: &mut dyn NodeCore, // 目标节点
         origin_slot: usize,        // 当前节点输出槽位
         target_slot: usize,        // 目标节点输入槽位
     ) -> Result<()> {
@@ -51,32 +51,34 @@ impl<T: NodePort> Connectable for T {
 
         Ok(())
     }
+
+    async fn price(
+        &self,
+        exchange: impl AsRef<str>,
+        market: impl AsRef<str>,
+        symbol: impl AsRef<str>,
+    ) -> Result<Decimal> {
+        self.node_infra().price(exchange, market, symbol).await
+    }
 }
 
-/// 节点名称接口
-pub trait NodeInfo {
-    // 获取节点
-    fn node_context(&self) -> Result<NodeContext>;
+pub trait NodeSpotStats {
+    fn spot_stats(&self) -> &SpotStats;
+
+    fn spot_stats_mut(&mut self) -> &mut SpotStats;
 }
 
-/// 统计接口
+impl<T: ?Sized> NodeSpotStatsExt for T where T: NodeCore + NodeSpotStats {}
+
 #[allow(async_fn_in_trait)]
-pub trait NodeStats: NodeInfo {
-    fn spot_stats(&self) -> Option<&SpotStats> {
-        None
-    }
-
-    fn spot_stats_mut(&mut self) -> Option<&mut SpotStats> {
-        None
-    }
-
+pub trait NodeSpotStatsExt: NodeCore + NodeSpotStats {
     fn spot_stats_data(
         &self,
         exchange: impl AsRef<str>,
         symbol: impl AsRef<str>,
     ) -> Result<&SpotStatsData> {
         self.spot_stats()
-            .and_then(|stats| stats.get(exchange.as_ref(), symbol.as_ref()))
+            .get(exchange.as_ref(), symbol.as_ref())
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "Stats not found for exchange: {} symbol: {}",
@@ -94,11 +96,9 @@ pub trait NodeStats: NodeInfo {
     ) -> Result<()> {
         let ctx = self.node_context()?;
 
-        let stats = self
-            .spot_stats_mut()
-            .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?;
-
-        stats.update_with_tick(ctx, exchange, symbol, tick).await?;
+        self.spot_stats_mut()
+            .update_with_tick(ctx, exchange, symbol, tick)
+            .await?;
 
         Ok(())
     }
@@ -111,11 +111,7 @@ pub trait NodeStats: NodeInfo {
     ) -> Result<()> {
         let ctx = self.node_context()?;
 
-        let stats = self
-            .spot_stats_mut()
-            .ok_or_else(|| anyhow::anyhow!("Spot stats not found"))?;
-
-        stats
+        self.spot_stats_mut()
             .update_with_order(ctx, exchange, symbol, order)
             .await?;
 
@@ -123,28 +119,11 @@ pub trait NodeStats: NodeInfo {
     }
 }
 
+impl<T: ?Sized> SpotTradeable for T where T: NodeCore + NodeSpotStats {}
+
 /// 交易接口
 #[allow(async_fn_in_trait)]
-pub trait SpotTradeable {
-    async fn market_buy(
-        &mut self,
-        client: &SpotClientKind,
-        base_asset: &str,
-        quote_asset: &str,
-        qty: f64,
-    ) -> Result<Order>;
-
-    async fn market_sell(
-        &mut self,
-        client: &SpotClientKind,
-        base_asset: &str,
-        quote_asset: &str,
-        qty: f64,
-    ) -> Result<Order>;
-}
-
-/// 交易接口默认实现
-impl<T: NodeStats> SpotTradeable for T {
+pub trait SpotTradeable: NodeCore + NodeSpotStats {
     async fn market_buy(
         &mut self,
         client: &SpotClientKind,
@@ -152,7 +131,6 @@ impl<T: NodeStats> SpotTradeable for T {
         quote_asset: &str,
         qty: f64,
     ) -> Result<Order> {
-        // 用于回测功能的客户端，需要知道当前价格
         let exchange = client.exchange();
         let symbol = client.symbol(base_asset, quote_asset);
 
@@ -185,6 +163,13 @@ impl<T: NodeStats> SpotTradeable for T {
 
         Ok(order)
     }
+}
+
+// 节点执行
+#[enum_dispatch]
+#[allow(async_fn_in_trait)]
+pub trait NodeExecutable {
+    async fn execute(&mut self) -> Result<()>;
 }
 
 pub struct AssetAmount {

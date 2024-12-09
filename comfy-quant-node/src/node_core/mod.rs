@@ -15,6 +15,6 @@ pub(crate) use tick::Tick;
 pub use client_service::SpotClientService;
 pub use exchange_rate::{ExchangeRate, ExchangeRateManager};
 pub use traits::{
-    AssetAmount, Connectable, NodeExecutable, NodeInfo, NodePort, NodeStats, SpotTradeable,
-    TradeStats,
+    AssetAmount, NodeCore, NodeCoreExt, NodeExecutable, NodeSpotStats, NodeSpotStatsExt,
+    SpotTradeable, TradeStats,
 };

@@ -1,5 +1,5 @@
 use crate::{
-    node_core::{NodeExecutable, NodeInfra, NodePort, Port, Slot},
+    node_core::{NodeCore, NodeCoreExt, NodeExecutable, NodeInfra, Slot},
     node_io::SpotPairInfo,
     workflow::Node,
 };
@@ -16,6 +16,16 @@ use std::sync::Arc;
 pub(crate) struct BinanceSpotTicker {
     params: Params,
     infra: NodeInfra,
+}
+
+impl NodeCore for BinanceSpotTicker {
+    fn node_infra(&self) -> &NodeInfra {
+        &self.infra
+    }
+
+    fn node_infra_mut(&mut self) -> &mut NodeInfra {
+        &mut self.infra
+    }
 }
 
 impl BinanceSpotTicker {
@@ -67,20 +77,10 @@ impl BinanceSpotTicker {
     }
 }
 
-impl NodePort for BinanceSpotTicker {
-    fn port(&self) -> &Port {
-        &self.infra.port
-    }
-
-    fn port_mut(&mut self) -> &mut Port {
-        &mut self.infra.port
-    }
-}
-
 impl NodeExecutable for BinanceSpotTicker {
     async fn execute(&mut self) -> Result<()> {
         // 同步等待其他节点
-        self.infra.workflow_context()?.wait().await;
+        self.workflow_context()?.wait().await;
 
         self.output1().await?;
         Ok(())

@@ -1,6 +1,6 @@
 use super::client::BacktestSpotClient;
 use crate::{
-    node_core::{AssetAmount, NodeExecutable, NodePort, Port, TradeStats},
+    node_core::{AssetAmount, NodeCore, NodeExecutable, NodeInfra, TradeStats},
     nodes::{data::BacktestSpotTicker, strategy::SpotGrid},
     workflow::Node,
 };
@@ -9,7 +9,7 @@ use enum_dispatch::enum_dispatch;
 use rust_decimal_macros::dec;
 use std::fmt;
 
-#[enum_dispatch(NodePort, NodeExecutable)]
+#[enum_dispatch(NodeCore, NodeExecutable)]
 pub(crate) enum NodeKind {
     // data
     BacktestSpotTicker(BacktestSpotTicker),
