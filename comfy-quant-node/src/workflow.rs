@@ -1,7 +1,5 @@
 use crate::{
-    node_core::{
-        AssetAmount, ExchangeRate, ExchangeRateManager, NodeCoreExt, NodeExecutable, TradeStats,
-    },
+    node_core::{ExchangeRate, ExchangeRateManager, NodeCoreExt, NodeExecutable, TradeStats},
     node_io::{SpotPairInfo, TickStream},
     nodes::node_kind::NodeKind,
 };
@@ -44,7 +42,7 @@ pub struct Workflow {
 
 impl Workflow {
     // 初始化上下文
-    pub async fn initialize(
+    pub async fn setup(
         &mut self,
         db: Arc<PgPool>,                                         // 数据库
         exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>, // 汇率管理器
@@ -70,7 +68,7 @@ impl Workflow {
             let node_id = node.id;
             let mut node_kind = NodeKind::try_from(node.clone())?;
 
-            node_kind.initialize().await?;
+            node_kind.setup().await?;
 
             // 存储反序列化节点
             self.deserialized_nodes
@@ -108,7 +106,55 @@ impl Workflow {
         Ok(())
     }
 
-    pub async fn execute(&mut self) -> Result<()> {
+    // 按照 order 排序
+    fn sorted_nodes(&self) -> Vec<&Node> {
+        let mut nodes_vec = self.nodes.iter().collect::<Vec<_>>();
+        nodes_vec.sort_by_key(|node| node.order);
+        nodes_vec
+    }
+
+    // 建立连接
+    fn make_connection(&self, origin: &NodeKind, target: &mut NodeKind, link: &Link) -> Result<()> {
+        match link.link_type.as_str() {
+            "SpotPairInfo" => {
+                origin.connection::<SpotPairInfo>(target, link.origin_slot, link.target_slot)?
+            }
+            "TickStream" => {
+                origin.connection::<TickStream>(target, link.origin_slot, link.target_slot)?
+            }
+            "SpotClient" => {
+                origin.connection::<SpotClientKind>(target, link.origin_slot, link.target_slot)?
+            }
+            _ => anyhow::bail!("Invalid link type: {}", link.link_type),
+        }
+
+        Ok(())
+    }
+
+    fn context(&self) -> Result<&Arc<WorkflowContext>> {
+        self.context
+            .as_ref()
+            .ok_or_else(|| anyhow!("Context not set"))
+    }
+
+    // 计算资产金额
+    async fn calculate_asset_amount<F, Fut>(&self, f: F) -> Result<Decimal>
+    where
+        F: Fn(Arc<RwLock<NodeKind>>) -> Fut,
+        Fut: Future<Output = Result<Decimal>>,
+    {
+        let mut value = Decimal::ZERO;
+
+        for node in self.deserialized_nodes.values() {
+            value += f(Arc::clone(node)).await?;
+        }
+
+        Ok(value)
+    }
+}
+
+impl NodeExecutable for Workflow {
+    async fn execute(&mut self) -> Result<()> {
         let start_at = Instant::now();
         let execute_time = Arc::new(RwLock::new(ExecutionRecord::new()));
         let cloned_execute_time = Arc::clone(&execute_time);
@@ -177,91 +223,24 @@ impl Workflow {
 
         Ok(())
     }
-
-    // 按照 order 排序
-    fn sorted_nodes(&self) -> Vec<&Node> {
-        let mut nodes_vec = self.nodes.iter().collect::<Vec<_>>();
-        nodes_vec.sort_by_key(|node| node.order);
-        nodes_vec
-    }
-
-    // 建立连接
-    fn make_connection(&self, origin: &NodeKind, target: &mut NodeKind, link: &Link) -> Result<()> {
-        match link.link_type.as_str() {
-            "SpotPairInfo" => {
-                origin.connection::<SpotPairInfo>(target, link.origin_slot, link.target_slot)?
-            }
-            "TickStream" => {
-                origin.connection::<TickStream>(target, link.origin_slot, link.target_slot)?
-            }
-            "SpotClient" => {
-                origin.connection::<SpotClientKind>(target, link.origin_slot, link.target_slot)?
-            }
-            _ => anyhow::bail!("Invalid link type: {}", link.link_type),
-        }
-
-        Ok(())
-    }
-
-    fn context(&self) -> Result<&Arc<WorkflowContext>> {
-        self.context
-            .as_ref()
-            .ok_or_else(|| anyhow!("Context not set"))
-    }
-
-    // 计算资产金额
-    async fn calculate_asset_amount<F, Fut>(&self, f: F) -> Result<AssetAmount>
-    where
-        F: Fn(Arc<RwLock<NodeKind>>) -> Fut,
-        Fut: Future<Output = Result<AssetAmount>>,
-    {
-        let mut value = Decimal::ZERO;
-        let quote_asset = self.context()?.quote_asset().await;
-
-        for node in self.deserialized_nodes.values() {
-            let asset_amount = f(Arc::clone(node)).await?;
-
-            if asset_amount.value() > &Decimal::ZERO {
-                if asset_amount.asset() != quote_asset.as_ref() {
-                    if let Ok(exchange_rate) = self
-                        .context()?
-                        .exchange_rate(asset_amount.asset(), &quote_asset)
-                        .await
-                    {
-                        value += asset_amount.value() * exchange_rate.rate();
-                    }
-                } else {
-                    value += asset_amount.value();
-                }
-            }
-        }
-
-        Ok(AssetAmount::new(quote_asset, value))
-    }
 }
 
 impl TradeStats for Workflow {
     // 初始资金
-    async fn initial_capital(&self) -> Result<AssetAmount> {
+    async fn initial_capital(&self) -> Result<Decimal> {
         self.calculate_asset_amount(|node| async move { node.read().await.initial_capital().await })
             .await
     }
 
     // 已实现盈亏
-    async fn realized_pnl(&self) -> Result<AssetAmount> {
+    async fn realized_pnl(&self) -> Result<Decimal> {
         self.calculate_asset_amount(|node| async move { node.read().await.realized_pnl().await })
             .await
     }
 
     // 未实现盈亏
-    async fn unrealized_pnl(&self) -> Result<AssetAmount> {
+    async fn unrealized_pnl(&self) -> Result<Decimal> {
         self.calculate_asset_amount(|node| async move { node.read().await.unrealized_pnl().await })
-            .await
-    }
-
-    // 总盈亏
-    async fn total_pnl(&self) -> Result<AssetAmount> {
-        self.calculate_asset_amount(|node| async move { node.read().await.total_pnl().await })
             .await
     }
 
@@ -575,7 +554,7 @@ mod tests {
         let exchange_rate_manager = Arc::new(RwLock::new(ExchangeRateManager::default()));
 
         workflow
-            .initialize(Arc::new(db), exchange_rate_manager, "USDT")
+            .setup(Arc::new(db), exchange_rate_manager, "USDT")
             .await?;
 
         assert_eq!(*workflow.running_time.as_ref().read_blocking(), 0);

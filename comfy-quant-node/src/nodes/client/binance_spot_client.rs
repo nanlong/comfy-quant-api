@@ -38,7 +38,7 @@ impl BinanceSpotClient {
 }
 
 impl NodeExecutable for BinanceSpotClient {
-    async fn initialize(&mut self) -> Result<()> {
+    async fn setup(&mut self) -> Result<()> {
         let client = Client::builder()
             .api_key(&self.params.api_key)
             .secret_key(&self.params.secret_key)

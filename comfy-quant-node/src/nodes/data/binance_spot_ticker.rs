@@ -67,7 +67,7 @@ impl BinanceSpotTicker {
 }
 
 impl NodeExecutable for BinanceSpotTicker {
-    async fn initialize(&mut self) -> Result<()> {
+    async fn setup(&mut self) -> Result<()> {
         let pair_info = SpotPairInfo::builder()
             .base_asset(&self.params.base_asset)
             .quote_asset(&self.params.quote_asset)

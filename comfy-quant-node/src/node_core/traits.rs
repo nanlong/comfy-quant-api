@@ -5,6 +5,8 @@ use crate::{
     workflow::{Node, WorkflowContext},
 };
 use anyhow::Result;
+// use chrono::{DateTime, Utc};
+// use comfy_quant_base::KlineInterval;
 use comfy_quant_exchange::client::{
     spot_client::base::Order,
     spot_client_kind::{SpotClientExecutable, SpotClientKind},
@@ -173,7 +175,7 @@ pub trait SpotTradeable: NodeCore + NodeSpotStats {
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
 pub trait NodeExecutable {
-    async fn initialize(&mut self) -> Result<()> {
+    async fn setup(&mut self) -> Result<()> {
         Ok(())
     }
 
@@ -182,43 +184,45 @@ pub trait NodeExecutable {
     }
 }
 
-pub struct AssetAmount {
-    asset: String,
-    value: Decimal,
-}
+// pub struct DateTimeRange {
+//     start: DateTime<Utc>,
+//     end: DateTime<Utc>,
+// }
 
-impl AssetAmount {
-    pub fn new(asset: impl Into<String>, value: Decimal) -> Self {
-        Self {
-            asset: asset.into(),
-            value,
-        }
-    }
+// impl DateTimeRange {
+//     pub fn new(start: DateTime<Utc>, end: DateTime<Utc>) -> Self {
+//         Self { start, end }
+//     }
+// }
 
-    pub fn asset(&self) -> &str {
-        &self.asset
-    }
+// pub struct AssetPoint {
+//     time: DateTime<Utc>,
+//     value: Decimal,
+// }
 
-    pub fn value(&self) -> &Decimal {
-        &self.value
-    }
-}
+// impl AssetPoint {
+//     pub fn new(time: DateTime<Utc>, value: Decimal) -> Self {
+//         Self { time, value }
+//     }
+// }
 
 // 基础交易统计trait
 #[allow(async_fn_in_trait)]
 pub trait TradeStats {
     // 初始资金
-    async fn initial_capital(&self) -> Result<AssetAmount>;
+    async fn initial_capital(&self) -> Result<Decimal>;
     // 已实现盈亏
-    async fn realized_pnl(&self) -> Result<AssetAmount>;
+    async fn realized_pnl(&self) -> Result<Decimal>;
     // 未实现盈亏
-    async fn unrealized_pnl(&self) -> Result<AssetAmount>;
-    // 总盈亏
-    async fn total_pnl(&self) -> Result<AssetAmount>;
+    async fn unrealized_pnl(&self) -> Result<Decimal>;
     // 运行时间
     async fn running_time(&self) -> Result<u128>;
     // 资产历史
-    // async fn asset_history(&self, interval: KlineInterval) -> Result<Vec<AssetPoint>>;
+    // async fn asset_history(
+    //     &self,
+    //     interval: KlineInterval,
+    //     range: DateTimeRange,
+    // ) -> Result<Vec<AssetPoint>>;
     // // 最大回撤
     // fn max_drawdown(&self) -> Decimal;
     // // 夏普比率
@@ -233,22 +237,26 @@ impl<T: ?Sized> TradeStatsExt for T where T: TradeStats {}
 
 #[allow(unused)]
 pub trait TradeStatsExt: TradeStats {
+    // 总盈亏
+    async fn total_pnl(&self) -> Result<Decimal> {
+        let realized_pnl = self.realized_pnl().await?;
+        let unrealized_pnl = self.unrealized_pnl().await?;
+        Ok(realized_pnl + unrealized_pnl)
+    }
+
     // 总收益率
     async fn total_return(&self) -> Result<Decimal> {
         let initial_capital = self.initial_capital().await?;
         let realized_pnl = self.realized_pnl().await?;
         let unrealized_pnl = self.unrealized_pnl().await?;
-        let initial_capital_value = initial_capital.value();
-        let realized_pnl_value = realized_pnl.value();
-        let unrealized_pnl_value = unrealized_pnl.value();
 
         // 防止除以零
-        if initial_capital_value.is_zero() {
+        if initial_capital.is_zero() {
             return Ok(Decimal::ZERO);
         }
 
         // 收益率 = (已实现盈亏 + 未实现盈亏) / 初始资金
-        let return_rate = (realized_pnl_value + unrealized_pnl_value) / initial_capital_value;
+        let return_rate = (realized_pnl + unrealized_pnl) / initial_capital;
 
         Ok(return_rate)
     }

@@ -1,7 +1,7 @@
 use crate::{
     node_core::{
-        AssetAmount, NodeCore, NodeCoreExt, NodeExecutable, NodeInfra, NodeSpotStats,
-        NodeSpotStatsExt, SpotClientService, SpotTradeable, TradeStats,
+        NodeCore, NodeCoreExt, NodeExecutable, NodeInfra, NodeSpotStats, NodeSpotStatsExt,
+        SpotClientService, SpotTradeable, TradeStats,
     },
     node_io::{SpotPairInfo, TickStream},
     stats::SpotStats,
@@ -119,7 +119,7 @@ impl SpotGrid {
         let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
 
         // 初始化统计信息
-        self.store.stats.initialize(
+        self.store.stats.setup(
             &exchange,
             &symbol,
             &pair_info.base_asset,
@@ -347,7 +347,7 @@ impl NodeExecutable for SpotGrid {
 }
 
 impl TradeStats for SpotGrid {
-    async fn initial_capital(&self) -> Result<AssetAmount> {
+    async fn initial_capital(&self) -> Result<Decimal> {
         let ctx = self.workflow_context()?;
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
         let quote_asset = ctx.quote_asset().await;
@@ -356,26 +356,20 @@ impl TradeStats for SpotGrid {
         let price = self.price(&exchange, Market::Spot, &symbol).await?;
         let capital = stats.initial_base_balance * price + stats.initial_base_balance;
 
-        Ok(AssetAmount::new(
-            quote_asset,
-            capital * exchange_rate.rate(),
-        ))
+        Ok(capital * exchange_rate.rate())
     }
 
-    async fn realized_pnl(&self) -> Result<AssetAmount> {
+    async fn realized_pnl(&self) -> Result<Decimal> {
         let ctx = self.workflow_context()?;
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
         let quote_asset = ctx.quote_asset().await;
         let exchange_rate = ctx.exchange_rate(&pair.quote_asset, &quote_asset).await?;
         let stats = self.spot_stats_data(exchange, symbol)?;
 
-        Ok(AssetAmount::new(
-            quote_asset,
-            stats.base.realized_pnl * exchange_rate.rate(),
-        ))
+        Ok(stats.base.realized_pnl * exchange_rate.rate())
     }
 
-    async fn unrealized_pnl(&self) -> Result<AssetAmount> {
+    async fn unrealized_pnl(&self) -> Result<Decimal> {
         let ctx = self.workflow_context()?;
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
         let quote_asset = ctx.quote_asset().await;
@@ -387,22 +381,7 @@ impl TradeStats for SpotGrid {
         let maybe_sell = stats.base_asset_balance * price * maker_commission_rate;
         let unrealized_pnl = maybe_sell - cost;
 
-        Ok(AssetAmount::new(
-            quote_asset,
-            unrealized_pnl * exchange_rate.rate(),
-        ))
-    }
-
-    async fn total_pnl(&self) -> Result<AssetAmount> {
-        let ctx = self.workflow_context()?;
-        let quote_asset = ctx.quote_asset().await;
-        let realized_pnl = self.realized_pnl().await?;
-        let unrealized_pnl = self.unrealized_pnl().await?;
-
-        Ok(AssetAmount::new(
-            quote_asset,
-            realized_pnl.value() + unrealized_pnl.value(),
-        ))
+        Ok(unrealized_pnl * exchange_rate.rate())
     }
 
     async fn running_time(&self) -> Result<u128> {

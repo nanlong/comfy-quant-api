@@ -65,7 +65,7 @@ impl SpotStats {
         self.as_mut().entry(key).or_default()
     }
 
-    pub fn initialize(
+    pub fn setup(
         &mut self,
         exchange: impl AsRef<str>,
         symbol: impl AsRef<str>,
@@ -73,7 +73,7 @@ impl SpotStats {
         quote_asset: impl AsRef<str>,
     ) {
         self.get_or_insert(exchange.as_ref(), symbol.as_ref())
-            .initialize(
+            .setup(
                 exchange.as_ref(),
                 symbol.as_ref(),
                 base_asset.as_ref(),
@@ -146,13 +146,7 @@ impl SpotStatsData {
         SpotStatsData::default()
     }
 
-    pub fn initialize(
-        &mut self,
-        exchange: &str,
-        symbol: &str,
-        base_asset: &str,
-        quote_asset: &str,
-    ) {
+    pub fn setup(&mut self, exchange: &str, symbol: &str, base_asset: &str, quote_asset: &str) {
         self.exchange = exchange.into();
         self.symbol = symbol.into();
         self.base_asset = base_asset.into();
@@ -612,7 +606,7 @@ mod tests {
         ];
 
         let mut stats = SpotStatsData::new();
-        stats.initialize(exchange, symbol, base_asset, quote_asset);
+        stats.setup(exchange, symbol, base_asset, quote_asset);
         stats.initial_base_balance = initial_base;
         stats.initial_quote_balance = initial_quote;
         stats.base_asset_balance = initial_base;
@@ -702,9 +696,9 @@ mod tests {
     }
 
     #[test]
-    fn test_spot_stats_data_initialize() {
+    fn test_spot_stats_data_setup() {
         let mut data = SpotStatsData::new();
-        data.initialize("binance", "BTC/USDT", "BTC", "USDT");
+        data.setup("binance", "BTC/USDT", "BTC", "USDT");
 
         assert_eq!(data.exchange, "binance");
         assert_eq!(data.symbol, "BTC/USDT");
@@ -715,7 +709,7 @@ mod tests {
     #[sqlx::test(migrator = "comfy_quant_database::MIGRATOR")]
     async fn test_spot_stats_data_update_with_buy_order(db: PgPool) {
         let mut data = SpotStatsData::new();
-        data.initialize("binance", "BTC/USDT", "BTC", "USDT");
+        data.setup("binance", "BTC/USDT", "BTC", "USDT");
         data.maker_commission_rate = dec!(0.001);
         data.quote_asset_balance = dec!(10000);
 
@@ -744,7 +738,7 @@ mod tests {
     #[sqlx::test(migrator = "comfy_quant_database::MIGRATOR")]
     async fn test_spot_stats_data_update_with_sell_order(db: PgPool) {
         let mut data = SpotStatsData::new();
-        data.initialize("binance", "BTC/USDT", "BTC", "USDT");
+        data.setup("binance", "BTC/USDT", "BTC", "USDT");
         data.maker_commission_rate = dec!(0.001);
         data.base_asset_balance = dec!(1.0);
         data.avg_price = dec!(45000);
@@ -778,7 +772,7 @@ mod tests {
     #[test]
     fn test_spot_stats_data_pnl_calculations() {
         let mut data = SpotStatsData::new();
-        data.initialize("binance", "BTC/USDT", "BTC", "USDT");
+        data.setup("binance", "BTC/USDT", "BTC", "USDT");
         data.maker_commission_rate = dec!(0.001);
         data.base_asset_balance = dec!(1.0);
         data.avg_price = dec!(45000);

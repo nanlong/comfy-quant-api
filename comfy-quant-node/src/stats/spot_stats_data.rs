@@ -33,13 +33,7 @@ impl SpotStatsData {
         SpotStatsData::default()
     }
 
-    pub fn initialize(
-        &mut self,
-        exchange: &str,
-        symbol: &str,
-        base_asset: &str,
-        quote_asset: &str,
-    ) {
+    pub fn setup(&mut self, exchange: &str, symbol: &str, base_asset: &str, quote_asset: &str) {
         self.base.exchange = exchange.into();
         self.base.symbol = symbol.into();
         self.base.base_asset = base_asset.into();

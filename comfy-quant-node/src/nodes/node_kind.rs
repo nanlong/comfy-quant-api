@@ -1,12 +1,12 @@
 use super::client::BacktestSpotClient;
 use crate::{
-    node_core::{AssetAmount, NodeCore, NodeExecutable, NodeInfra, TradeStats},
+    node_core::{NodeCore, NodeExecutable, NodeInfra, TradeStats},
     nodes::{data::BacktestSpotTicker, strategy::SpotGrid},
     workflow::Node,
 };
 use anyhow::Result;
 use enum_dispatch::enum_dispatch;
-use rust_decimal_macros::dec;
+use rust_decimal::Decimal;
 use std::fmt;
 
 #[enum_dispatch(NodeCore, NodeExecutable)]
@@ -32,31 +32,24 @@ impl NodeKind {
 }
 
 impl TradeStats for NodeKind {
-    async fn initial_capital(&self) -> Result<AssetAmount> {
+    async fn initial_capital(&self) -> Result<Decimal> {
         match self {
             NodeKind::SpotGrid(spot_grid) => spot_grid.initial_capital().await,
-            _ => Ok(AssetAmount::new("USDT", dec!(0))),
+            _ => Ok(Decimal::ZERO),
         }
     }
 
-    async fn realized_pnl(&self) -> Result<AssetAmount> {
+    async fn realized_pnl(&self) -> Result<Decimal> {
         match self {
             NodeKind::SpotGrid(spot_grid) => spot_grid.realized_pnl().await,
-            _ => Ok(AssetAmount::new("USDT", dec!(0))),
+            _ => Ok(Decimal::ZERO),
         }
     }
 
-    async fn unrealized_pnl(&self) -> Result<AssetAmount> {
+    async fn unrealized_pnl(&self) -> Result<Decimal> {
         match self {
             NodeKind::SpotGrid(spot_grid) => spot_grid.unrealized_pnl().await,
-            _ => Ok(AssetAmount::new("USDT", dec!(0))),
-        }
-    }
-
-    async fn total_pnl(&self) -> Result<AssetAmount> {
-        match self {
-            NodeKind::SpotGrid(spot_grid) => spot_grid.total_pnl().await,
-            _ => Ok(AssetAmount::new("USDT", dec!(0))),
+            _ => Ok(Decimal::ZERO),
         }
     }
 

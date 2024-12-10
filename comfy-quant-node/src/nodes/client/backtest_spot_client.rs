@@ -40,7 +40,7 @@ impl BacktestSpotClient {
 }
 
 impl NodeExecutable for BacktestSpotClient {
-    async fn initialize(&mut self) -> Result<()> {
+    async fn setup(&mut self) -> Result<()> {
         let price_store = self.workflow_context()?.cloned_price_store();
 
         let client = Client::builder()
@@ -179,7 +179,7 @@ mod tests {
         node.context = Some(default_context(db));
 
         let mut account = BacktestSpotClient::try_from(node)?;
-        account.initialize().await?;
+        account.setup().await?;
 
         let client = account.port().output::<SpotClientKind>(0)?;
 
@@ -280,7 +280,7 @@ mod tests {
         node.context = Some(default_context(db));
 
         let mut account = BacktestSpotClient::try_from(node)?;
-        account.initialize().await?;
+        account.setup().await?;
 
         // Test port() returns the correct port
         let port = account.port();
