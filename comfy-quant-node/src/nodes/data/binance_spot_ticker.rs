@@ -31,18 +31,7 @@ impl NodeCore for BinanceSpotTicker {
 impl BinanceSpotTicker {
     pub(crate) fn try_new(node: Node) -> Result<Self> {
         let params = Params::try_from(&node)?;
-        let mut infra = NodeInfra::new(node);
-
-        let pair_info = SpotPairInfo::builder()
-            .base_asset(&params.base_asset)
-            .quote_asset(&params.quote_asset)
-            .build();
-
-        let pair_info_slot = Arc::new(Slot::<SpotPairInfo>::new(pair_info));
-        // let output_slot1 = Slot::<Tick>::builder().channel_capacity(1024).build();
-
-        infra.port.set_output(0, pair_info_slot)?;
-        // port.set_output(1, output_slot1)?;
+        let infra = NodeInfra::new(node);
 
         Ok(BinanceSpotTicker { params, infra })
     }
@@ -78,10 +67,22 @@ impl BinanceSpotTicker {
 }
 
 impl NodeExecutable for BinanceSpotTicker {
-    async fn execute(&mut self) -> Result<()> {
-        // 同步等待其他节点
-        self.workflow_context()?.wait().await;
+    async fn initialize(&mut self) -> Result<()> {
+        let pair_info = SpotPairInfo::builder()
+            .base_asset(&self.params.base_asset)
+            .quote_asset(&self.params.quote_asset)
+            .build();
 
+        let pair_info_slot = Arc::new(Slot::<SpotPairInfo>::new(pair_info));
+        // let output_slot1 = Slot::<Tick>::builder().channel_capacity(1024).build();
+
+        self.port_mut().set_output(0, pair_info_slot)?;
+        // port.set_output(1, output_slot1)?;
+
+        Ok(())
+    }
+
+    async fn execute(&mut self) -> Result<()> {
         self.output1().await?;
         Ok(())
     }

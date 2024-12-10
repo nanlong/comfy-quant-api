@@ -71,7 +71,7 @@ impl SpotGrid {
         })
     }
 
-    pub(crate) async fn initialize(
+    pub(crate) async fn create_grid(
         &mut self,
         pair_info: &SpotPairInfo,
         client: &SpotClientKind,
@@ -200,18 +200,14 @@ impl SpotGrid {
 // 节点执行
 impl NodeExecutable for SpotGrid {
     async fn execute(&mut self) -> Result<()> {
-        // 等待其他节点
-        self.workflow_context()?.wait().await;
-
         // 获取输入
-        let port = self.port();
-        let pair_info = port.input::<SpotPairInfo>(0)?;
-        let client = port.input::<SpotClientKind>(1)?;
-        let tick_stream = port.input::<TickStream>(2)?;
+        let pair_info = self.port().input::<SpotPairInfo>(0)?;
+        let client = self.port().input::<SpotClientKind>(1)?;
+        let tick_stream = self.port().input::<TickStream>(2)?;
         let cloned_params = self.params.clone();
         let rx = tick_stream.subscribe();
 
-        self.initialize(&pair_info, &client, &tick_stream).await?;
+        self.create_grid(&pair_info, &client, &tick_stream).await?;
 
         self.grid()?.start();
 
@@ -425,9 +421,9 @@ impl TryFrom<Node> for SpotGrid {
 impl TryFrom<&SpotGrid> for Node {
     type Error = anyhow::Error;
 
-    fn try_from(spot_grid: &SpotGrid) -> Result<Self> {
-        let mut node = spot_grid.infra.node.clone();
-        node.runtime_store = Some(serde_json::to_string(&spot_grid.store)?);
+    fn try_from(value: &SpotGrid) -> Result<Self> {
+        let mut node = value.node().clone();
+        node.runtime_store = Some(serde_json::to_string(&value.store)?);
         Ok(node)
     }
 }
@@ -958,7 +954,7 @@ mod tests {
         node_core::ExchangeRateManager,
         workflow::{QuoteAsset, WorkflowContext},
     };
-    use async_lock::{Barrier, RwLock};
+    use async_lock::RwLock;
     use comfy_quant_exchange::client::spot_client::base::{OrderStatus, OrderType};
     use sqlx::PgPool;
     use std::sync::Arc;
@@ -973,7 +969,6 @@ mod tests {
             Arc::new(RwLock::new(QuoteAsset::new())),
             Arc::new(RwLock::new(ExchangeRateManager::default())),
             Arc::new(RwLock::new(0)),
-            Barrier::new(0),
         ));
         node.context = Some(workflow_context);
 

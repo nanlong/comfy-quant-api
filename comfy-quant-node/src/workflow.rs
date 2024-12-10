@@ -6,7 +6,7 @@ use crate::{
     nodes::node_kind::NodeKind,
 };
 use anyhow::{anyhow, Result};
-use async_lock::{Barrier, RwLock};
+use async_lock::RwLock;
 use chrono::{DateTime, Utc};
 use comfy_quant_base::{arc_rwlock, generate_workflow_id, vec_arc_rwlock};
 use comfy_quant_exchange::{client::spot_client_kind::SpotClientKind, store::PriceStore};
@@ -56,7 +56,6 @@ impl Workflow {
             Arc::clone(&quote_asset),
             exchange_rate_manager,
             Arc::clone(&self.running_time),
-            Barrier::new(self.nodes.len()),
         ));
 
         self.quote_asset = Arc::clone(&quote_asset);
@@ -69,7 +68,9 @@ impl Workflow {
         // 反序列化节点
         for node in &self.nodes {
             let node_id = node.id;
-            let node_kind = NodeKind::try_from(node.clone())?;
+            let mut node_kind = NodeKind::try_from(node.clone())?;
+
+            node_kind.initialize().await?;
 
             // 存储反序列化节点
             self.deserialized_nodes
@@ -453,7 +454,6 @@ pub struct WorkflowContext {
     price_store: Arc<RwLock<PriceStore>>,                    // 价格存储
     exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>, // 汇率管理器
     running_time: Arc<RwLock<u128>>,                         // 运行持续时间(微妙)
-    barrier: Barrier,                                        // 屏障
 }
 
 #[allow(unused)]
@@ -463,7 +463,6 @@ impl WorkflowContext {
         quote_asset: Arc<RwLock<QuoteAsset>>,
         exchange_rate_manager: Arc<RwLock<ExchangeRateManager>>,
         running_time: Arc<RwLock<u128>>,
-        barrier: Barrier,
     ) -> Self {
         let id = generate_workflow_id();
         let price_store = Arc::new(RwLock::new(PriceStore::new()));
@@ -475,7 +474,6 @@ impl WorkflowContext {
             price_store,
             exchange_rate_manager,
             running_time,
-            barrier,
         }
     }
 
@@ -489,10 +487,6 @@ impl WorkflowContext {
 
     pub(crate) fn cloned_price_store(&self) -> Arc<RwLock<PriceStore>> {
         Arc::clone(&self.price_store)
-    }
-
-    pub(crate) async fn wait(&self) {
-        self.barrier.wait().await;
     }
 
     pub async fn exchange_rate(
@@ -527,7 +521,6 @@ mod tests {
             Arc::new(RwLock::new(QuoteAsset::new())),
             Arc::new(RwLock::new(ExchangeRateManager::default())),
             Arc::new(RwLock::new(0)),
-            Barrier::new(0),
         ))
     }
 

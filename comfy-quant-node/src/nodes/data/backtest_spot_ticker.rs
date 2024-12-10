@@ -43,19 +43,7 @@ impl NodeCore for BacktestSpotTicker {
 impl BacktestSpotTicker {
     pub(crate) fn try_new(node: Node) -> Result<Self> {
         let params = Params::try_from(&node)?;
-        let mut infra = NodeInfra::new(node);
-
-        let pair_info = SpotPairInfo::builder()
-            .base_asset(&params.base_asset)
-            .quote_asset(&params.quote_asset)
-            .build();
-        let tick_stream = TickStream::new();
-
-        let pair_info_slot = Arc::new(Slot::<SpotPairInfo>::new(pair_info));
-        let tick_stream_slot = Arc::new(Slot::<TickStream>::new(tick_stream));
-
-        infra.port.set_output(0, pair_info_slot)?;
-        infra.port.set_output(1, tick_stream_slot)?;
+        let infra = NodeInfra::new(node);
 
         Ok(BacktestSpotTicker {
             params,
@@ -74,12 +62,11 @@ impl BacktestSpotTicker {
         let start_timestamp = self.params.start_datetime.timestamp();
         let end_timestamp = self.params.end_datetime.timestamp();
         let ctx = self.node_context()?;
-        let db = ctx.db.clone();
 
         // 等待数据同步完成，如果出错，重试3次
         'retry: for i in 0..3 {
             let task = BinanceKlinesTask::builder()
-                .db(Arc::clone(&db))
+                .db(ctx.cloned_db())
                 .market(self.market.as_ref())
                 .symbol(&symbol)
                 .interval(self.interval.as_ref())
@@ -107,7 +94,7 @@ impl BacktestSpotTicker {
         }
 
         let mut klines_stream = kline::time_range_klines_stream(
-            &db,
+            ctx.db(),
             self.exchange.as_ref(),
             self.market.as_ref(),
             &symbol,
@@ -141,10 +128,23 @@ impl BacktestSpotTicker {
 }
 
 impl NodeExecutable for BacktestSpotTicker {
-    async fn execute(&mut self) -> Result<()> {
-        // 同步等待其他节点
-        self.workflow_context()?.wait().await;
+    async fn initialize(&mut self) -> Result<()> {
+        let pair_info = SpotPairInfo::builder()
+            .base_asset(&self.params.base_asset)
+            .quote_asset(&self.params.quote_asset)
+            .build();
+        let tick_stream = TickStream::new();
 
+        let pair_info_slot = Arc::new(Slot::<SpotPairInfo>::new(pair_info));
+        let tick_stream_slot = Arc::new(Slot::<TickStream>::new(tick_stream));
+
+        self.port_mut().set_output(0, pair_info_slot)?;
+        self.port_mut().set_output(1, tick_stream_slot)?;
+
+        Ok(())
+    }
+
+    async fn execute(&mut self) -> Result<()> {
         self.output1().await?;
         Ok(())
     }
@@ -161,8 +161,8 @@ impl TryFrom<Node> for BacktestSpotTicker {
 impl TryFrom<&BacktestSpotTicker> for Node {
     type Error = anyhow::Error;
 
-    fn try_from(backtest_spot_ticker: &BacktestSpotTicker) -> Result<Self> {
-        Ok(backtest_spot_ticker.infra.node.clone())
+    fn try_from(value: &BacktestSpotTicker) -> Result<Self> {
+        Ok(value.node().clone())
     }
 }
 

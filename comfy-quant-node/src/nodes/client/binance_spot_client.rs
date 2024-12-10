@@ -31,24 +31,23 @@ impl NodeCore for BinanceSpotClient {
 impl BinanceSpotClient {
     pub(crate) fn try_new(node: Node) -> Result<Self> {
         let params = Params::try_from(&node)?;
-        let mut infra = NodeInfra::new(node);
-
-        let client = Client::builder()
-            .api_key(&params.api_key)
-            .secret_key(&params.secret_key)
-            .build();
-
-        let client_slot = Arc::new(Slot::<SpotClientKind>::new(client.into()));
-
-        infra.port.set_output(0, client_slot)?;
+        let infra = NodeInfra::new(node);
 
         Ok(BinanceSpotClient { params, infra })
     }
 }
 
 impl NodeExecutable for BinanceSpotClient {
-    async fn execute(&mut self) -> Result<()> {
-        self.workflow_context()?.wait().await;
+    async fn initialize(&mut self) -> Result<()> {
+        let client = Client::builder()
+            .api_key(&self.params.api_key)
+            .secret_key(&self.params.secret_key)
+            .build();
+
+        let client_slot = Arc::new(Slot::<SpotClientKind>::new(client.into()));
+
+        self.port_mut().set_output(0, client_slot)?;
+
         Ok(())
     }
 }

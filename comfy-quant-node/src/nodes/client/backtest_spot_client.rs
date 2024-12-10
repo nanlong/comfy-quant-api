@@ -33,26 +33,25 @@ impl NodeCore for BacktestSpotClient {
 impl BacktestSpotClient {
     pub(crate) fn try_new(node: Node) -> Result<Self> {
         let params = Params::try_from(&node)?;
-        let price_store = node.workflow_context()?.cloned_price_store();
-        let mut infra = NodeInfra::new(node);
-
-        let client = Client::builder()
-            .assets(&params.assets[..])
-            .commissions(params.commissions)
-            .price_store(price_store)
-            .build();
-
-        let client_slot = Arc::new(Slot::<SpotClientKind>::new(client.into()));
-
-        infra.port.set_output(0, client_slot)?;
+        let infra = NodeInfra::new(node);
 
         Ok(BacktestSpotClient { params, infra })
     }
 }
 
 impl NodeExecutable for BacktestSpotClient {
-    async fn execute(&mut self) -> Result<()> {
-        self.workflow_context()?.wait().await;
+    async fn initialize(&mut self) -> Result<()> {
+        let price_store = self.workflow_context()?.cloned_price_store();
+
+        let client = Client::builder()
+            .assets(&self.params.assets[..])
+            .commissions(self.params.commissions)
+            .price_store(price_store)
+            .build();
+
+        let client_slot = Arc::new(Slot::<SpotClientKind>::new(client.into()));
+
+        self.port_mut().set_output(0, client_slot)?;
 
         Ok(())
     }
@@ -69,8 +68,8 @@ impl TryFrom<Node> for BacktestSpotClient {
 impl TryFrom<&BacktestSpotClient> for Node {
     type Error = anyhow::Error;
 
-    fn try_from(backtest_spot_client: &BacktestSpotClient) -> Result<Self> {
-        Ok(backtest_spot_client.infra.node.clone())
+    fn try_from(value: &BacktestSpotClient) -> Result<Self> {
+        Ok(value.node().clone())
     }
 }
 
@@ -140,7 +139,7 @@ mod tests {
         node_core::{ExchangeRateManager, NodeCoreExt},
         workflow::{QuoteAsset, WorkflowContext},
     };
-    use async_lock::{Barrier, RwLock};
+    use async_lock::RwLock;
     use comfy_quant_exchange::client::spot_client_kind::SpotClientExecutable;
     use rust_decimal_macros::dec;
     use sqlx::PgPool;
@@ -151,7 +150,6 @@ mod tests {
             Arc::new(RwLock::new(QuoteAsset::new())),
             Arc::new(RwLock::new(ExchangeRateManager::default())),
             Arc::new(RwLock::new(0)),
-            Barrier::new(0),
         ))
     }
 
@@ -180,10 +178,10 @@ mod tests {
         let mut node: Node = serde_json::from_str(json_str)?;
         node.context = Some(default_context(db));
 
-        let account = BacktestSpotClient::try_from(node)?;
-        let port = account.port();
+        let mut account = BacktestSpotClient::try_from(node)?;
+        account.initialize().await?;
 
-        let client = port.output::<SpotClientKind>(0)?;
+        let client = account.port().output::<SpotClientKind>(0)?;
 
         let balance = client.get_balance("BTC").await?;
         assert_eq!(balance.free, "10");
@@ -268,8 +266,8 @@ mod tests {
         let account = BacktestSpotClient::try_from(node)?;
         let ctx = account.node_context()?;
 
-        assert_eq!(ctx.node_id, 42);
-        assert_eq!(ctx.node_name, "client.BacktestSpotClient");
+        assert_eq!(ctx.node_id(), 42);
+        assert_eq!(ctx.node_name(), "client.BacktestSpotClient");
 
         Ok(())
     }
@@ -280,7 +278,9 @@ mod tests {
 
         let mut node: Node = serde_json::from_str(json_str)?;
         node.context = Some(default_context(db));
+
         let mut account = BacktestSpotClient::try_from(node)?;
+        account.initialize().await?;
 
         // Test port() returns the correct port
         let port = account.port();

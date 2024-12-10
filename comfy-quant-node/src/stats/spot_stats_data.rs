@@ -69,11 +69,11 @@ impl SpotStatsData {
         self.quote_asset_balance = initial_quote.to_owned();
 
         self.save_strategy_spot_stats(
-            &ctx.db,
-            &ctx.node_name,
+            ctx.db(),
+            ctx.node_name(),
             &self.base.base_asset,
             &self.base.quote_asset,
-            &self.params(&ctx.workflow_id, ctx.node_id),
+            &self.params(ctx.workflow_id(), ctx.node_id()),
         )
         .await?;
 
@@ -135,19 +135,19 @@ impl SpotStatsData {
             }
         }
 
-        let params = self.params(&ctx.workflow_id, ctx.node_id);
+        let params = self.params(ctx.workflow_id(), ctx.node_id());
 
         self.save_strategy_spot_stats(
-            &ctx.db,
-            &ctx.node_name,
+            ctx.db(),
+            ctx.node_name(),
             &self.base.base_asset,
             &self.base.quote_asset,
             &params,
         )
         .await?;
         self.save_strategy_spot_position(
-            &ctx.db,
-            &ctx.node_name,
+            ctx.db(),
+            ctx.node_name(),
             &self.base.base_asset,
             &self.base.quote_asset,
             &params,

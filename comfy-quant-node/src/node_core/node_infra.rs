@@ -1,14 +1,13 @@
-use super::Port;
+use super::{NodeContext, Port};
 use crate::workflow::{Node, WorkflowContext};
 use anyhow::{anyhow, Result};
 use rust_decimal::Decimal;
-use sqlx::PgPool;
 use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct NodeInfra {
-    pub port: Port,
-    pub node: Node,
+    port: Port,
+    node: Node,
 }
 
 impl NodeInfra {
@@ -16,6 +15,18 @@ impl NodeInfra {
         let port = Port::new();
 
         Self { port, node }
+    }
+
+    pub(crate) fn port(&self) -> &Port {
+        &self.port
+    }
+
+    pub(crate) fn port_mut(&mut self) -> &mut Port {
+        &mut self.port
+    }
+
+    pub(crate) fn node(&self) -> &Node {
+        &self.node
     }
 
     pub(super) fn workflow_context(&self) -> Result<&Arc<WorkflowContext>> {
@@ -45,29 +56,5 @@ impl NodeInfra {
             .await
             .price(exchange, market, symbol)
             .ok_or_else(|| anyhow!("price not found"))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct NodeContext {
-    pub db: Arc<PgPool>,
-    pub workflow_id: String,
-    pub node_id: i16,
-    pub node_name: String,
-}
-
-impl NodeContext {
-    pub fn new(
-        db: Arc<PgPool>,
-        workflow_id: impl Into<String>,
-        node_id: i16,
-        node_name: impl Into<String>,
-    ) -> Self {
-        Self {
-            db,
-            workflow_id: workflow_id.into(),
-            node_id,
-            node_name: node_name.into(),
-        }
     }
 }

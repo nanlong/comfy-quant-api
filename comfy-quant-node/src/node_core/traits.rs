@@ -2,7 +2,7 @@ use super::{NodeContext, NodeInfra, Tick};
 use crate::{
     node_core::Port,
     stats::{SpotStats, SpotStatsData},
-    workflow::WorkflowContext,
+    workflow::{Node, WorkflowContext},
 };
 use anyhow::Result;
 use comfy_quant_exchange::client::{
@@ -24,12 +24,16 @@ impl<T: ?Sized> NodeCoreExt for T where T: NodeCore {}
 
 #[allow(async_fn_in_trait)]
 pub trait NodeCoreExt: NodeCore {
+    fn node(&self) -> &Node {
+        self.node_infra().node()
+    }
+
     fn port(&self) -> &Port {
-        &self.node_infra().port
+        self.node_infra().port()
     }
 
     fn port_mut(&mut self) -> &mut Port {
-        &mut self.node_infra_mut().port
+        self.node_infra_mut().port_mut()
     }
 
     fn workflow_context(&self) -> Result<&Arc<WorkflowContext>> {
@@ -169,7 +173,13 @@ pub trait SpotTradeable: NodeCore + NodeSpotStats {
 #[enum_dispatch]
 #[allow(async_fn_in_trait)]
 pub trait NodeExecutable {
-    async fn execute(&mut self) -> Result<()>;
+    async fn initialize(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn execute(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub struct AssetAmount {
