@@ -23,11 +23,11 @@ use std::sync::Arc;
 #[derive(Debug)]
 #[allow(unused)]
 pub(crate) struct BacktestSpotTicker {
-    params: Params,
-    infra: NodeInfra,
-    exchange: Exchange,
-    market: Market,
-    interval: KlineInterval,
+    params: Params,          // 参数
+    infra: NodeInfra,        // 节点基础设施
+    exchange: Exchange,      // 交易所
+    market: Market,          // 市场
+    interval: KlineInterval, // 时间间隔
 }
 
 impl NodeCore for BacktestSpotTicker {
