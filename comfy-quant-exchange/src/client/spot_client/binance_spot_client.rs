@@ -7,7 +7,6 @@ use anyhow::Result;
 use binance::config::Config;
 use bon::bon;
 use comfy_quant_base::{Exchange, Symbol};
-use tokio::task::spawn_blocking;
 
 #[derive(Debug, Clone)]
 pub struct BinanceSpotClient {
@@ -30,12 +29,6 @@ impl BinanceSpotClient {
 
         BinanceSpotClient { client }
     }
-
-    pub async fn ping(&self) -> Result<String> {
-        let client = self.client.clone();
-        let pong = spawn_blocking(move || client.spot().ping()).await??;
-        Ok(pong)
-    }
 }
 
 impl SpotClientExecutable for BinanceSpotClient {
@@ -53,10 +46,7 @@ impl SpotClientExecutable for BinanceSpotClient {
     }
 
     async fn get_account(&self) -> Result<AccountInformation> {
-        let client = self.client.clone();
-        let account = spawn_blocking(move || client.spot().get_account()).await??;
-
-        account.try_into()
+        self.client.spot().get_account()?.try_into()
     }
 
     async fn get_symbol_info(
@@ -64,18 +54,14 @@ impl SpotClientExecutable for BinanceSpotClient {
         base_asset: &str,
         quote_asset: &str,
     ) -> Result<SymbolInformation> {
-        let client = self.client.clone();
         let symbol = self.symbol(base_asset, quote_asset);
-        let symbol = spawn_blocking(move || client.spot().get_symbol_info(symbol)).await??;
-
-        Ok(symbol.into())
+        let symbol_info = self.client.spot().get_symbol_info(symbol)?;
+        Ok(symbol_info.into())
     }
 
     async fn get_balance(&self, asset: &str) -> Result<Balance> {
-        let client = self.client.clone();
         let asset = asset.to_uppercase();
-        let balance = spawn_blocking(move || client.spot().get_balance(asset)).await??;
-
+        let balance = self.client.spot().get_balance(asset)?;
         Ok(balance.into())
     }
 
@@ -85,46 +71,39 @@ impl SpotClientExecutable for BinanceSpotClient {
         quote_asset: &str,
         order_id: &str,
     ) -> Result<Order> {
-        let client = self.client.clone();
         let symbol = self.symbol(base_asset, quote_asset);
-        let order_id = order_id.parse::<u64>()?;
-        let order = spawn_blocking(move || client.spot().get_order(symbol, order_id)).await??;
+        let order = self.client.spot().get_order(symbol, order_id.parse()?)?;
 
-        let order = BinanceOrder::builder()
+        BinanceOrder::builder()
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .order(order)
-            .build();
-
-        order.try_into()
+            .build()
+            .try_into()
     }
 
     async fn market_buy(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
-        let client = self.client.clone();
         let symbol = self.symbol(base_asset, quote_asset);
-        let tx = spawn_blocking(move || client.spot().market_buy(symbol, qty)).await??;
+        let tx = self.client.spot().market_buy(symbol, qty)?;
 
-        let tx = BinanceTransaction::builder()
+        BinanceTransaction::builder()
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .transaction(tx)
-            .build();
-
-        tx.try_into()
+            .build()
+            .try_into()
     }
 
     async fn market_sell(&self, base_asset: &str, quote_asset: &str, qty: f64) -> Result<Order> {
-        let client = self.client.clone();
         let symbol = self.symbol(base_asset, quote_asset);
-        let tx = spawn_blocking(move || client.spot().market_sell(symbol, qty)).await??;
+        let tx = self.client.spot().market_sell(symbol, qty)?;
 
-        let tx = BinanceTransaction::builder()
+        BinanceTransaction::builder()
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .transaction(tx)
-            .build();
-
-        tx.try_into()
+            .build()
+            .try_into()
     }
 
     async fn limit_buy(
@@ -134,17 +113,15 @@ impl SpotClientExecutable for BinanceSpotClient {
         qty: f64,
         price: f64,
     ) -> Result<Order> {
-        let client = self.client.clone();
         let symbol = self.symbol(base_asset, quote_asset);
-        let tx = spawn_blocking(move || client.spot().limit_buy(symbol, qty, price)).await??;
+        let tx = self.client.spot().limit_buy(symbol, qty, price)?;
 
-        let tx = BinanceTransaction::builder()
+        BinanceTransaction::builder()
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .transaction(tx)
-            .build();
-
-        tx.try_into()
+            .build()
+            .try_into()
     }
 
     async fn limit_sell(
@@ -154,24 +131,19 @@ impl SpotClientExecutable for BinanceSpotClient {
         qty: f64,
         price: f64,
     ) -> Result<Order> {
-        let client = self.client.clone();
         let symbol = self.symbol(base_asset, quote_asset);
-        let tx = spawn_blocking(move || client.spot().limit_sell(symbol, qty, price)).await??;
+        let tx = self.client.spot().limit_sell(symbol, qty, price)?;
 
-        let tx = BinanceTransaction::builder()
+        BinanceTransaction::builder()
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .transaction(tx)
-            .build();
-
-        tx.try_into()
+            .build()
+            .try_into()
     }
 
     async fn get_price(&self, base_asset: &str, quote_asset: &str) -> Result<SymbolPrice> {
-        let client = self.client.clone();
         let symbol = self.symbol(base_asset, quote_asset);
-        let symbol_price = spawn_blocking(move || client.spot().get_price(symbol)).await??;
-
-        symbol_price.try_into()
+        self.client.spot().get_price(symbol)?.try_into()
     }
 }
