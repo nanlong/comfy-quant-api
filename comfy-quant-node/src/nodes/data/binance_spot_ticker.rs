@@ -36,7 +36,7 @@ impl BinanceSpotTicker {
         Ok(BinanceSpotTicker { params, infra })
     }
 
-    async fn output1(&self) -> Result<()> {
+    async fn feed_ticks(&self) -> Result<()> {
         // let slot = self.port.output::<Tick>(1)?;
 
         // let symbol = format!(
@@ -83,7 +83,7 @@ impl NodeExecutable for BinanceSpotTicker {
     }
 
     async fn execute(&mut self) -> Result<()> {
-        self.output1().await?;
+        self.feed_ticks().await?;
         Ok(())
     }
 }

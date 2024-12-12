@@ -54,9 +54,8 @@ impl BacktestSpotTicker {
         })
     }
 
-    async fn output1(&self) -> Result<()> {
-        let port = self.port();
-        let slot1 = port.output::<TickStream>(1)?;
+    async fn feed_ticks(&self) -> Result<()> {
+        let tick_stream = self.port().output::<TickStream>(1)?;
         let symbol =
             format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
         let start_timestamp = self.params.start_datetime.timestamp();
@@ -118,7 +117,7 @@ impl BacktestSpotTicker {
                 tick.clone().into(),
             )?;
 
-            slot1
+            tick_stream
                 .send(self.exchange.as_ref(), self.market.as_ref(), tick)
                 .await?;
         }
@@ -145,7 +144,7 @@ impl NodeExecutable for BacktestSpotTicker {
     }
 
     async fn execute(&mut self) -> Result<()> {
-        self.output1().await?;
+        self.feed_ticks().await?;
         Ok(())
     }
 }

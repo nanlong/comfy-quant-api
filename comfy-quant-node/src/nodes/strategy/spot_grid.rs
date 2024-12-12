@@ -141,7 +141,7 @@ impl SpotGrid {
 
         // 计算网格价格
         let grid_prices = calc_grid_prices(
-            &self.params.mode,
+            self.params.mode,
             self.params.lower_price,
             self.params.upper_price,
             self.params.grid_rows,
@@ -160,6 +160,7 @@ impl SpotGrid {
             .base_asset_precision(symbol_info.base_asset_precision)
             .quote_asset_precision(symbol_info.quote_asset_precision)
             .commission_rate(account.taker_commission_rate)
+            .trading_config((&self.params).into())
             .build();
 
         self.store.grid = Some(grid);
@@ -204,7 +205,6 @@ impl NodeExecutable for SpotGrid {
         let pair_info = self.port().input::<SpotPairInfo>(0)?;
         let client = self.port().input::<SpotClientKind>(1)?;
         let tick_stream = self.port().input::<TickStream>(2)?;
-        let cloned_params = self.params.clone();
         let rx = tick_stream.subscribe();
 
         self.create_grid(&pair_info, &client, &tick_stream).await?;
@@ -212,10 +212,7 @@ impl NodeExecutable for SpotGrid {
         self.grid()?.start();
 
         while let Ok((_, _, tick)) = rx.recv_async().await {
-            let Some(signal) = self
-                .grid_mut()?
-                .evaluate_with_price(&cloned_params, tick.price)
-            else {
+            let Some(signal) = self.grid_mut()?.evaluate_with_price(tick.price) else {
                 continue;
             };
 
@@ -545,7 +542,7 @@ impl TryFrom<&Node> for RuntimeStore {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy)]
 pub(crate) enum Mode {
     // 等差
     Arithmetic,
@@ -570,13 +567,33 @@ impl FromStr for Mode {
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(unused)]
 pub(crate) struct Grid {
-    exchange: String,         // 平台名称
-    rows: Vec<GridRow>,       // 网格行
-    cursor: usize,            // 当前网格序号
-    prev_sell_price: Decimal, // 上一次的卖出价格
-    starting: AtomicBool,     // 是否开始
-    running: AtomicBool,      // 是否运行
-    locked: AtomicBool,       // 是否锁定
+    exchange: String,              // 平台名称
+    rows: Vec<GridRow>,            // 网格行
+    cursor: usize,                 // 当前网格序号
+    prev_sell_price: Decimal,      // 上一次的卖出价格
+    starting: AtomicBool,          // 是否开始
+    running: AtomicBool,           // 是否运行
+    locked: AtomicBool,            // 是否锁定
+    trading_config: TradingConfig, // 交易配置
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct TradingConfig {
+    trigger_price: Option<Decimal>,
+    stop_loss: Option<Decimal>,
+    take_profit: Option<Decimal>,
+    sell_all_on_stop: bool,
+}
+
+impl From<&Params> for TradingConfig {
+    fn from(value: &Params) -> Self {
+        Self {
+            trigger_price: value.trigger_price,
+            stop_loss: value.stop_loss,
+            take_profit: value.take_profit,
+            sell_all_on_stop: value.sell_all_on_stop,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -599,6 +616,7 @@ impl Grid {
         base_asset_precision: u32,         // 基础币种小数点位数
         quote_asset_precision: u32,        // 报价币种小数点位数
         commission_rate: Decimal,          // 手续费
+        trading_config: TradingConfig,
     ) -> Self {
         let grid_investment = (investment / (Decimal::from(grid_prices.len()) - dec!(1)))
             .round_dp(quote_asset_precision);
@@ -642,6 +660,7 @@ impl Grid {
             starting,
             running,
             locked,
+            trading_config,
         }
     }
 
@@ -687,11 +706,7 @@ impl Grid {
     }
 
     /// 根据当前价格，获取交易信号
-    fn evaluate_with_price(
-        &mut self,
-        params: &Params,
-        current_price: Decimal,
-    ) -> Option<TradeSignal> {
+    fn evaluate_with_price(&mut self, current_price: Decimal) -> Option<TradeSignal> {
         // 价格浮动比率
         let price_tolerance = dec!(0.005);
 
@@ -702,7 +717,7 @@ impl Grid {
 
         if !self.running.load(Ordering::Relaxed) {
             // 如果设置了触发价格，则根据触发价格决定是否运行
-            if let Some(trigger_price) = params.trigger_price {
+            if let Some(trigger_price) = self.trading_config.trigger_price {
                 if current_price <= trigger_price {
                     self.running.store(true, Ordering::Relaxed);
                 }
@@ -736,10 +751,10 @@ impl Grid {
         }
 
         // 止损
-        if let Some(stop_loss) = params.stop_loss {
+        if let Some(stop_loss) = self.trading_config.stop_loss {
             if current_price <= stop_loss {
                 let signal = TradeSignal::StopLoss {
-                    sell_all_on_stop: params.sell_all_on_stop,
+                    sell_all_on_stop: self.trading_config.sell_all_on_stop,
                 };
 
                 self.starting.store(false, Ordering::Relaxed);
@@ -748,7 +763,7 @@ impl Grid {
         }
 
         // 止盈
-        if let Some(take_profit) = params.take_profit {
+        if let Some(take_profit) = self.trading_config.take_profit {
             if current_price >= take_profit {
                 let signal = TradeSignal::TakeProfit;
 
@@ -844,7 +859,7 @@ pub(crate) struct GridRow {
 
 // 计算网格价格
 fn calc_grid_prices(
-    mode: &Mode,                // 网格模式
+    mode: Mode,                 // 网格模式
     lower_price: Decimal,       // 网格下界
     upper_price: Decimal,       // 网格上界
     grid_rows: u64,             // 网格数量
@@ -974,7 +989,7 @@ mod tests {
 
     #[test]
     fn test_calculate_grid_rows() -> Result<()> {
-        let grid_prices = calc_grid_prices(&Mode::Arithmetic, dec!(1.0), dec!(1.1), 8, 3);
+        let grid_prices = calc_grid_prices(Mode::Arithmetic, dec!(1.0), dec!(1.1), 8, 3);
         assert_eq!(
             grid_prices,
             vec![
@@ -990,7 +1005,7 @@ mod tests {
             ]
         );
 
-        let grid_prices = calc_grid_prices(&Mode::Geometric, dec!(1.0), dec!(1.1), 8, 3);
+        let grid_prices = calc_grid_prices(Mode::Geometric, dec!(1.0), dec!(1.1), 8, 3);
         assert_eq!(
             grid_prices,
             vec![
@@ -1006,7 +1021,7 @@ mod tests {
             ]
         );
 
-        let grid_prices = calc_grid_prices(&Mode::Geometric, dec!(4.0), dec!(20.0), 10, 3);
+        let grid_prices = calc_grid_prices(Mode::Geometric, dec!(4.0), dec!(20.0), 10, 3);
         assert_eq!(
             grid_prices,
             vec![
@@ -1024,7 +1039,7 @@ mod tests {
             ]
         );
 
-        let grid_prices = calc_grid_prices(&Mode::Geometric, dec!(4.0), dec!(20.0), 2, 3);
+        let grid_prices = calc_grid_prices(Mode::Geometric, dec!(4.0), dec!(20.0), 2, 3);
         assert_eq!(grid_prices, vec![dec!(4.0), dec!(8.944), dec!(20.0)]);
 
         Ok(())
@@ -1064,7 +1079,7 @@ mod tests {
         let commission = dec!(0.001);
 
         let grid_prices = calc_grid_prices(
-            &params.mode,
+            params.mode,
             params.lower_price,
             params.upper_price,
             params.grid_rows,
@@ -1079,6 +1094,7 @@ mod tests {
             .quote_asset_precision(quote_asset_precision)
             .current_price(dec!(4.25))
             .commission_rate(commission)
+            .trading_config((&params).into())
             .build();
 
         grid.start();
@@ -1090,10 +1106,10 @@ mod tests {
         assert!(!grid.running.load(Ordering::Relaxed));
         assert!(!grid.locked.load(Ordering::Relaxed));
 
-        let signal = grid.evaluate_with_price(&params, dec!(4.25));
+        let signal = grid.evaluate_with_price(dec!(4.25));
         assert_eq!(signal, None);
 
-        let signal = grid.evaluate_with_price(&params, dec!(4.0));
+        let signal = grid.evaluate_with_price(dec!(4.0));
         assert_eq!(
             signal,
             Some(TradeSignal::Buy {
@@ -1126,10 +1142,10 @@ mod tests {
         assert_eq!(grid.current_grid_row().buyed, true);
         assert_eq!(grid.locked.load(Ordering::Relaxed), false);
 
-        let signal = grid.evaluate_with_price(&params, dec!(3.99));
+        let signal = grid.evaluate_with_price(dec!(3.99));
         assert_eq!(signal, None);
 
-        let signal = grid.evaluate_with_price(&params, dec!(4.698));
+        let signal = grid.evaluate_with_price(dec!(4.698));
         assert_eq!(
             signal,
             Some(TradeSignal::Sell {
@@ -1162,22 +1178,22 @@ mod tests {
         assert_eq!(grid.current_grid_row().sold, true);
         assert_eq!(grid.locked.load(Ordering::Relaxed), false);
 
-        let signal = grid.evaluate_with_price(&params, dec!(5.108));
+        let signal = grid.evaluate_with_price(dec!(5.108));
         assert_eq!(signal, None);
         assert_eq!(grid.cursor, 0);
 
-        let signal = grid.evaluate_with_price(&params, dec!(5.109));
+        let signal = grid.evaluate_with_price(dec!(5.109));
         assert_eq!(signal, None);
         assert_eq!(grid.cursor, 1);
 
-        let signal = grid.evaluate_with_price(&params, dec!(4.697));
+        let signal = grid.evaluate_with_price(dec!(4.697));
         assert_eq!(signal, None);
 
-        let signal = grid.evaluate_with_price(&params, dec!(6.001));
+        let signal = grid.evaluate_with_price(dec!(6.001));
         assert_eq!(signal, None);
         assert_eq!(grid.cursor, 2);
 
-        let signal = grid.evaluate_with_price(&params, dec!(5.519));
+        let signal = grid.evaluate_with_price(dec!(5.519));
         assert_eq!(
             signal,
             Some(TradeSignal::Buy {
