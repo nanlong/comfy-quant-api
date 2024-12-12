@@ -504,7 +504,7 @@ mod tests {
     }
 
     #[test]
-    fn test_link_deserialize() -> anyhow::Result<()> {
+    fn test_link_deserialize() -> Result<()> {
         let json_str = r#"[1, 2, 0, 5, 0, "tickStream"]"#;
         let link: Link = serde_json::from_str(json_str)?;
 
@@ -519,7 +519,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ticker_node_deserialize() -> anyhow::Result<()> {
+    fn test_ticker_node_deserialize() -> Result<()> {
         let json_str = r#"{"id":1,"type":"加密货币交易所/币安现货(Ticker)","pos":[118,183],"size":[210,102],"flags":{},"order":0,"mode":0,"outputs":[{"name":"交易所信息","type":"exchangeData","links":null,"slot_index":0},{"name":"最新成交价格","type":"tickerStream","links":null,"slot_index":1}],"properties":{"type":"ExchangeInfo.binanceSpotTicker","params":["BTC","USDT"]}}"#;
 
         let node: Node = serde_json::from_str(json_str)?;
@@ -532,7 +532,7 @@ mod tests {
     }
 
     #[test]
-    fn test_spot_grid_node_deserialize() -> anyhow::Result<()> {
+    fn test_spot_grid_node_deserialize() -> Result<()> {
         let json_str = r#"{"id":1,"type":"交易策略/网格(现货)","pos":[329,146],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[{"name":"交易所信息","type":"exchangeData","link":null},{"name":"最新成交价格","type":"tickerStream","link":null},{"name":"账户","type":"account","link":null},{"name":"回测","type":"backtest","link":null}],"properties":{"params":["arithmetic","","",8,"","","","",true]}}"#;
 
         let node: Node = serde_json::from_str(json_str)?;
@@ -546,7 +546,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    fn test_workflow_deserialize(db: PgPool) -> anyhow::Result<()> {
+    fn test_workflow_deserialize(db: PgPool) -> Result<()> {
         let json_str = r#"{"last_node_id":3,"last_link_id":3,"nodes":[{"id":2,"type":"加密货币交易所/币安现货(Ticker Mock)","pos":[210,58],"size":[240,150],"flags":{},"order":0,"mode":0,"outputs":[{"name":"现货交易对","type":"SpotPairInfo","links":[1],"slot_index":0},{"name":"Tick数据流","type":"TickStream","links":[2],"slot_index":1}],"properties":{"type":"data.BacktestSpotTicker","params":["BTC","USDT","2024-01-01 00:00:00","2024-01-02 00:00:00"]}},{"id":1,"type":"账户/币安账户(Mock)","pos":[224,295],"size":{"0":210,"1":106},"flags":{},"order":1,"mode":0,"outputs":[{"name":"现货账户客户端","type":"SpotClient","links":[3],"slot_index":0}],"properties":{"type":"client.BacktestSpotClient","params":[0.001, [["USDT",1000]]]}},{"id":3,"type":"交易策略/网格(现货)","pos":[520,93],"size":{"0":210,"1":290},"flags":{},"order":2,"mode":0,"inputs":[{"name":"现货交易对","type":"SpotPairInfo","link":1},{"name":"现货账户客户端","type":"SpotClient","link":3},{"name":"Tick数据流","type":"TickStream","link":2}],"properties":{"type":"strategy.SpotGrid","params":["arithmetic",1,1.1,8,1,"","","",true]}}],"links":[[1,2,0,3,0,"SpotPairInfo"],[2,2,1,3,2,"TickStream"],[3,1,0,3,1,"SpotClient"]],"groups":[],"config":{},"extra":{},"version":0.4}"#;
 
         let mut workflow: Workflow = serde_json::from_str(json_str)?;

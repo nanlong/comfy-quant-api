@@ -117,7 +117,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_try_from_node_to_binance_account() -> anyhow::Result<()> {
+    fn test_try_from_node_to_binance_account() -> Result<()> {
         let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"client.BinanceSpotClient","params":["api_secret","secret"]}}"#;
 
         let node: Node = serde_json::from_str(json_str)?;
@@ -130,7 +130,7 @@ mod tests {
     }
 
     // #[tokio::test]
-    // async fn test_binance_account_execute() -> anyhow::Result<()> {
+    // async fn test_binance_account_execute() -> Result<()> {
     //     let json_str = r#"{"id":1,"type":"账户/币安子账户","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"account.binanceSubAccount","params":["api_secret","secret"]}}"#;
 
     //     let node: workflow::Node = serde_json::from_str(json_str)?;

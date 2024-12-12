@@ -193,27 +193,30 @@ pub struct Order {
 }
 
 impl Order {
-    pub fn base_asset(&self) -> anyhow::Result<&String> {
-        self.base_asset
+    pub fn base_asset(&self) -> Result<&str> {
+        Ok(self
+            .base_asset
             .as_ref()
-            .ok_or_else(|| anyhow!("base asset not set"))
+            .ok_or_else(|| anyhow!("base asset not set"))?)
+        // Ok(self.base_asset.as_ref().unwrap())
     }
 
-    pub fn quote_asset(&self) -> anyhow::Result<&String> {
-        self.quote_asset
+    pub fn quote_asset(&self) -> Result<&str> {
+        Ok(self
+            .quote_asset
             .as_ref()
-            .ok_or_else(|| anyhow!("quote asset not set"))
+            .ok_or_else(|| anyhow!("quote asset not set"))?)
     }
 
-    pub fn base_asset_amount(&self) -> anyhow::Result<Decimal> {
+    pub fn base_asset_amount(&self) -> Result<Decimal> {
         Ok(self.executed_qty.parse()?)
     }
 
-    pub fn quote_asset_amount(&self) -> anyhow::Result<Decimal> {
+    pub fn quote_asset_amount(&self) -> Result<Decimal> {
         Ok(self.cumulative_quote_qty.parse()?)
     }
 
-    pub fn base_commission(&self, commission_rate: &Decimal) -> anyhow::Result<Decimal> {
+    pub fn base_commission(&self, commission_rate: &Decimal) -> Result<Decimal> {
         let commission = match self.order_side {
             OrderSide::Buy => self.base_asset_amount()? * commission_rate,
             OrderSide::Sell => dec!(0),
@@ -222,7 +225,7 @@ impl Order {
         Ok(commission)
     }
 
-    pub fn quote_commission(&self, commission_rate: &Decimal) -> anyhow::Result<Decimal> {
+    pub fn quote_commission(&self, commission_rate: &Decimal) -> Result<Decimal> {
         let commission = match self.order_side {
             OrderSide::Buy => dec!(0),
             OrderSide::Sell => self.quote_asset_amount()? * commission_rate,

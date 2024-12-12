@@ -1,10 +1,11 @@
+use anyhow::Result;
 use comfy_quant_exchange::client::{
     spot_client::binance_spot_client::BinanceSpotClient, spot_client_kind::SpotClientExecutable,
 };
 use std::env;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     // let api_key = env::var("BINANCE_TESTNET_API_KEY")?;
     // let secret_key = env::var("BINANCE_TESTNET_SECRET_KEY")?;
 

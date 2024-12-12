@@ -1,3 +1,4 @@
+use anyhow::Result;
 use async_lock::RwLock;
 use comfy_quant_node::{
     node_core::{ExchangeRateManager, NodeExecutable},
@@ -7,7 +8,7 @@ use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let db = PgPoolOptions::new()

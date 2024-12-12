@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
-    async fn test_create_kline(db: PgPool) -> anyhow::Result<()> {
+    async fn test_create_kline(db: PgPool) -> Result<()> {
         let kline = create_kline(&db).await?;
 
         let kline_createed = get_by_id(&db, kline.id).await?.unwrap();
@@ -319,7 +319,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
-    async fn test_update_kline(db: PgPool) -> anyhow::Result<()> {
+    async fn test_update_kline(db: PgPool) -> Result<()> {
         let mut kline = create_kline(&db).await?;
 
         kline.high_price = "20000".parse()?;
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
-    async fn test_create_or_update_kline(db: PgPool) -> anyhow::Result<()> {
+    async fn test_create_or_update_kline(db: PgPool) -> Result<()> {
         let open_time = secs_to_datetime(1721817600)?;
 
         let kline = Kline::builder()
@@ -395,7 +395,7 @@ mod tests {
     }
 
     // #[sqlx::test(migrator = "crate::MIGRATOR")]
-    // async fn test_listen_for_kline_changes(db: PgPool) -> anyhow::Result<()> {
+    // async fn test_listen_for_kline_changes(db: PgPool) -> Result<()> {
     //     let mut listener = sqlx::postgres::PgListener::connect_with(&db).await?;
     //     listener.listen("kline_change").await?;
 
@@ -427,7 +427,7 @@ mod tests {
     // }
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
-    async fn test_get_kline(db: PgPool) -> anyhow::Result<()> {
+    async fn test_get_kline(db: PgPool) -> Result<()> {
         let kline = create_kline(&db).await?;
 
         let kline_get = get_kline(
@@ -452,7 +452,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
-    async fn test_time_range_klines_stream(db: PgPool) -> anyhow::Result<()> {
+    async fn test_time_range_klines_stream(db: PgPool) -> Result<()> {
         create_kline(&db).await?;
         let start_datetime = secs_to_datetime(1721817600)?;
         let end_datetime = secs_to_datetime(1721817600)?;
@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
-    async fn test_time_range_klines_count(db: PgPool) -> anyhow::Result<()> {
+    async fn test_time_range_klines_count(db: PgPool) -> Result<()> {
         create_kline(&db).await?;
 
         let start_datetime = secs_to_datetime(1721817600)?;

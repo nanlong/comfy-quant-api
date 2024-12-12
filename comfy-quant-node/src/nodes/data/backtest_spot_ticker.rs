@@ -244,7 +244,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_try_from_node_to_backtest_spot_ticker() -> anyhow::Result<()> {
+    fn test_try_from_node_to_backtest_spot_ticker() -> Result<()> {
         let json_str = r#"{"id":1,"type":"数据/币安现货行情","pos":[199,74],"size":{"0":210,"1":310},"flags":{},"order":0,"mode":0,"inputs":[],"properties":{"type":"data.BacktestSpotTicker","params":["BTC","USDT","2024-10-10 15:18:42","2024-10-10 16:18:42"]}}"#;
 
         let node: Node = serde_json::from_str(json_str)?;
