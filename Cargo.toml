@@ -24,12 +24,12 @@ enum_dispatch = { version = "0.3" }
 flume = { version = "0.11" }
 futures = { version = "0.3" }
 futures-util = { version = "0.3" }
-hdrhistogram = "7"
-itertools = "0.13.0"
-nanoid = "0.4"
+hdrhistogram = { version = "7" }
+itertools = { version = "0.13" }
+nanoid = { version = "0.4" }
 polars = { version = "0.45", features = ["lazy", "cum_agg"] }
 rust_decimal = { version = "1.36", features = ["db-postgres"] }
-rust_decimal_macros = "1.36"
+rust_decimal_macros = { version = "1.36" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 serde_with = { version = "3.11" }
@@ -42,9 +42,9 @@ sqlx = { version = "0.8", features = [
     "rust_decimal",
     "json",
 ] }
-strum = "0.26"
-strum_macros = "0.26"
-thiserror = "2.0"
+strum = { version = "0.26" }
+strum_macros = { version = "0.26" }
+thiserror = { version = "2.0" }
 tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { version = "0.7" }
