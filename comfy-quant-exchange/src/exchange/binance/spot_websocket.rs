@@ -34,26 +34,32 @@ impl<'a> SpotWebsocket<'a> {
         let keep_running = self.keep_running.clone();
 
         tokio::spawn(async move {
-            let mut websocket = WebSockets::new(|event| {
+            let callback = |event| {
                 let _ = tx.send(event);
                 Ok(())
-            });
+            };
 
-            if let Some(config) = config {
-                websocket
-                    .connect_with_config(&topic, &config)
-                    .map_err(|_| anyhow::anyhow!("Failed to connect to websocket"))?;
-            } else {
-                websocket
-                    .connect(&topic)
-                    .map_err(|_| anyhow::anyhow!("Failed to connect to websocket"))?;
+            while keep_running.load(Ordering::Relaxed) {
+                let mut websocket = WebSockets::new(callback);
+
+                let resp = if let Some(config) = &config {
+                    websocket.connect_with_config(&topic, config)
+                } else {
+                    websocket.connect(&topic)
+                };
+
+                if let Err(e) = resp {
+                    tracing::error!("{}", e);
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    continue;
+                }
+
+                if let Err(e) = websocket.event_loop(&keep_running) {
+                    tracing::error!("{}", e);
+                }
+
+                let _ = websocket.disconnect();
             }
-
-            if let Err(e) = websocket.event_loop(&keep_running) {
-                println!("websocket event loop error: {}", e);
-            }
-
-            let _ = websocket.disconnect();
 
             Ok::<(), anyhow::Error>(())
         });

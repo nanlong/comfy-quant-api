@@ -6,9 +6,8 @@ use futures::StreamExt;
 async fn main() -> anyhow::Result<()> {
     let config = Config::default().set_ws_endpoint("wss://data-stream.binance.vision/ws");
     let client = BinanceClient::builder().config(config).build();
+    let websocket = client.spot_websocket("btcusdt@aggTrade");
 
-    let spot = client.spot();
-    let websocket = spot.websocket("btcusdt@aggTrade");
     let mut stream = websocket.subscribe().await?;
 
     println!("got stream");
