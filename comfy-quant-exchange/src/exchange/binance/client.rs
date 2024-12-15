@@ -1,4 +1,4 @@
-use super::{Futures, Spot, SpotWebsocket};
+use super::{Futures, FuturesWebsocket, Market, Spot, SpotWebsocket};
 use binance::config::Config;
 use bon::bon;
 
@@ -34,6 +34,10 @@ impl BinanceClient {
 
     pub fn futures(&self) -> Futures {
         Futures::new(self)
+    }
+
+    pub fn futures_websocket(&self, market: Market, topic: impl Into<String>) -> FuturesWebsocket {
+        FuturesWebsocket::new(self, market, topic)
     }
 
     pub fn config(&self) -> &Option<Config> {
