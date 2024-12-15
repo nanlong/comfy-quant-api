@@ -1,4 +1,4 @@
-use super::BinanceClient;
+use super::{BinanceClient, SpotWebsocket};
 use crate::client::ClientError;
 use anyhow::Result;
 use binance::{
@@ -20,6 +20,10 @@ pub struct Spot<'a> {
 impl<'a> Spot<'a> {
     pub fn new(client: &'a BinanceClient) -> Self {
         Spot { client }
+    }
+
+    pub fn websocket(&self) -> SpotWebsocket {
+        SpotWebsocket::new(self.client)
     }
 
     fn account(&self) -> Account {
