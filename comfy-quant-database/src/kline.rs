@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bon::bon;
 use chrono::{DateTime, Utc};
-use futures::Stream;
+use futures::stream::BoxStream;
 use rust_decimal::Decimal;
 use sqlx::{postgres::PgPool, FromRow};
 
@@ -210,7 +210,7 @@ pub fn time_range_klines_stream<'a>(
     interval: &str,
     start_datetime: &DateTime<Utc>,
     end_datetime: &DateTime<Utc>,
-) -> impl Stream<Item = Result<Kline, sqlx::Error>> + 'a {
+) -> BoxStream<'a, Result<Kline, sqlx::Error>> {
     sqlx::query_as!(
         Kline,
         r#"

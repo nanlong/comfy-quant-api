@@ -8,7 +8,7 @@ use binance::{
 };
 use bon::bon;
 use comfy_quant_base::{KlineInterval, Market, Symbol};
-use futures::Stream;
+use futures::stream::BoxStream;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
@@ -25,12 +25,7 @@ impl BinanceKline {
     #[builder]
     pub fn new(config: Option<Config>) -> Self {
         // 访问公共接口，不需要api_key和secret_key
-        let client = if let Some(config) = config {
-            Arc::new(BinanceClient::builder().config(config).build())
-        } else {
-            Arc::new(BinanceClient::builder().build())
-        };
-
+        let client = Arc::new(BinanceClient::builder().maybe_config(config).build());
         let token = CancellationToken::new();
 
         BinanceKline { client, token }
@@ -44,7 +39,7 @@ impl BinanceKline {
         interval: KlineInterval, // 时间间隔
         start_time: i64,         // 开始时间
         end_time: i64,           // 结束时间
-    ) -> impl Stream<Item = Result<KlineSummary>> {
+    ) -> BoxStream<Result<KlineSummary>> {
         let client = Arc::clone(&self.client);
         let (tx, rx) = flume::bounded(1);
         let (error_tx, error_rx) = flume::bounded(1);
