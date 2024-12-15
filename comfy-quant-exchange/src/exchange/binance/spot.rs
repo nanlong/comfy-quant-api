@@ -22,8 +22,8 @@ impl<'a> Spot<'a> {
         Spot { client }
     }
 
-    pub fn websocket(&self) -> SpotWebsocket {
-        SpotWebsocket::new(self.client)
+    pub fn websocket(&self, topic: impl Into<String>) -> SpotWebsocket {
+        SpotWebsocket::new(self.client, topic)
     }
 
     fn account(&self) -> Account {

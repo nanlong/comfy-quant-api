@@ -7,8 +7,11 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::default().set_ws_endpoint("wss://data-stream.binance.vision/ws");
     let client = BinanceClient::builder().config(config).build();
 
-    let subscription = "btcusdt@aggTrade";
-    let mut stream = client.spot().websocket().subscribe(subscription).await?;
+    let spot = client.spot();
+    let websocket = spot.websocket("btcusdt@aggTrade");
+    let mut stream = websocket.subscribe().await?;
+
+    println!("got stream");
 
     while let Some(event) = stream.next().await {
         println!("{:?}", event);

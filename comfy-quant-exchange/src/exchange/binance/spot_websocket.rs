@@ -1,33 +1,39 @@
-use std::sync::atomic::AtomicBool;
-
 use super::BinanceClient;
 use anyhow::Result;
 use async_stream::stream;
 use binance::websockets::{WebSockets, WebsocketEvent};
-use futures::Stream;
+use futures::stream::BoxStream;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 #[allow(unused)]
-#[derive(Clone)]
 pub struct SpotWebsocket<'a> {
     client: &'a BinanceClient,
+    topic: String,
+    keep_running: Arc<AtomicBool>,
 }
 
 impl<'a> SpotWebsocket<'a> {
-    pub fn new(client: &'a BinanceClient) -> Self {
-        SpotWebsocket { client }
+    pub fn new(client: &'a BinanceClient, topic: impl Into<String>) -> Self {
+        let topic = topic.into();
+        let keep_running = Arc::new(AtomicBool::new(true));
+
+        SpotWebsocket {
+            client,
+            topic,
+            keep_running,
+        }
     }
 
-    pub async fn subscribe(
-        &self,
-        subscription: impl Into<String>,
-    ) -> Result<impl Stream<Item = WebsocketEvent>> {
+    pub async fn subscribe(&self) -> Result<BoxStream<WebsocketEvent>> {
         let (tx, rx) = flume::unbounded();
-        let subscription = subscription.into();
+        let topic = self.topic.clone();
         let config = self.client.config().clone();
+        let keep_running = self.keep_running.clone();
 
         tokio::spawn(async move {
-            let keep_running = AtomicBool::new(true);
-
             let mut websocket = WebSockets::new(|event| {
                 let _ = tx.send(event);
                 Ok(())
@@ -35,11 +41,11 @@ impl<'a> SpotWebsocket<'a> {
 
             if let Some(config) = config {
                 websocket
-                    .connect_with_config(&subscription, &config)
+                    .connect_with_config(&topic, &config)
                     .map_err(|_| anyhow::anyhow!("Failed to connect to websocket"))?;
             } else {
                 websocket
-                    .connect(&subscription)
+                    .connect(&topic)
                     .map_err(|_| anyhow::anyhow!("Failed to connect to websocket"))?;
             }
 
@@ -47,7 +53,9 @@ impl<'a> SpotWebsocket<'a> {
                 println!("websocket event loop error: {}", e);
             }
 
-            Ok::<_, anyhow::Error>(())
+            let _ = websocket.disconnect();
+
+            Ok::<(), anyhow::Error>(())
         });
 
         let stream = stream! {
@@ -57,5 +65,11 @@ impl<'a> SpotWebsocket<'a> {
         };
 
         Ok(Box::pin(stream))
+    }
+}
+
+impl Drop for SpotWebsocket<'_> {
+    fn drop(&mut self) {
+        self.keep_running.store(false, Ordering::Relaxed);
     }
 }
