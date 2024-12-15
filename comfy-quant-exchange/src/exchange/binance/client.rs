@@ -32,6 +32,10 @@ impl BinanceClient {
         Futures::new(self)
     }
 
+    pub fn config(&self) -> &Option<Config> {
+        &self.config
+    }
+
     pub(crate) fn create_api<T, F1, F2>(&self, new: F1, new_with_config: F2) -> T
     where
         F1: FnOnce(Option<String>, Option<String>) -> T,
