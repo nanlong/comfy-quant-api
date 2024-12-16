@@ -10,5 +10,6 @@ async-lock = { workspace = true }
 chrono = { workspace = true }
 nanoid = { workspace = true }
 serde = { workspace = true }
+sqlx = { workspace = true }
 strum = { workspace = true }
 strum_macros = { workspace = true }

@@ -1,51 +1,42 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
+use std::fmt;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Default, sqlx::Type, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub enum Market {
-    Spot,
-    Futures,
+    #[default]
+    Unknow, // 未知
+    Spot,    // 现货
+    Usdm,    // U本位合约
+    Coinm,   // 币本位合约
+    Vanilla, // 期货
 }
 
-impl From<Market> for String {
-    fn from(value: Market) -> Self {
-        value.as_ref().to_string()
+impl From<&str> for Market {
+    fn from(value: &str) -> Self {
+        match value {
+            "spot" => Market::Spot,
+            "usdm" => Market::Usdm,
+            "coinm" => Market::Coinm,
+            "vanilla" => Market::Vanilla,
+            _ => Market::Unknow,
+        }
     }
 }
 
-impl FromStr for Market {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "spot" => Self::Spot,
-            "futures" => Self::Futures,
-            _ => anyhow::bail!("Invalid market"),
-        })
-    }
-}
-
-impl TryFrom<&str> for Market {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        value.parse()
-    }
-}
-
-impl TryFrom<String> for Market {
-    type Error = anyhow::Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::try_from(value.as_ref())
+impl From<String> for Market {
+    fn from(value: String) -> Self {
+        value.as_str().into()
     }
 }
 
 impl AsRef<str> for Market {
     fn as_ref(&self) -> &str {
         match self {
-            Self::Spot => "spot",
-            Self::Futures => "futures",
+            Market::Spot => "spot",
+            Market::Usdm => "usdm",
+            Market::Coinm => "coinm",
+            Market::Vanilla => "vanilla",
+            Market::Unknow => "unknow",
         }
     }
 }

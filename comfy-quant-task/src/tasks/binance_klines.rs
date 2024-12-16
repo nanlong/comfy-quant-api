@@ -38,7 +38,6 @@ impl BinanceKlinesTask {
         start_timestamp: i64,
         end_timestamp: i64,
     ) -> Result<Self> {
-        let market: Market = market.try_into()?;
         let interval: KlineInterval = interval.try_into()?;
 
         let params = TaskParams::builder()
@@ -123,7 +122,7 @@ impl Executable for BinanceKlinesTask {
 
                     let kline_data = kline::Kline {
                         exchange: BINANCE_EXCHANGE_NAME.to_string(),
-                        market: params.market.to_string(),
+                        market: params.market.clone(),
                         symbol: params.symbol.to_string(),
                         interval: params.interval.to_string(),
                         open_time,

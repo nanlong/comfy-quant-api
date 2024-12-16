@@ -1,6 +1,7 @@
 use anyhow::Result;
 use bon::bon;
 use chrono::{DateTime, Utc};
+use comfy_quant_base::Market;
 use futures::stream::BoxStream;
 use rust_decimal::Decimal;
 use sqlx::{postgres::PgPool, FromRow};
@@ -9,7 +10,7 @@ use sqlx::{postgres::PgPool, FromRow};
 pub struct Kline {
     pub id: i32,                   // 主键ID
     pub exchange: String,          // 交易所
-    pub market: String,            // 市场
+    pub market: Market,            // 市场
     pub symbol: String,            // 交易对
     pub interval: String,          // 时间间隔
     pub open_time: DateTime<Utc>,  // 开盘时间
@@ -27,7 +28,7 @@ impl Kline {
     #[builder(on(String, into))]
     pub fn new(
         exchange: String,
-        market: String,
+        market: Market,
         symbol: String,
         interval: String,
         open_time: DateTime<Utc>,
@@ -62,7 +63,7 @@ pub async fn create(db: &PgPool, data: &Kline) -> Result<Kline> {
         RETURNING *
         "#,
         data.exchange,
-        data.market,
+        data.market.as_ref(),
         data.symbol,
         data.interval,
         data.open_time,
@@ -114,7 +115,7 @@ pub async fn create_or_update(db: &PgPool, data: &Kline) -> Result<Kline> {
         RETURNING *
         "#,
         data.exchange,
-        data.market,
+        data.market.as_ref(),
         data.symbol,
         data.interval,
         data.open_time,
@@ -146,7 +147,7 @@ pub async fn get_by_id(db: &PgPool, id: i32) -> Result<Option<Kline>> {
 pub async fn get_kline(
     db: &PgPool,
     exchange: &str,
-    market: &str,
+    market: &Market,
     symbol: &str,
     interval: &str,
     open_time: DateTime<Utc>,
@@ -157,7 +158,7 @@ pub async fn get_kline(
         SELECT * FROM klines WHERE exchange = $1 AND market = $2 AND symbol = $3 AND interval = $4 AND open_time = $5
         "#,
         exchange,
-        market,
+        market.as_ref(),
         symbol,
         interval,
         open_time,
@@ -282,7 +283,7 @@ mod tests {
 
         let kline = Kline::builder()
             .exchange("binance".to_string())
-            .market("spot".to_string())
+            .market("spot".into())
             .symbol("BTCUSDT".to_string())
             .interval("1m".to_string())
             .open_time(open_time)
@@ -306,7 +307,7 @@ mod tests {
 
         assert_eq!(kline_createed.id, 1);
         assert_eq!(kline_createed.exchange, "binance");
-        assert_eq!(kline_createed.market, "spot");
+        assert_eq!(kline_createed.market, "spot".into());
         assert_eq!(kline_createed.symbol, "BTCUSDT");
         assert_eq!(kline_createed.interval, "1m");
         assert_eq!(kline_createed.open_price, "10000".parse()?);
@@ -344,7 +345,7 @@ mod tests {
 
         let kline = Kline::builder()
             .exchange("binance".to_string())
-            .market("spot".to_string())
+            .market("spot".into())
             .symbol("BTCUSDT".to_string())
             .interval("1m".to_string())
             .open_time(open_time)
@@ -359,7 +360,7 @@ mod tests {
 
         assert_eq!(kline.id, 1);
         assert_eq!(kline.exchange, "binance");
-        assert_eq!(kline.market, "spot");
+        assert_eq!(kline.market, "spot".into());
         assert_eq!(kline.symbol, "BTCUSDT");
         assert_eq!(kline.interval, "1m");
         assert_eq!(kline.open_time.timestamp(), 1721817600);
@@ -371,7 +372,7 @@ mod tests {
 
         let kline2 = Kline::builder()
             .exchange("binance".to_string())
-            .market("spot".to_string())
+            .market("spot".into())
             .symbol("BTCUSDT".to_string())
             .interval("1m".to_string())
             .open_time(open_time)

@@ -67,13 +67,16 @@ impl BinanceKline {
                             start_time as u64,
                             end_time as u64,
                         )?,
-                        Market::Futures => client.futures().get_klines(
-                            &symbol,
-                            &interval,
-                            KLINE_LIMIT,
-                            start_time as u64,
-                            end_time as u64,
-                        )?,
+                        Market::Usdm | Market::Coinm | Market::Vanilla => {
+                            client.futures().get_klines(
+                                &symbol,
+                                &interval,
+                                KLINE_LIMIT,
+                                start_time as u64,
+                                end_time as u64,
+                            )?
+                        }
+                        Market::Unknow => KlineSummaries::AllKlineSummaries(vec![]),
                     };
 
                     for kline in klines {

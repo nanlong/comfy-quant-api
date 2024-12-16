@@ -10,17 +10,17 @@ use std::sync::{
 
 #[derive(Debug, Clone, Copy)]
 pub enum Market {
-    USDM,
-    COINM,
-    VANILLA,
+    Usdm,
+    Coinm,
+    Vanilla,
 }
 
 impl From<Market> for FuturesMarket {
     fn from(market: Market) -> Self {
         match market {
-            Market::USDM => FuturesMarket::USDM,
-            Market::COINM => FuturesMarket::COINM,
-            Market::VANILLA => FuturesMarket::Vanilla,
+            Market::Usdm => FuturesMarket::USDM,
+            Market::Coinm => FuturesMarket::COINM,
+            Market::Vanilla => FuturesMarket::Vanilla,
         }
     }
 }
@@ -48,7 +48,7 @@ impl<'a> FuturesWebsocket<'a> {
 
     pub async fn subscribe(&self) -> Result<BoxStream<FuturesWebsocketEvent>> {
         let (tx, rx) = flume::unbounded();
-        let market = self.market;
+        let market = self.market.into();
         let topic = self.topic.clone();
         let config = self.client.config().clone();
         let keep_running = self.keep_running.clone();
@@ -63,9 +63,9 @@ impl<'a> FuturesWebsocket<'a> {
                 let mut websocket = FuturesWebSockets::new(callback);
 
                 let resp = if let Some(config) = &config {
-                    websocket.connect_with_config(&market.into(), &topic, config)
+                    websocket.connect_with_config(&market, &topic, config)
                 } else {
-                    websocket.connect(&market.into(), &topic)
+                    websocket.connect(&market, &topic)
                 };
 
                 if let Err(e) = resp {

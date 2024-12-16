@@ -600,6 +600,7 @@ dependencies = [
  "chrono",
  "nanoid",
  "serde",
+ "sqlx",
  "strum",
  "strum_macros",
 ]
