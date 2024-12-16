@@ -8,33 +8,17 @@ use std::sync::{
     Arc,
 };
 
-#[derive(Debug, Clone, Copy)]
-pub enum Market {
-    Usdm,
-    Coinm,
-    Vanilla,
-}
-
-impl From<Market> for FuturesMarket {
-    fn from(market: Market) -> Self {
-        match market {
-            Market::Usdm => FuturesMarket::USDM,
-            Market::Coinm => FuturesMarket::COINM,
-            Market::Vanilla => FuturesMarket::Vanilla,
-        }
-    }
-}
-
 #[allow(unused)]
 pub struct FuturesWebsocket<'a> {
     client: &'a BinanceClient,
-    market: Market,
+    market: Arc<FuturesMarket>,
     topic: String,
     keep_running: Arc<AtomicBool>,
 }
 
 impl<'a> FuturesWebsocket<'a> {
-    pub fn new(client: &'a BinanceClient, market: Market, topic: impl Into<String>) -> Self {
+    pub fn new(client: &'a BinanceClient, market: FuturesMarket, topic: impl Into<String>) -> Self {
+        let market = Arc::new(market);
         let topic = topic.into();
         let keep_running = Arc::new(AtomicBool::new(true));
 
@@ -48,7 +32,7 @@ impl<'a> FuturesWebsocket<'a> {
 
     pub async fn subscribe(&self) -> Result<BoxStream<FuturesWebsocketEvent>> {
         let (tx, rx) = flume::unbounded();
-        let market = self.market.into();
+        let market = self.market.clone();
         let topic = self.topic.clone();
         let config = self.client.config().clone();
         let keep_running = self.keep_running.clone();
