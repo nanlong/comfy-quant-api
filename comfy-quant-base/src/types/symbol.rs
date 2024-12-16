@@ -1,8 +1,7 @@
-use core::fmt;
-
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(Default, sqlx::Type, Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
 pub struct Symbol(String);
 
 impl Symbol {
@@ -20,6 +19,12 @@ impl From<String> for Symbol {
 impl From<&str> for Symbol {
     fn from(value: &str) -> Self {
         Symbol::new(value)
+    }
+}
+
+impl From<&Symbol> for Symbol {
+    fn from(value: &Symbol) -> Self {
+        value.clone()
     }
 }
 

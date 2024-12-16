@@ -1,11 +1,12 @@
+use comfy_quant_base::{Exchange, Symbol};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 // 基础统计数据结构
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct BaseStatsData {
-    pub exchange: String,                // 交易所
-    pub symbol: String,                  // 交易对
+    pub exchange: Exchange,              // 交易所
+    pub symbol: Symbol,                  // 交易对
     pub base_asset: String,              // 基础资产
     pub quote_asset: String,             // 报价资产
     pub total_trades: u64,               // 总交易次数

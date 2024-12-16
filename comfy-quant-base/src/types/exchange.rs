@@ -1,35 +1,51 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone)]
-pub struct Exchange(String);
+#[derive(Debug, Default, sqlx::Type, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
+pub enum Exchange {
+    Binance,
+    #[default]
+    Unknow,
+}
 
-impl Exchange {
-    pub fn new(s: impl Into<String>) -> Self {
-        Exchange(s.into())
+impl From<&str> for Exchange {
+    fn from(value: &str) -> Self {
+        match value {
+            "binance" => Exchange::Binance,
+            _ => Exchange::Unknow,
+        }
     }
 }
 
 impl From<String> for Exchange {
     fn from(value: String) -> Self {
-        Exchange::new(value)
+        value.as_str().into()
     }
 }
 
-impl From<&str> for Exchange {
-    fn from(value: &str) -> Self {
-        Exchange::new(value)
+impl From<&Exchange> for Exchange {
+    fn from(value: &Exchange) -> Self {
+        value.clone()
     }
 }
 
 impl AsRef<str> for Exchange {
     fn as_ref(&self) -> &str {
-        &self.0
+        match self {
+            Exchange::Binance => "binance",
+            Exchange::Unknow => "unknow",
+        }
+    }
+}
+
+impl From<Exchange> for String {
+    fn from(value: Exchange) -> Self {
+        value.as_ref().to_string()
     }
 }
 
 impl fmt::Display for Exchange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.as_ref())
     }
 }

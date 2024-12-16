@@ -1,11 +1,12 @@
 use bon::Builder;
+use comfy_quant_base::Symbol;
 use comfy_quant_exchange::client::spot_client::base::SymbolPrice;
 use rust_decimal::Decimal;
 
 #[derive(Debug, Clone, Builder, PartialEq)]
 pub struct Tick {
     pub timestamp: i64,
-    pub symbol: String,
+    pub symbol: Symbol,
     pub price: Decimal,
 }
 

@@ -86,8 +86,8 @@ impl Service<SpotClientRequest> for SpotClientKind {
         let fut = async move {
             let res = match req {
                 SpotClientRequest::Exchange => {
-                    let name = client.exchange().to_string();
-                    SpotClientResponse::Exchange(name)
+                    let exchange = client.exchange();
+                    SpotClientResponse::Exchange(exchange)
                 }
                 SpotClientRequest::Symbol {
                     base_asset,

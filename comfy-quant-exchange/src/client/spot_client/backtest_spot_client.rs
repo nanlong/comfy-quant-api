@@ -1,12 +1,12 @@
 use super::base::{
     AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType, SymbolInformation,
-    SymbolPrice, BINANCE_EXCHANGE_NAME,
+    SymbolPrice,
 };
 use crate::{client::spot_client_kind::SpotClientExecutable, store::PriceStore};
 use anyhow::Result;
 use async_lock::RwLock;
 use bon::bon;
-use comfy_quant_base::{Exchange, Symbol};
+use comfy_quant_base::{Exchange, Market, Symbol};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::{collections::HashMap, sync::Arc};
@@ -62,7 +62,7 @@ impl BacktestSpotClient {
         self.price_store
             .read()
             .await
-            .price(BINANCE_EXCHANGE_NAME, "spot", symbol)
+            .price(&Exchange::Binance, &Market::Spot, symbol)
             .unwrap_or(dec!(0))
     }
 
@@ -148,7 +148,7 @@ impl BacktestSpotClient {
 
 impl SpotClientExecutable for BacktestSpotClient {
     fn exchange(&self) -> Exchange {
-        Exchange::new(BINANCE_EXCHANGE_NAME)
+        Exchange::Binance
     }
 
     fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol {
@@ -177,14 +177,10 @@ impl SpotClientExecutable for BacktestSpotClient {
         base_asset: &str,
         quote_asset: &str,
     ) -> Result<SymbolInformation> {
-        let symbol = format!(
-            "{}{}",
-            base_asset.to_uppercase(),
-            quote_asset.to_uppercase()
-        );
+        let symbol = format!("{}{}", base_asset, quote_asset).to_uppercase();
 
         Ok(SymbolInformation::builder()
-            .symbol(symbol)
+            .symbol(symbol.into())
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .base_asset_precision(3)
@@ -232,7 +228,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(BINANCE_EXCHANGE_NAME)
+            .exchange(Exchange::Binance)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -261,7 +257,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(BINANCE_EXCHANGE_NAME)
+            .exchange(Exchange::Binance)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -293,7 +289,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(BINANCE_EXCHANGE_NAME)
+            .exchange(Exchange::Binance)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)
@@ -325,7 +321,7 @@ impl SpotClientExecutable for BacktestSpotClient {
         data.order_id += 1;
 
         let order = Order::builder()
-            .exchange(BINANCE_EXCHANGE_NAME)
+            .exchange(Exchange::Binance)
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .symbol(symbol)

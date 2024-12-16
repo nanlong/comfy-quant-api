@@ -130,7 +130,7 @@ impl SpotGrid {
         self.store
             .stats
             .initialize_balance(
-                self.node_context()?,
+                &self.node_context()?,
                 &exchange,
                 &symbol,
                 &dec!(0),
@@ -330,13 +330,12 @@ impl NodeExecutable for SpotGrid {
                 }
             }
 
+            let exchange = client.exchange();
+            let symbol = client.symbol(&pair_info.base_asset, &pair_info.quote_asset);
+
             // 更新统计信息
-            self.update_spot_stats_with_tick(
-                &client.exchange(),
-                &client.symbol(&pair_info.base_asset, &pair_info.quote_asset),
-                &tick,
-            )
-            .await?;
+            self.update_spot_stats_with_tick(&exchange, &symbol, &tick)
+                .await?;
         }
 
         Ok(())
@@ -350,7 +349,7 @@ impl TradeStats for SpotGrid {
         let quote_asset = ctx.quote_asset().await;
         let exchange_rate = ctx.exchange_rate(&pair.quote_asset, &quote_asset).await?;
         let stats = self.spot_stats_data(&exchange, &symbol)?;
-        let price = self.price(&exchange, Market::Spot, &symbol).await?;
+        let price = self.price(&exchange, &Market::Spot, &symbol).await?;
         let capital = stats.initial_base_balance * price + stats.initial_base_balance;
 
         Ok(capital * exchange_rate.rate())
@@ -361,7 +360,7 @@ impl TradeStats for SpotGrid {
         let (exchange, pair, symbol) = self.exchange_pair_symbol()?;
         let quote_asset = ctx.quote_asset().await;
         let exchange_rate = ctx.exchange_rate(&pair.quote_asset, &quote_asset).await?;
-        let stats = self.spot_stats_data(exchange, symbol)?;
+        let stats = self.spot_stats_data(&exchange, &symbol)?;
 
         Ok(stats.base.realized_pnl * exchange_rate.rate())
     }
@@ -372,7 +371,7 @@ impl TradeStats for SpotGrid {
         let quote_asset = ctx.quote_asset().await;
         let exchange_rate = ctx.exchange_rate(&pair.quote_asset, &quote_asset).await?;
         let stats = self.spot_stats_data(&exchange, &symbol)?;
-        let price = self.price(&exchange, Market::Spot, &symbol).await?;
+        let price = self.price(&exchange, &Market::Spot, &symbol).await?;
         let maker_commission_rate = Decimal::ONE - stats.base.maker_commission_rate;
         let cost = stats.base_asset_balance * stats.avg_price;
         let maybe_sell = stats.base_asset_balance * price * maker_commission_rate;
@@ -567,7 +566,7 @@ impl FromStr for Mode {
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(unused)]
 pub(crate) struct Grid {
-    exchange: String,              // 平台名称
+    exchange: Exchange,            // 平台名称
     rows: Vec<GridRow>,            // 网格行
     cursor: usize,                 // 当前网格序号
     prev_sell_price: Decimal,      // 上一次的卖出价格
@@ -609,13 +608,13 @@ pub(crate) enum TradeSignal {
 impl Grid {
     #[builder]
     fn new(
-        #[builder(into)] exchange: String, // 平台名称
-        investment: Decimal,               // 投资金额
-        grid_prices: Vec<Decimal>,         // 网格价格
-        current_price: Decimal,            // 当前价格
-        base_asset_precision: u32,         // 基础币种小数点位数
-        quote_asset_precision: u32,        // 报价币种小数点位数
-        commission_rate: Decimal,          // 手续费
+        #[builder(into)] exchange: Exchange, // 平台名称
+        investment: Decimal,                 // 投资金额
+        grid_prices: Vec<Decimal>,           // 网格价格
+        current_price: Decimal,              // 当前价格
+        base_asset_precision: u32,           // 基础币种小数点位数
+        quote_asset_precision: u32,          // 报价币种小数点位数
+        commission_rate: Decimal,            // 手续费
         trading_config: TradingConfig,
     ) -> Self {
         let grid_investment = (investment / (Decimal::from(grid_prices.len()) - dec!(1)))

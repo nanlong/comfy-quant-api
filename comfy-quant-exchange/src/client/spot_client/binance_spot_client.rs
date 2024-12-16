@@ -1,6 +1,6 @@
 use super::base::{
     AccountInformation, Balance, BinanceOrder, BinanceTransaction, Order, SymbolInformation,
-    SymbolPrice, BINANCE_EXCHANGE_NAME,
+    SymbolPrice,
 };
 use crate::{client::spot_client_kind::SpotClientExecutable, exchange::binance::BinanceClient};
 use anyhow::Result;
@@ -33,7 +33,7 @@ impl BinanceSpotClient {
 
 impl SpotClientExecutable for BinanceSpotClient {
     fn exchange(&self) -> Exchange {
-        Exchange::new(BINANCE_EXCHANGE_NAME)
+        Exchange::Binance
     }
 
     fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol {

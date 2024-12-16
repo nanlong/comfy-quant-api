@@ -5,6 +5,7 @@ use crate::{
     workflow::{Node, WorkflowContext},
 };
 use anyhow::Result;
+use comfy_quant_base::{Exchange, Market, Symbol};
 // use chrono::{DateTime, Utc};
 // use comfy_quant_base::KlineInterval;
 use comfy_quant_exchange::client::{
@@ -60,9 +61,9 @@ pub trait NodeCoreExt: NodeCore {
 
     async fn price(
         &self,
-        exchange: impl AsRef<str>,
-        market: impl AsRef<str>,
-        symbol: impl AsRef<str>,
+        exchange: &Exchange,
+        market: &Market,
+        symbol: &Symbol,
     ) -> Result<Decimal> {
         self.node_infra().price(exchange, market, symbol).await
     }
@@ -78,32 +79,26 @@ impl<T: ?Sized> NodeSpotStatsExt for T where T: NodeCore + NodeSpotStats {}
 
 #[allow(async_fn_in_trait)]
 pub trait NodeSpotStatsExt: NodeCore + NodeSpotStats {
-    fn spot_stats_data(
-        &self,
-        exchange: impl AsRef<str>,
-        symbol: impl AsRef<str>,
-    ) -> Result<&SpotStatsData> {
-        self.spot_stats()
-            .get(exchange.as_ref(), symbol.as_ref())
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Stats not found for exchange: {} symbol: {}",
-                    exchange.as_ref(),
-                    symbol.as_ref()
-                )
-            })
+    fn spot_stats_data(&self, exchange: &Exchange, symbol: &Symbol) -> Result<&SpotStatsData> {
+        self.spot_stats().get(exchange, symbol).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Stats not found for exchange: {} symbol: {}",
+                exchange,
+                symbol
+            )
+        })
     }
 
     async fn update_spot_stats_with_tick(
         &mut self,
-        exchange: impl AsRef<str>,
-        symbol: impl AsRef<str>,
+        exchange: &Exchange,
+        symbol: &Symbol,
         tick: &Tick,
     ) -> Result<()> {
         let ctx = self.node_context()?;
 
         self.spot_stats_mut()
-            .update_with_tick(ctx, exchange, symbol, tick)
+            .update_with_tick(&ctx, exchange, symbol, tick)
             .await?;
 
         Ok(())
@@ -111,14 +106,14 @@ pub trait NodeSpotStatsExt: NodeCore + NodeSpotStats {
 
     async fn update_spot_stats_with_order(
         &mut self,
-        exchange: impl AsRef<str>,
-        symbol: impl AsRef<str>,
+        exchange: &Exchange,
+        symbol: &Symbol,
         order: &Order,
     ) -> Result<()> {
         let ctx = self.node_context()?;
 
         self.spot_stats_mut()
-            .update_with_order(ctx, exchange, symbol, order)
+            .update_with_order(&ctx, exchange, symbol, order)
             .await?;
 
         Ok(())

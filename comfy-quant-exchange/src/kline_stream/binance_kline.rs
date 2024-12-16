@@ -34,11 +34,11 @@ impl BinanceKline {
     // 获取K线流
     pub fn klines_stream(
         &self,
-        market: Market,          // 市场
-        symbol: Symbol,          // 交易对
-        interval: KlineInterval, // 时间间隔
-        start_time: i64,         // 开始时间
-        end_time: i64,           // 结束时间
+        market: &Market,          // 市场
+        symbol: &Symbol,          // 交易对
+        interval: &KlineInterval, // 时间间隔
+        start_time: i64,          // 开始时间
+        end_time: i64,            // 结束时间
     ) -> BoxStream<Result<KlineSummary>> {
         let client = Arc::clone(&self.client);
         let (tx, rx) = flume::bounded(1);
@@ -52,51 +52,57 @@ impl BinanceKline {
         // 使用 tokio::spawn 会有问题，所以使用 tokio::task::spawn_blocking
         // 报错信息: Cannot drop a runtime in a context where blocking is not allowed. This happens when a runtime is dropped from within an asynchronous context.
         // 原因: reqwest 的 runtime 在异步上下文中被释放了
-        tokio::task::spawn_blocking(move || {
-            let result = (move || {
-                for (start_time, end_time) in time_range_groups {
-                    if cloned_token1.is_cancelled() {
-                        return Ok(());
-                    }
+        tokio::task::spawn_blocking({
+            let market = market.clone();
+            let symbol = symbol.clone();
+            let interval = interval.clone();
 
-                    let KlineSummaries::AllKlineSummaries(klines) = match market {
-                        Market::Spot => client.spot().get_klines(
-                            &symbol,
-                            &interval,
-                            KLINE_LIMIT,
-                            start_time as u64,
-                            end_time as u64,
-                        )?,
-                        Market::Usdm | Market::Coinm | Market::Vanilla => {
-                            client.futures().get_klines(
+            move || {
+                let result = (move || {
+                    for (start_time, end_time) in time_range_groups {
+                        if cloned_token1.is_cancelled() {
+                            return Ok(());
+                        }
+
+                        let KlineSummaries::AllKlineSummaries(klines) = match market {
+                            Market::Spot => client.spot().get_klines(
                                 &symbol,
                                 &interval,
                                 KLINE_LIMIT,
                                 start_time as u64,
                                 end_time as u64,
-                            )?
-                        }
-                        Market::Unknow => KlineSummaries::AllKlineSummaries(vec![]),
-                    };
+                            )?,
+                            Market::Usdm | Market::Coinm | Market::Vanilla => {
+                                client.futures().get_klines(
+                                    &symbol,
+                                    &interval,
+                                    KLINE_LIMIT,
+                                    start_time as u64,
+                                    end_time as u64,
+                                )?
+                            }
+                            Market::Unknow => KlineSummaries::AllKlineSummaries(vec![]),
+                        };
 
-                    for kline in klines {
-                        if cloned_token1.is_cancelled() {
-                            return Ok(());
-                        }
+                        for kline in klines {
+                            if cloned_token1.is_cancelled() {
+                                return Ok(());
+                            }
 
-                        let guard = semaphore.acquire_arc_blocking();
-                        tx.send((kline, guard))?;
+                            let guard = semaphore.acquire_arc_blocking();
+                            tx.send((kline, guard))?;
+                        }
                     }
+
+                    Ok(())
+                })();
+
+                if let Err(e) = result {
+                    error_tx.send(e)?;
                 }
 
-                Ok(())
-            })();
-
-            if let Err(e) = result {
-                error_tx.send(e)?;
+                Ok::<(), anyhow::Error>(())
             }
-
-            Ok::<(), anyhow::Error>(())
         });
 
         let kline_stream = stream! {

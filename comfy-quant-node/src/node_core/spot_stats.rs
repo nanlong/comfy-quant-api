@@ -83,7 +83,7 @@ impl SpotStats {
 
     pub async fn initialize_balance(
         &mut self,
-        ctx: NodeContext,
+        ctx: &NodeContext,
         exchange: impl AsRef<str>,
         symbol: impl AsRef<str>,
         initial_base: &Decimal,
@@ -98,7 +98,7 @@ impl SpotStats {
 
     pub async fn update_with_order(
         &mut self,
-        ctx: NodeContext,
+        ctx: &NodeContext,
         exchange: impl AsRef<str>,
         symbol: impl AsRef<str>,
         order: &Order,
@@ -164,7 +164,7 @@ impl SpotStatsData {
 
     async fn initialize_balance(
         &mut self,
-        ctx: NodeContext,
+        ctx: &NodeContext,
         initial_base: &Decimal,
         initial_quote: &Decimal,
         initial_price: &Decimal,
@@ -187,7 +187,7 @@ impl SpotStatsData {
         Ok(())
     }
 
-    async fn update_with_order(&mut self, ctx: NodeContext, order: &Order) -> Result<()> {
+    async fn update_with_order(&mut self, ctx: &NodeContext, order: &Order) -> Result<()> {
         let now = Utc::now();
         let base_asset_amount = order.base_asset_amount()?;
         let quote_asset_amount = order.quote_asset_amount()?;

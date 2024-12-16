@@ -6,9 +6,8 @@ use crate::{
 use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
-use comfy_quant_base::{convert_to_datetime, Exchange, KlineInterval, Market};
+use comfy_quant_base::{convert_to_datetime, Exchange, KlineInterval, Market, Symbol};
 use comfy_quant_database::kline::{self};
-use comfy_quant_exchange::client::spot_client::base::BINANCE_EXCHANGE_NAME;
 use comfy_quant_task::{
     task_core::{status::TaskStatus, traits::Executable as _},
     tasks::binance_klines::BinanceKlinesTask,
@@ -48,7 +47,7 @@ impl BacktestSpotTicker {
         Ok(BacktestSpotTicker {
             params,
             infra,
-            exchange: BINANCE_EXCHANGE_NAME.into(),
+            exchange: Exchange::Binance,
             market: Market::Spot,
             interval: KlineInterval::OneSecond,
         })
@@ -56,8 +55,9 @@ impl BacktestSpotTicker {
 
     async fn feed_ticks(&self) -> Result<()> {
         let tick_stream = self.port().output::<TickStream>(1)?;
-        let symbol =
-            format!("{}{}", self.params.base_asset, self.params.quote_asset).to_uppercase();
+        let symbol: Symbol = format!("{}{}", self.params.base_asset, self.params.quote_asset)
+            .to_uppercase()
+            .into();
         let start_timestamp = self.params.start_datetime.timestamp();
         let end_timestamp = self.params.end_datetime.timestamp();
         let ctx = self.node_context()?;
@@ -66,9 +66,9 @@ impl BacktestSpotTicker {
         'retry: for i in 0..3 {
             let task = BinanceKlinesTask::builder()
                 .db(ctx.cloned_db())
-                .market(self.market.as_ref())
-                .symbol(&symbol)
-                .interval(self.interval.as_ref())
+                .market(self.market.clone())
+                .symbol(symbol.clone())
+                .interval(self.interval.clone())
                 .start_timestamp(start_timestamp)
                 .end_timestamp(end_timestamp)
                 .build()?;
@@ -94,10 +94,10 @@ impl BacktestSpotTicker {
 
         let mut klines_stream = kline::time_range_klines_stream(
             ctx.db(),
-            self.exchange.as_ref(),
-            self.market.as_ref(),
+            &self.exchange,
+            &self.market,
             &symbol,
-            self.interval.as_ref(),
+            &self.interval,
             &self.params.start_datetime,
             &self.params.end_datetime,
         );
@@ -112,13 +112,13 @@ impl BacktestSpotTicker {
                 .build();
 
             price_store.write().await.save_price(
-                self.exchange.clone(),
-                self.market.clone(),
-                tick.clone().into(),
+                &self.exchange,
+                &self.market,
+                &tick.clone().into(),
             )?;
 
             tick_stream
-                .send(self.exchange.as_ref(), self.market.as_ref(), tick)
+                .send(&self.exchange, &self.market, &tick)
                 .await?;
         }
 

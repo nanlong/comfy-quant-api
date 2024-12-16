@@ -2,6 +2,7 @@ use super::base_stats_data::BaseStatsData;
 use crate::node_core::{NodeContext, Tick};
 use anyhow::Result;
 use chrono::Utc;
+use comfy_quant_base::{Exchange, Symbol};
 use comfy_quant_database::{
     strategy_spot_position::{self, StrategySpotPosition},
     strategy_spot_stats::{self, StrategySpotStats},
@@ -33,9 +34,15 @@ impl SpotStatsData {
         SpotStatsData::default()
     }
 
-    pub fn setup(&mut self, exchange: &str, symbol: &str, base_asset: &str, quote_asset: &str) {
-        self.base.exchange = exchange.into();
-        self.base.symbol = symbol.into();
+    pub fn setup(
+        &mut self,
+        exchange: &Exchange,
+        symbol: &Symbol,
+        base_asset: &str,
+        quote_asset: &str,
+    ) {
+        self.base.exchange = exchange.clone();
+        self.base.symbol = symbol.clone();
         self.base.base_asset = base_asset.into();
         self.base.quote_asset = quote_asset.into();
     }
@@ -51,7 +58,7 @@ impl SpotStatsData {
 
     pub async fn initialize_balance(
         &mut self,
-        ctx: NodeContext,
+        ctx: &NodeContext,
         initial_base: &Decimal,
         initial_quote: &Decimal,
         initial_price: &Decimal,
@@ -74,14 +81,14 @@ impl SpotStatsData {
         Ok(())
     }
 
-    pub async fn update_with_tick(&mut self, _ctx: NodeContext, tick: &Tick) -> Result<()> {
+    pub async fn update_with_tick(&mut self, _ctx: &NodeContext, tick: &Tick) -> Result<()> {
         // 更新未实现盈亏
         self.base.unrealized_pnl = self.base_asset_balance * (tick.price - self.avg_price);
 
         Ok(())
     }
 
-    pub async fn update_with_order(&mut self, ctx: NodeContext, order: &Order) -> Result<()> {
+    pub async fn update_with_order(&mut self, ctx: &NodeContext, order: &Order) -> Result<()> {
         let now = Utc::now();
         let base_asset_amount = order.base_asset_amount()?;
         let quote_asset_amount = order.quote_asset_amount()?;
@@ -164,8 +171,8 @@ impl SpotStatsData {
             .workflow_id(params.workflow_id)
             .node_id(params.node_id)
             .node_name(node_name)
-            .exchange(params.exchange)
-            .symbol(params.symbol)
+            .exchange(params.exchange.clone())
+            .symbol(params.symbol.clone())
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .base_asset_balance(self.base_asset_balance)
@@ -191,8 +198,8 @@ impl SpotStatsData {
             .workflow_id(params.workflow_id)
             .node_id(params.node_id)
             .node_name(node_name)
-            .exchange(params.exchange)
-            .symbol(params.symbol)
+            .exchange(params.exchange.clone())
+            .symbol(params.symbol.clone())
             .base_asset(base_asset)
             .quote_asset(quote_asset)
             .initial_base_balance(self.initial_base_balance)

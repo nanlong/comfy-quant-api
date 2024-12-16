@@ -1,6 +1,6 @@
 use crate::client::spot_client::base::SymbolPrice;
 use anyhow::Result;
-use comfy_quant_base::{Exchange, ExchangeMarketSymbolKey, Market};
+use comfy_quant_base::{Exchange, ExchangeMarketSymbolKey, Market, Symbol};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -31,25 +31,18 @@ impl PriceStore {
         }
     }
 
-    pub fn price(
-        &self,
-        exchange: impl AsRef<str>,
-        market: impl AsRef<str>,
-        symbol: impl AsRef<str>,
-    ) -> Option<Decimal> {
-        let key =
-            ExchangeMarketSymbolKey::try_new(exchange.as_ref(), market.as_ref(), symbol.as_ref())
-                .ok()?;
+    pub fn price(&self, exchange: &Exchange, market: &Market, symbol: &Symbol) -> Option<Decimal> {
+        let key = ExchangeMarketSymbolKey::try_new(exchange, market, symbol).ok()?;
         self.as_ref().get(&key).cloned()
     }
 
     pub fn save_price(
         &mut self,
-        exchange: Exchange,
-        market: Market,
-        symbol_price: SymbolPrice,
+        exchange: &Exchange,
+        market: &Market,
+        symbol_price: &SymbolPrice,
     ) -> Result<()> {
-        let key = ExchangeMarketSymbolKey::try_new(exchange, market, symbol_price.symbol)?;
+        let key = ExchangeMarketSymbolKey::try_new(exchange, market, &symbol_price.symbol)?;
         self.as_mut().insert(key, symbol_price.price);
 
         Ok(())
@@ -63,22 +56,18 @@ mod tests {
 
     #[test]
     fn test_tick_store() {
-        let exchange = Exchange::new("Binance");
+        let exchange = Exchange::Binance;
         let market = Market::Spot;
+        let symbol = "BTCUSDT".into();
         let mut store = PriceStore::new();
-        assert_eq!(store.price(&exchange, &market, "BTCUSDT"), None);
+        assert_eq!(store.price(&exchange, &market, &symbol), None);
 
         let price = SymbolPrice::builder()
-            .symbol("BTCUSDT")
+            .symbol("BTCUSDT".into())
             .price(dec!(90000))
             .build();
 
-        store
-            .save_price(exchange.clone(), market.clone(), price)
-            .unwrap();
-        assert_eq!(
-            store.price(&exchange, &market, "BTCUSDT"),
-            Some(dec!(90000))
-        );
+        store.save_price(&exchange, &market, &price).unwrap();
+        assert_eq!(store.price(&exchange, &market, &symbol), Some(dec!(90000)));
     }
 }

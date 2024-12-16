@@ -1,6 +1,7 @@
 use anyhow::Result;
 use bon::bon;
 use chrono::{DateTime, Utc};
+use comfy_quant_base::{Exchange, Symbol};
 use rust_decimal::Decimal;
 use sqlx::{postgres::PgPool, FromRow};
 
@@ -10,8 +11,8 @@ pub struct StrategySpotPosition {
     pub workflow_id: String,          // 工作流ID
     pub node_id: i16,                 // 策略节点ID
     pub node_name: String,            // 策略节点名称
-    pub exchange: String,             // 交易所
-    pub symbol: String,               // 交易对
+    pub exchange: Exchange,           // 交易所
+    pub symbol: Symbol,               // 交易对
     pub base_asset: String,           // 基础资产
     pub quote_asset: String,          // 计价资产
     pub base_asset_balance: Decimal,  // 基础资产持仓量
@@ -27,8 +28,8 @@ impl StrategySpotPosition {
         workflow_id: String,
         node_id: i16,
         node_name: String,
-        exchange: String,
-        symbol: String,
+        exchange: Exchange,
+        symbol: Symbol,
         base_asset: String,
         quote_asset: String,
         base_asset_balance: Decimal,
@@ -66,8 +67,8 @@ pub async fn create(db: &PgPool, data: &StrategySpotPosition) -> Result<Strategy
         data.workflow_id,
         data.node_id,
         data.node_name,
-        data.exchange,
-        data.symbol,
+        data.exchange.as_ref(),
+        data.symbol.as_ref(),
         data.base_asset,
         data.quote_asset,
         data.base_asset_balance,
@@ -84,8 +85,8 @@ pub async fn list(
     db: &PgPool,
     workflow_id: &str,
     node_id: i16,
-    exchange: &str,
-    symbol: &str,
+    exchange: Exchange,
+    symbol: &Symbol,
     start_datetime: &DateTime<Utc>,
     end_datetime: &DateTime<Utc>,
 ) -> Result<Vec<StrategySpotPosition>> {
@@ -103,8 +104,8 @@ pub async fn list(
         "#,
         workflow_id,
         node_id,
-        exchange,
-        symbol,
+        exchange.as_ref(),
+        symbol.as_ref(),
         start_datetime,
         end_datetime,
     )
@@ -125,8 +126,8 @@ mod tests {
             .workflow_id("jEnbRDqQu4UN6y7cgQgp6")
             .node_id(1)
             .node_name("SpotGrid")
-            .exchange("Binance")
-            .symbol("BTCUSDT")
+            .exchange(Exchange::Binance)
+            .symbol("BTCUSDT".into())
             .base_asset("BTC")
             .quote_asset("USDT")
             .base_asset_balance("1".parse()?)
@@ -147,8 +148,8 @@ mod tests {
         assert_eq!(strategy_spot_position.workflow_id, "jEnbRDqQu4UN6y7cgQgp6");
         assert_eq!(strategy_spot_position.node_id, 1);
         assert_eq!(strategy_spot_position.node_name, "SpotGrid");
-        assert_eq!(strategy_spot_position.exchange, "Binance");
-        assert_eq!(strategy_spot_position.symbol, "BTCUSDT");
+        assert_eq!(strategy_spot_position.exchange, Exchange::Binance);
+        assert_eq!(strategy_spot_position.symbol, "BTCUSDT".into());
         assert_eq!(strategy_spot_position.base_asset, "BTC");
         assert_eq!(strategy_spot_position.quote_asset, "USDT");
         assert_eq!(strategy_spot_position.base_asset_balance, "1".parse()?);
@@ -168,8 +169,8 @@ mod tests {
             &db,
             "jEnbRDqQu4UN6y7cgQgp6",
             1,
-            "Binance",
-            "BTCUSDT",
+            Exchange::Binance,
+            &"BTCUSDT".into(),
             &start_datetime,
             &end_datetime,
         )

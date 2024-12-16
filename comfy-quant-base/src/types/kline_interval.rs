@@ -1,8 +1,8 @@
 use std::fmt;
 
-use strum_macros::{AsRefStr, EnumIter, EnumString};
+use strum_macros::{AsRefStr, EnumIter};
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumString, AsRefStr, EnumIter)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, AsRefStr, EnumIter)]
 pub enum KlineInterval {
     #[strum(serialize = "1s")]
     OneSecond,
@@ -36,6 +36,38 @@ pub enum KlineInterval {
     OneWeek,
     #[strum(serialize = "1M")]
     OneMonth,
+    #[default]
+    Unknow,
+}
+
+impl From<&str> for KlineInterval {
+    fn from(value: &str) -> Self {
+        match value {
+            "1s" => KlineInterval::OneSecond,
+            "1m" => KlineInterval::OneMinute,
+            "3m" => KlineInterval::ThreeMinutes,
+            "5m" => KlineInterval::FiveMinutes,
+            "15m" => KlineInterval::FifteenMinutes,
+            "30m" => KlineInterval::ThirtyMinutes,
+            "1h" => KlineInterval::OneHour,
+            "2h" => KlineInterval::TwoHours,
+            "4h" => KlineInterval::FourHours,
+            "6h" => KlineInterval::SixHours,
+            "8h" => KlineInterval::EightHours,
+            "12h" => KlineInterval::TwelveHours,
+            "1d" => KlineInterval::OneDay,
+            "3d" => KlineInterval::ThreeDays,
+            "1w" => KlineInterval::OneWeek,
+            "1M" => KlineInterval::OneMonth,
+            _ => KlineInterval::Unknow,
+        }
+    }
+}
+
+impl From<String> for KlineInterval {
+    fn from(value: String) -> Self {
+        value.as_str().into()
+    }
 }
 
 impl From<&KlineInterval> for String {
@@ -65,13 +97,10 @@ mod tests {
         let interval = KlineInterval::OneMinute;
         assert_eq!(interval.as_ref(), "1m");
 
-        let interval2 = "1m".parse::<KlineInterval>().unwrap();
+        let interval2: KlineInterval = "1m".into();
         assert_eq!(interval2, KlineInterval::OneMinute);
 
-        let interval3 = "1s".parse::<KlineInterval>().unwrap();
+        let interval3: KlineInterval = "1s".into();
         assert_eq!(interval3, KlineInterval::OneSecond);
-
-        let err = "1x".parse::<KlineInterval>().unwrap_err();
-        assert_eq!(err.to_string(), "Matching variant not found");
     }
 }

@@ -1,6 +1,7 @@
 use super::{NodeContext, Port};
 use crate::workflow::{Node, WorkflowContext};
 use anyhow::{anyhow, Result};
+use comfy_quant_base::{Exchange, Market, Symbol};
 use rust_decimal::Decimal;
 use std::sync::Arc;
 
@@ -46,9 +47,9 @@ impl NodeInfra {
 
     pub(super) async fn price(
         &self,
-        exchange: impl AsRef<str>,
-        market: impl AsRef<str>,
-        symbol: impl AsRef<str>,
+        exchange: &Exchange,
+        market: &Market,
+        symbol: &Symbol,
     ) -> Result<Decimal> {
         self.workflow_context()?
             .cloned_price_store()

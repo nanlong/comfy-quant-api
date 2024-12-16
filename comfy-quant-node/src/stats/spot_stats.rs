@@ -1,7 +1,7 @@
 use super::spot_stats_data::SpotStatsData;
 use crate::node_core::{NodeContext, Tick};
 use anyhow::Result;
-use comfy_quant_base::ExchangeSymbolKey;
+use comfy_quant_base::{Exchange, ExchangeSymbolKey, Symbol};
 use comfy_quant_exchange::client::spot_client::base::Order;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -33,50 +33,41 @@ impl SpotStats {
         }
     }
 
-    pub fn get(
-        &self,
-        exchange: impl AsRef<str>,
-        symbol: impl AsRef<str>,
-    ) -> Option<&SpotStatsData> {
-        let key = ExchangeSymbolKey::new(exchange.as_ref(), symbol.as_ref());
+    pub fn get(&self, exchange: &Exchange, symbol: &Symbol) -> Option<&SpotStatsData> {
+        let key = ExchangeSymbolKey::new(exchange, symbol);
         self.data.get(&key)
     }
 
-    pub fn get_or_insert(
-        &mut self,
-        exchange: impl AsRef<str>,
-        symbol: impl AsRef<str>,
-    ) -> &mut SpotStatsData {
-        let key = ExchangeSymbolKey::new(exchange.as_ref(), symbol.as_ref());
+    pub fn get_or_insert(&mut self, exchange: &Exchange, symbol: &Symbol) -> &mut SpotStatsData {
+        let key = ExchangeSymbolKey::new(exchange, symbol);
         self.as_mut().entry(key).or_default()
     }
 
     pub fn setup(
         &mut self,
-        exchange: impl AsRef<str>,
-        symbol: impl AsRef<str>,
+        exchange: &Exchange,
+        symbol: &Symbol,
         base_asset: impl AsRef<str>,
         quote_asset: impl AsRef<str>,
     ) {
-        self.get_or_insert(exchange.as_ref(), symbol.as_ref())
-            .setup(
-                exchange.as_ref(),
-                symbol.as_ref(),
-                base_asset.as_ref(),
-                quote_asset.as_ref(),
-            );
+        self.get_or_insert(exchange, symbol).setup(
+            exchange,
+            symbol,
+            base_asset.as_ref(),
+            quote_asset.as_ref(),
+        );
     }
 
     pub async fn initialize_balance(
         &mut self,
-        ctx: NodeContext,
-        exchange: impl AsRef<str>,
-        symbol: impl AsRef<str>,
+        ctx: &NodeContext,
+        exchange: &Exchange,
+        symbol: &Symbol,
         initial_base: &Decimal,
         initial_quote: &Decimal,
         initial_price: &Decimal,
     ) -> Result<()> {
-        self.get_or_insert(exchange.as_ref(), symbol.as_ref())
+        self.get_or_insert(exchange, symbol)
             .initialize_balance(ctx, initial_base, initial_quote, initial_price)
             .await?;
         Ok(())
@@ -84,12 +75,12 @@ impl SpotStats {
 
     pub async fn update_with_tick(
         &mut self,
-        ctx: NodeContext,
-        exchange: impl AsRef<str>,
-        symbol: impl AsRef<str>,
+        ctx: &NodeContext,
+        exchange: &Exchange,
+        symbol: &Symbol,
         tick: &Tick,
     ) -> Result<()> {
-        self.get_or_insert(exchange.as_ref(), symbol.as_ref())
+        self.get_or_insert(exchange, symbol)
             .update_with_tick(ctx, tick)
             .await?;
         Ok(())
@@ -97,12 +88,12 @@ impl SpotStats {
 
     pub async fn update_with_order(
         &mut self,
-        ctx: NodeContext,
-        exchange: impl AsRef<str>,
-        symbol: impl AsRef<str>,
+        ctx: &NodeContext,
+        exchange: &Exchange,
+        symbol: &Symbol,
         order: &Order,
     ) -> Result<()> {
-        self.get_or_insert(exchange.as_ref(), symbol.as_ref())
+        self.get_or_insert(exchange, symbol)
             .update_with_order(ctx, order)
             .await?;
 
@@ -147,10 +138,10 @@ mod tests {
     #[test]
     fn test_spot_stats_data_setup() {
         let mut data = SpotStatsData::new();
-        data.setup("binance", "BTC/USDT", "BTC", "USDT");
+        data.setup(&Exchange::Binance, &"BTC/USDT".into(), "BTC", "USDT");
 
-        assert_eq!(data.base.exchange, "binance");
-        assert_eq!(data.base.symbol, "BTC/USDT");
+        assert_eq!(data.base.exchange, Exchange::Binance);
+        assert_eq!(data.base.symbol, "BTC/USDT".into());
         assert_eq!(data.base.base_asset, "BTC");
         assert_eq!(data.base.quote_asset, "USDT");
     }
@@ -158,7 +149,7 @@ mod tests {
     #[sqlx::test(migrator = "comfy_quant_database::MIGRATOR")]
     async fn test_spot_stats_data_update_with_buy_order(db: PgPool) {
         let mut data = SpotStatsData::new();
-        data.setup("binance", "BTC/USDT", "BTC", "USDT");
+        data.setup(&Exchange::Binance, &"BTC/USDT".into(), "BTC", "USDT");
         data.base.maker_commission_rate = dec!(0.001);
         data.quote_asset_balance = dec!(10000);
 
@@ -172,7 +163,7 @@ mod tests {
         let ctx = NodeContext::new(db, workflow_id, node_id, node_name);
 
         // 更新订单信息
-        let result = data.update_with_order(ctx, &order).await;
+        let result = data.update_with_order(&ctx, &order).await;
         assert!(result.is_ok());
 
         // 验证数据更新
@@ -187,7 +178,7 @@ mod tests {
     #[sqlx::test(migrator = "comfy_quant_database::MIGRATOR")]
     async fn test_spot_stats_data_update_with_sell_order(db: PgPool) {
         let mut data = SpotStatsData::new();
-        data.setup("binance", "BTC/USDT", "BTC", "USDT");
+        data.setup(&Exchange::Binance, &"BTC/USDT".into(), "BTC", "USDT");
         data.base.maker_commission_rate = dec!(0.001);
         data.base_asset_balance = dec!(1.0);
         data.avg_price = dec!(45000);
@@ -202,7 +193,7 @@ mod tests {
         let ctx = NodeContext::new(db, workflow_id, node_id, node_name);
 
         // 更新订单信息
-        let result = data.update_with_order(ctx, &order).await;
+        let result = data.update_with_order(&ctx, &order).await;
         assert!(result.is_ok());
 
         // 验证数据更新
@@ -220,18 +211,18 @@ mod tests {
 
     #[test]
     fn test_spot_stats_get_or_insert() {
-        let exchange = "Binance";
-        let symbol = "BTC/USDT";
+        let exchange = Exchange::Binance;
+        let symbol = "BTC/USDT".into();
 
         let mut stats = SpotStats::new();
 
-        let data = stats.get_or_insert(exchange, symbol);
+        let data = stats.get_or_insert(&exchange, &symbol);
         assert_eq!(data.base.total_trades, 0);
         assert_eq!(data.base.buy_trades, 0);
         assert_eq!(data.base.sell_trades, 0);
 
         // 测试重复获取相同的key
-        let data2 = stats.get_or_insert(exchange, symbol);
+        let data2 = stats.get_or_insert(&exchange, &symbol);
         assert_eq!(data2.base.total_trades, 0);
     }
 }

@@ -3,12 +3,12 @@ use std::fmt;
 
 #[derive(Debug, Default, sqlx::Type, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub enum Market {
-    #[default]
-    Unknow, // 未知
     Spot,    // 现货
     Usdm,    // U本位合约
     Coinm,   // 币本位合约
     Vanilla, // 期货
+    #[default]
+    Unknow, // 未知
 }
 
 impl From<&str> for Market {
@@ -26,6 +26,12 @@ impl From<&str> for Market {
 impl From<String> for Market {
     fn from(value: String) -> Self {
         value.as_str().into()
+    }
+}
+
+impl From<&Market> for Market {
+    fn from(value: &Market) -> Self {
+        value.clone()
     }
 }
 

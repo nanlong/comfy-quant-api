@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use bon::bon;
+use comfy_quant_base::Exchange;
 use comfy_quant_exchange::client::{
     spot_client::base::{
         AccountInformation, Balance, SpotClientRequest, SpotClientResponse, SymbolInformation,
@@ -119,7 +120,7 @@ impl SpotClientService {
         self.ready_call(req).await?.try_into()
     }
 
-    pub async fn exchange(&mut self) -> Result<String> {
+    pub async fn exchange(&mut self) -> Result<Exchange> {
         let req = SpotClientRequest::exchange();
         self.ready_call(req).await?.try_into()
     }

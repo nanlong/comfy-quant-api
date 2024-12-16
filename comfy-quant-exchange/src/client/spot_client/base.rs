@@ -10,9 +10,6 @@ use rust_decimal::{prelude::FromPrimitive, Decimal};
 use rust_decimal_macros::dec;
 use std::str::FromStr;
 
-pub const BACKTEST_EXCHANGE_NAME: &str = "Backtest";
-pub const BINANCE_EXCHANGE_NAME: &str = "Binance";
-
 #[derive(Builder)]
 #[builder(on(String, into))]
 pub struct BinanceOrder {
@@ -62,7 +59,7 @@ impl TryFrom<BinanceAccountInformation> for AccountInformation {
 #[derive(Builder, Debug)]
 #[builder(on(String, into))]
 pub struct SymbolInformation {
-    pub symbol: String,
+    pub symbol: Symbol,
     pub base_asset: String,
     pub quote_asset: String,
     pub base_asset_precision: u32,
@@ -80,7 +77,7 @@ impl From<BinaceSymbolInformation> for SymbolInformation {
         });
 
         SymbolInformation::builder()
-            .symbol(value.symbol)
+            .symbol(value.symbol.into())
             .base_asset(value.base_asset)
             .quote_asset(value.quote_asset)
             .base_asset_precision(value.base_asset_precision as u32)
@@ -248,7 +245,7 @@ impl TryFrom<BinanceOrder> for Order {
         let avg_price = amount / qty;
 
         let order = Order::builder()
-            .exchange(BINANCE_EXCHANGE_NAME)
+            .exchange(Exchange::Binance)
             .base_asset(value.base_asset)
             .quote_asset(value.quote_asset)
             .symbol(value.order.symbol)
@@ -287,7 +284,7 @@ impl TryFrom<BinanceTransaction> for Order {
         let avg_price = amount / qty;
 
         let order = Order::builder()
-            .exchange(BINANCE_EXCHANGE_NAME)
+            .exchange(Exchange::Binance)
             .base_asset(value.base_asset)
             .quote_asset(value.quote_asset)
             .symbol(value.transaction.symbol)
@@ -312,7 +309,7 @@ impl TryFrom<BinanceTransaction> for Order {
 #[derive(Builder, Debug, Clone, PartialEq, Eq)]
 #[builder(on(String, into))]
 pub struct SymbolPrice {
-    pub symbol: String,
+    pub symbol: Symbol,
     pub price: Decimal,
 }
 
@@ -324,7 +321,7 @@ impl TryFrom<BinanceSymbolPrice> for SymbolPrice {
             .ok_or_else(|| anyhow!("binance symbol price convert decimal failed"))?;
 
         Ok(SymbolPrice::builder()
-            .symbol(value.symbol)
+            .symbol(value.symbol.into())
             .price(price)
             .build())
     }
@@ -402,7 +399,7 @@ impl SpotClientRequest {
 }
 
 pub enum SpotClientResponse {
-    Exchange(String),
+    Exchange(Exchange),
     Symbol(String),
     AccountInformation(AccountInformation),
     SymbolInformation(SymbolInformation),
@@ -411,8 +408,8 @@ pub enum SpotClientResponse {
     SymbolPrice(SymbolPrice),
 }
 
-impl From<String> for SpotClientResponse {
-    fn from(value: String) -> Self {
+impl From<Exchange> for SpotClientResponse {
+    fn from(value: Exchange) -> Self {
         SpotClientResponse::Exchange(value)
     }
 }
@@ -447,7 +444,7 @@ impl From<SymbolPrice> for SpotClientResponse {
     }
 }
 
-impl TryFrom<SpotClientResponse> for String {
+impl TryFrom<SpotClientResponse> for Exchange {
     type Error = anyhow::Error;
 
     fn try_from(value: SpotClientResponse) -> Result<Self, Self::Error> {

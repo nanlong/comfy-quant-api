@@ -12,16 +12,12 @@ pub struct ExchangeMarketSymbolKey {
 impl ExchangeMarketSymbolKey {
     pub fn try_new(
         exchange: impl Into<Exchange>,
-        market: impl TryInto<Market>,
+        market: impl Into<Market>,
         symbol: impl Into<Symbol>,
     ) -> Result<Self> {
-        let market = market
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("Invalid market"))?;
-
         Ok(Self {
             exchange: exchange.into(),
-            market,
+            market: market.into(),
             symbol: symbol.into(),
         })
     }

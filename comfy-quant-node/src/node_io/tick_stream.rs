@@ -23,16 +23,14 @@ impl TickStream {
 
     pub(crate) async fn send(
         &self,
-        exchange: impl Into<Exchange>,
-        market: impl TryInto<Market>,
-        tick: Tick,
+        exchange: &Exchange,
+        market: &Market,
+        tick: &Tick,
     ) -> Result<()> {
-        let exchange = exchange.into();
-        let market = market
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("Invalid market"))?;
-
-        self.inner.0.send_async((exchange, market, tick)).await?;
+        self.inner
+            .0
+            .send_async((exchange.clone(), market.clone(), tick.clone()))
+            .await?;
         Ok(())
     }
 
@@ -57,15 +55,13 @@ mod tests {
         let tick_stream = TickStream::new();
         let tick = Tick {
             timestamp: 1,
-            symbol: "BTCUSDT".to_string(),
+            symbol: "BTCUSDT".into(),
             price: dec!(100.0),
         };
-        let exchange = Exchange::new("Binance");
+        let exchange = Exchange::Binance;
         let market = Market::Spot;
 
-        tick_stream
-            .send(exchange.clone(), market.clone(), tick.clone())
-            .await?;
+        tick_stream.send(&exchange, &market, &tick).await?;
 
         let rx = tick_stream.subscribe();
 

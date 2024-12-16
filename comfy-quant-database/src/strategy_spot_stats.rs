@@ -2,6 +2,7 @@ use crate::SpotStatsQuery;
 use anyhow::Result;
 use bon::bon;
 use chrono::{DateTime, Utc};
+use comfy_quant_base::{Exchange, Symbol};
 use rust_decimal::Decimal;
 use sqlx::{postgres::PgPool, FromRow};
 
@@ -11,8 +12,8 @@ pub struct StrategySpotStats {
     pub workflow_id: String,             // 工作流ID
     pub node_id: i16,                    // 策略节点ID
     pub node_name: String,               // 策略节点名称
-    pub exchange: String,                // 交易所
-    pub symbol: String,                  // 交易对
+    pub exchange: Exchange,              // 交易所
+    pub symbol: Symbol,                  // 交易对
     pub base_asset: String,              // 基础资产
     pub quote_asset: String,             // 计价资产
     pub initial_base_balance: Decimal,   // 初始化基础资产余额
@@ -43,8 +44,8 @@ impl StrategySpotStats {
         workflow_id: String,
         node_id: i16,
         node_name: String,
-        exchange: String,
-        symbol: String,
+        exchange: Exchange,
+        symbol: Symbol,
         base_asset: String,
         quote_asset: String,
         initial_base_balance: Decimal,
@@ -111,8 +112,8 @@ pub async fn create(db: &PgPool, data: &StrategySpotStats) -> Result<StrategySpo
         data.workflow_id,
         data.node_id,
         data.node_name,
-        data.exchange,
-        data.symbol,
+        data.exchange.as_ref(),
+        data.symbol.as_ref(),
         data.base_asset,
         data.quote_asset,
         data.initial_base_balance,
@@ -197,8 +198,8 @@ pub async fn get_by_unique_key(
         "#,
         query.workflow_id,
         query.node_id,
-        query.exchange,
-        query.symbol,
+        query.exchange.as_ref(),
+        query.symbol.as_ref(),
     )
     .fetch_optional(db)
     .await?;
@@ -250,8 +251,8 @@ mod tests {
             .workflow_id("jEnbRDqQu4UN6y7cgQgp6")
             .node_id(1)
             .node_name("SpotGrid")
-            .exchange("Binance")
-            .symbol("BTCUSDT")
+            .exchange(Exchange::Binance)
+            .symbol("BTCUSDT".into())
             .base_asset("BTC")
             .quote_asset("USDT")
             .initial_base_balance("1".parse()?)
@@ -285,8 +286,8 @@ mod tests {
         assert_eq!(strategy_spot_stats.workflow_id, "jEnbRDqQu4UN6y7cgQgp6");
         assert_eq!(strategy_spot_stats.node_id, 1);
         assert_eq!(strategy_spot_stats.node_name, "SpotGrid");
-        assert_eq!(strategy_spot_stats.exchange, "Binance");
-        assert_eq!(strategy_spot_stats.symbol, "BTCUSDT");
+        assert_eq!(strategy_spot_stats.exchange, Exchange::Binance);
+        assert_eq!(strategy_spot_stats.symbol, "BTCUSDT".into());
         assert_eq!(strategy_spot_stats.base_asset, "BTC");
         assert_eq!(strategy_spot_stats.quote_asset, "USDT");
         assert_eq!(strategy_spot_stats.initial_base_balance, "1".parse()?);
