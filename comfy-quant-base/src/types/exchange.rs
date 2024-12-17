@@ -3,16 +3,15 @@ use std::fmt;
 
 #[derive(Debug, Default, sqlx::Type, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub enum Exchange {
-    Binance,
     #[default]
-    Unknow,
+    Binance,
 }
 
 impl From<&str> for Exchange {
     fn from(value: &str) -> Self {
         match value {
             "binance" => Exchange::Binance,
-            _ => Exchange::Unknow,
+            _ => Exchange::Binance,
         }
     }
 }
@@ -33,7 +32,6 @@ impl AsRef<str> for Exchange {
     fn as_ref(&self) -> &str {
         match self {
             Exchange::Binance => "binance",
-            Exchange::Unknow => "unknow",
         }
     }
 }

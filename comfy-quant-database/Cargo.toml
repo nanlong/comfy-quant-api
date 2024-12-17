@@ -14,5 +14,6 @@ comfy-quant-exchange = { path = "../comfy-quant-exchange" }
 flume = { workspace = true }
 futures = { workspace = true }
 rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }

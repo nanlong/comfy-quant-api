@@ -5,9 +5,10 @@ use bon::{bon, Builder};
 use comfy_quant_base::{
     millis_to_datetime, secs_to_datetime, Exchange, KlineInterval, Market, Symbol,
 };
-use comfy_quant_database::kline::{self, Kline};
+use comfy_quant_database::kline::{self, CreateKlineParams, Kline};
 use comfy_quant_exchange::kline_stream::{calc_time_range_kline_count, BinanceKline};
 use futures::{stream::BoxStream, StreamExt};
+use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -116,22 +117,26 @@ impl Executable for BinanceKlinesTask {
                 while let Some(kline_summary) = klines_stream.next().await {
                     let kline_summary = kline_summary?;
                     let open_time = millis_to_datetime(kline_summary.open_time)?;
+                    let open_price = kline_summary.open.parse::<Decimal>()?;
+                    let high_price = kline_summary.high.parse::<Decimal>()?;
+                    let low_price = kline_summary.low.parse::<Decimal>()?;
+                    let close_price = kline_summary.close.parse::<Decimal>()?;
+                    let volume = kline_summary.volume.parse::<Decimal>()?;
 
-                    let kline_data = kline::Kline {
-                        exchange: Exchange::Binance,
-                        market: params.market.clone(),
-                        symbol: params.symbol.clone(),
-                        interval: params.interval.clone(),
-                        open_time,
-                        open_price: kline_summary.open.parse()?,
-                        high_price: kline_summary.high.parse()?,
-                        low_price: kline_summary.low.parse()?,
-                        close_price: kline_summary.close.parse()?,
-                        volume: kline_summary.volume.parse()?,
-                        ..Default::default()
-                    };
+                    let data = CreateKlineParams::builder()
+                        .exchange(Exchange::Binance)
+                        .market(params.market.clone())
+                        .symbol(params.symbol.clone())
+                        .interval(params.interval.clone())
+                        .open_time(open_time)
+                        .open_price(open_price)
+                        .high_price(high_price)
+                        .low_price(low_price)
+                        .close_price(close_price)
+                        .volume(volume)
+                        .build();
 
-                    let kline = kline::create_or_update(&db, &kline_data).await?;
+                    let kline = kline::create_or_update(&db, data).await?;
 
                     yield Ok(TaskStatus::Running(kline));
                 }

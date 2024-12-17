@@ -81,7 +81,6 @@ impl BinanceKline {
                                     end_time as u64,
                                 )?
                             }
-                            Market::Unknow => KlineSummaries::AllKlineSummaries(vec![]),
                         };
 
                         for kline in klines {

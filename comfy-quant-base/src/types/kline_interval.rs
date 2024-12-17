@@ -2,7 +2,7 @@ use std::fmt;
 
 use strum_macros::{AsRefStr, EnumIter};
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, AsRefStr, EnumIter)]
+#[derive(Debug, Clone, PartialEq, Eq, AsRefStr, EnumIter)]
 pub enum KlineInterval {
     #[strum(serialize = "1s")]
     OneSecond,
@@ -36,8 +36,6 @@ pub enum KlineInterval {
     OneWeek,
     #[strum(serialize = "1M")]
     OneMonth,
-    #[default]
-    Unknow,
 }
 
 impl From<&str> for KlineInterval {
@@ -59,7 +57,7 @@ impl From<&str> for KlineInterval {
             "3d" => KlineInterval::ThreeDays,
             "1w" => KlineInterval::OneWeek,
             "1M" => KlineInterval::OneMonth,
-            _ => KlineInterval::Unknow,
+            _ => KlineInterval::OneSecond,
         }
     }
 }

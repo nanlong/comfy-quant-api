@@ -1,13 +1,7 @@
 use super::base_stats_data::BaseStatsData;
+use comfy_quant_base::FuturesMarket;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-
-// 合约类型
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub enum FuturesType {
-    UsdtSettled, // U本位合约
-    CoinSettled, // 币本位合约
-}
 
 // 持仓方向
 #[derive(Serialize, Deserialize, Debug)]
@@ -21,8 +15,7 @@ pub enum PositionSide {
 pub struct FuturesStatsData {
     #[serde(flatten)]
     base: BaseStatsData,
-
-    pub futures_type: FuturesType,        // 合约类型
+    pub market: FuturesMarket,            // 合约类型
     pub contract_size: Decimal,           // 合约面值
     pub leverage: Decimal,                // 杠杆倍数
     pub margin_asset: String,             // 保证金资产(USDT或BTC等)

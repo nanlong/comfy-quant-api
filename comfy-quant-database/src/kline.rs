@@ -1,12 +1,12 @@
 use anyhow::Result;
-use bon::bon;
+use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_base::{Exchange, KlineInterval, Market, Symbol};
 use futures::stream::BoxStream;
 use rust_decimal::Decimal;
 use sqlx::{postgres::PgPool, FromRow};
 
-#[derive(Debug, Default, FromRow)]
+#[derive(Debug, FromRow)]
 pub struct Kline {
     pub id: i32,                   // 主键ID
     pub exchange: Exchange,        // 交易所
@@ -23,38 +23,32 @@ pub struct Kline {
     pub updated_at: DateTime<Utc>, // 更新时间
 }
 
-#[bon]
-impl Kline {
-    #[builder(on(String, into))]
-    pub fn new(
-        exchange: Exchange,
-        market: Market,
-        symbol: Symbol,
-        interval: KlineInterval,
-        open_time: DateTime<Utc>,
-        open_price: Decimal,
-        high_price: Decimal,
-        low_price: Decimal,
-        close_price: Decimal,
-        volume: Decimal,
-    ) -> Self {
-        Kline {
-            exchange,
-            market,
-            symbol,
-            interval,
-            open_time,
-            open_price,
-            high_price,
-            low_price,
-            close_price,
-            volume,
-            ..Default::default()
-        }
-    }
+#[derive(Builder)]
+#[builder(on(_, into))]
+pub struct CreateKlineParams {
+    pub exchange: Exchange,       // 交易所
+    pub market: Market,           // 市场
+    pub symbol: Symbol,           // 交易对
+    pub interval: KlineInterval,  // 时间间隔
+    pub open_time: DateTime<Utc>, // 开盘时间
+    pub open_price: Decimal,      // 开盘价格
+    pub high_price: Decimal,      // 最高价格
+    pub low_price: Decimal,       // 最低价格
+    pub close_price: Decimal,     // 收盘价格
+    pub volume: Decimal,          // 成交量
 }
 
-pub async fn create(db: &PgPool, data: &Kline) -> Result<Kline> {
+#[derive(Builder)]
+#[builder(on(_, into))]
+pub struct UpdateKlineParams {
+    pub id: i32,              // 主键ID
+    pub high_price: Decimal,  // 最高价格
+    pub low_price: Decimal,   // 最低价格
+    pub close_price: Decimal, // 收盘价格
+    pub volume: Decimal,      // 成交量
+}
+
+pub async fn create(db: &PgPool, data: CreateKlineParams) -> Result<Kline> {
     let kline = sqlx::query_as!(
         Kline,
         r#"
@@ -79,7 +73,7 @@ pub async fn create(db: &PgPool, data: &Kline) -> Result<Kline> {
     Ok(kline)
 }
 
-pub async fn update(db: &PgPool, data: &Kline) -> Result<Kline> {
+pub async fn update(db: &PgPool, data: UpdateKlineParams) -> Result<Kline> {
     let kline = sqlx::query_as!(
         Kline,
         r#"
@@ -98,7 +92,7 @@ pub async fn update(db: &PgPool, data: &Kline) -> Result<Kline> {
     Ok(kline)
 }
 
-pub async fn create_or_update(db: &PgPool, data: &Kline) -> Result<Kline> {
+pub async fn create_or_update(db: &PgPool, data: CreateKlineParams) -> Result<Kline> {
     let kline = sqlx::query_as!(
         Kline,
         r#"
@@ -275,26 +269,27 @@ pub async fn time_range_klines_count(
 mod tests {
     use comfy_quant_base::secs_to_datetime;
     use futures::StreamExt;
+    use rust_decimal_macros::dec;
 
     use super::*;
 
     async fn create_kline(db: &PgPool) -> Result<Kline> {
         let open_time = secs_to_datetime(1721817600)?;
 
-        let kline = Kline::builder()
+        let data = CreateKlineParams::builder()
             .exchange(Exchange::Binance)
             .market(Market::Spot)
-            .symbol("BTCUSDT".into())
-            .interval("1m".into())
+            .symbol("BTCUSDT")
+            .interval("1m")
             .open_time(open_time)
-            .open_price("10000".parse()?)
-            .high_price("10000".parse()?)
-            .low_price("10000".parse()?)
-            .close_price("10000".parse()?)
-            .volume("10000".parse()?)
+            .open_price(dec!(10000))
+            .high_price(dec!(10000))
+            .low_price(dec!(10000))
+            .close_price(dec!(10000))
+            .volume(dec!(10000))
             .build();
 
-        let kline = create(&db, &kline).await?;
+        let kline = create(&db, data).await?;
 
         Ok(kline)
     }
@@ -310,31 +305,34 @@ mod tests {
         assert_eq!(kline_createed.market, Market::Spot);
         assert_eq!(kline_createed.symbol, "BTCUSDT".into());
         assert_eq!(kline_createed.interval, "1m".into());
-        assert_eq!(kline_createed.open_price, "10000".parse()?);
-        assert_eq!(kline_createed.high_price, "10000".parse()?);
-        assert_eq!(kline_createed.low_price, "10000".parse()?);
-        assert_eq!(kline_createed.close_price, "10000".parse()?);
-        assert_eq!(kline_createed.volume, "10000".parse()?);
+        assert_eq!(kline_createed.open_price, dec!(10000));
+        assert_eq!(kline_createed.high_price, dec!(10000));
+        assert_eq!(kline_createed.low_price, dec!(10000));
+        assert_eq!(kline_createed.close_price, dec!(10000));
+        assert_eq!(kline_createed.volume, dec!(10000));
 
         Ok(())
     }
 
     #[sqlx::test(migrator = "crate::MIGRATOR")]
     async fn test_update_kline(db: PgPool) -> Result<()> {
-        let mut kline = create_kline(&db).await?;
+        let kline = create_kline(&db).await?;
 
-        kline.high_price = "20000".parse()?;
-        kline.low_price = "20000".parse()?;
-        kline.close_price = "20000".parse()?;
-        kline.volume = "20000".parse()?;
+        let data = UpdateKlineParams::builder()
+            .id(kline.id)
+            .high_price(dec!(20000))
+            .low_price(dec!(20000))
+            .close_price(dec!(20000))
+            .volume(dec!(20000))
+            .build();
 
-        let kline_updated = update(&db, &kline).await?;
+        let kline_updated = update(&db, data).await?;
 
         assert_eq!(kline_updated.id, 1);
-        assert_eq!(kline_updated.high_price, "20000".parse()?);
-        assert_eq!(kline_updated.low_price, "20000".parse()?);
-        assert_eq!(kline_updated.close_price, "20000".parse()?);
-        assert_eq!(kline_updated.volume, "20000".parse()?);
+        assert_eq!(kline_updated.high_price, dec!(20000));
+        assert_eq!(kline_updated.low_price, dec!(20000));
+        assert_eq!(kline_updated.close_price, dec!(20000));
+        assert_eq!(kline_updated.volume, dec!(20000));
 
         Ok(())
     }
@@ -343,54 +341,54 @@ mod tests {
     async fn test_create_or_update_kline(db: PgPool) -> Result<()> {
         let open_time = secs_to_datetime(1721817600)?;
 
-        let kline = Kline::builder()
+        let data = CreateKlineParams::builder()
             .exchange(Exchange::Binance)
             .market(Market::Spot)
-            .symbol("BTCUSDT".into())
-            .interval("1m".into())
+            .symbol("BTCUSDT")
+            .interval(KlineInterval::OneMinute)
             .open_time(open_time)
-            .open_price("10000".parse()?)
-            .high_price("10000".parse()?)
-            .low_price("10000".parse()?)
-            .close_price("10000".parse()?)
-            .volume("10000".parse()?)
+            .open_price(dec!(10000))
+            .high_price(dec!(10000))
+            .low_price(dec!(10000))
+            .close_price(dec!(10000))
+            .volume(dec!(10000))
             .build();
 
-        let kline = create_or_update(&db, &kline).await?;
+        let kline = create_or_update(&db, data).await?;
 
         assert_eq!(kline.id, 1);
         assert_eq!(kline.exchange, Exchange::Binance);
         assert_eq!(kline.market, Market::Spot);
         assert_eq!(kline.symbol, "BTCUSDT".into());
-        assert_eq!(kline.interval, "1m".into());
+        assert_eq!(kline.interval, KlineInterval::OneMinute);
         assert_eq!(kline.open_time.timestamp(), 1721817600);
-        assert_eq!(kline.open_price, "10000".parse()?);
-        assert_eq!(kline.high_price, "10000".parse()?);
-        assert_eq!(kline.low_price, "10000".parse()?);
-        assert_eq!(kline.close_price, "10000".parse()?);
-        assert_eq!(kline.volume, "10000".parse()?);
+        assert_eq!(kline.open_price, dec!(10000));
+        assert_eq!(kline.high_price, dec!(10000));
+        assert_eq!(kline.low_price, dec!(10000));
+        assert_eq!(kline.close_price, dec!(10000));
+        assert_eq!(kline.volume, dec!(10000));
 
-        let kline2 = Kline::builder()
+        let data2 = CreateKlineParams::builder()
             .exchange(Exchange::Binance)
             .market(Market::Spot)
-            .symbol("BTCUSDT".into())
-            .interval("1m".into())
+            .symbol("BTCUSDT")
+            .interval(KlineInterval::OneMinute)
             .open_time(open_time)
-            .open_price("20000".parse()?)
-            .high_price("20000".parse()?)
-            .low_price("20000".parse()?)
-            .close_price("20000".parse()?)
-            .volume("20000".parse()?)
+            .open_price(dec!(20000))
+            .high_price(dec!(20000))
+            .low_price(dec!(20000))
+            .close_price(dec!(20000))
+            .volume(dec!(20000))
             .build();
 
-        let kline2 = create_or_update(&db, &kline2).await?;
+        let kline2 = create_or_update(&db, data2).await?;
 
         assert_eq!(kline2.id, 1);
-        assert_eq!(kline2.open_price, "20000".parse()?);
-        assert_eq!(kline2.high_price, "20000".parse()?);
-        assert_eq!(kline2.low_price, "20000".parse()?);
-        assert_eq!(kline2.close_price, "20000".parse()?);
-        assert_eq!(kline2.volume, "20000".parse()?);
+        assert_eq!(kline2.open_price, dec!(20000));
+        assert_eq!(kline2.high_price, dec!(20000));
+        assert_eq!(kline2.low_price, dec!(20000));
+        assert_eq!(kline2.close_price, dec!(20000));
+        assert_eq!(kline2.volume, dec!(20000));
 
         Ok(())
     }
@@ -405,11 +403,11 @@ mod tests {
     //         symbol: "BTCUSDT".to_string(),
     //         interval: "1m".to_string(),
     //         open_time: 1721817600,
-    //         open_price: "10000".parse()?,
-    //         high_price: "10000".parse()?,
-    //         low_price: "10000".parse()?,
-    //         close_price: "10000".parse()?,
-    //         volume: "10000".parse()?,
+    //         open_price: dec!(10000),
+    //         high_price: dec!(10000),
+    //         low_price: dec!(10000),
+    //         close_price: dec!(10000),
+    //         volume: dec!(10000),
     //         created_at: Utc::now(),
     //         updated_at: Utc::now(),
     //         ..Default::default()

@@ -4,8 +4,8 @@ use anyhow::Result;
 use chrono::Utc;
 use comfy_quant_base::{Exchange, Symbol};
 use comfy_quant_database::{
-    strategy_spot_position::{self, StrategySpotPosition},
-    strategy_spot_stats::{self, StrategySpotStats},
+    strategy_spot_position::{self, CreateSpotPositionParams},
+    strategy_spot_stats::{self, CreateSpotStatsParams},
     SpotStatsQuery,
 };
 use comfy_quant_exchange::client::spot_client::base::{Order, OrderSide};
@@ -167,7 +167,7 @@ impl SpotStatsData {
         quote_asset: &str,
         params: &SpotStatsQuery<'_>,
     ) -> Result<()> {
-        let data = StrategySpotPosition::builder()
+        let data = CreateSpotPositionParams::builder()
             .workflow_id(params.workflow_id)
             .node_id(params.node_id)
             .node_name(node_name)
@@ -180,7 +180,7 @@ impl SpotStatsData {
             .realized_pnl(self.base.realized_pnl)
             .build();
 
-        strategy_spot_position::create(db, &data).await?;
+        strategy_spot_position::create(db, data).await?;
 
         Ok(())
     }
@@ -194,7 +194,7 @@ impl SpotStatsData {
         quote_asset: &str,
         params: &SpotStatsQuery<'_>,
     ) -> Result<()> {
-        let data = StrategySpotStats::builder()
+        let data = CreateSpotStatsParams::builder()
             .workflow_id(params.workflow_id)
             .node_id(params.node_id)
             .node_name(node_name)
@@ -221,7 +221,7 @@ impl SpotStatsData {
             .win_trades(self.base.win_trades as i64)
             .build();
 
-        strategy_spot_stats::create_or_update(db, &data).await?;
+        strategy_spot_stats::create_or_update(db, data).await?;
 
         Ok(())
     }
