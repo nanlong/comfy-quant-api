@@ -10,12 +10,23 @@ pub enum Exchange {
 }
 
 impl Exchange {
+    // 交易对
     pub fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol {
         match self {
-            Exchange::Binance => format!("{}{}", base_asset, quote_asset)
-                .to_uppercase()
-                .into(),
+            Exchange::Binance => format!("{}{}", base_asset, quote_asset),
         }
+        .to_uppercase()
+        .into()
+    }
+
+    // 允许的计价货币
+    pub fn allow_quote_assets(&self) -> Vec<String> {
+        match self {
+            Exchange::Binance => vec!["usdt", "fdusd", "usdc", "tusd", "bnb", "btc", "eth", "dai"],
+        }
+        .into_iter()
+        .map(|s| s.to_uppercase())
+        .collect::<Vec<_>>()
     }
 }
 
