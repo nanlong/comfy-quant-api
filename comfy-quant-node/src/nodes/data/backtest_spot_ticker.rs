@@ -7,7 +7,7 @@ use anyhow::Result;
 use bon::Builder;
 use chrono::{DateTime, Utc};
 use comfy_quant_base::{convert_to_datetime, Exchange, KlineInterval, Market, Symbol};
-use comfy_quant_database::kline::{self};
+use comfy_quant_database::kline;
 use comfy_quant_task::{
     task_core::{status::TaskStatus, traits::Executable as _},
     tasks::binance_klines::BinanceKlinesTask,

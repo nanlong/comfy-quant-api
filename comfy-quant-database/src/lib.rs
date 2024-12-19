@@ -1,4 +1,5 @@
 pub mod kline;
+pub mod spot_pairs;
 pub mod strategy_spot_position;
 pub mod strategy_spot_stats;
 
