@@ -2,7 +2,10 @@ use super::base::{
     AccountInformation, Balance, Order, OrderSide, OrderStatus, OrderType, SymbolInformation,
     SymbolPrice,
 };
-use crate::{client::spot_client_kind::SpotClientExecutable, store::PriceStore};
+use crate::{
+    client::spot_client_kind::{SpotClientExecutable, SpotclientExecutableExt},
+    store::PriceStore,
+};
 use anyhow::Result;
 use async_lock::RwLock;
 use bon::bon;
@@ -149,15 +152,6 @@ impl BacktestSpotClient {
 impl SpotClientExecutable for BacktestSpotClient {
     fn exchange(&self) -> Exchange {
         Exchange::Binance
-    }
-
-    fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol {
-        format!(
-            "{}{}",
-            base_asset.to_uppercase(),
-            quote_asset.to_uppercase()
-        )
-        .into()
     }
 
     async fn get_account(&self) -> Result<AccountInformation> {

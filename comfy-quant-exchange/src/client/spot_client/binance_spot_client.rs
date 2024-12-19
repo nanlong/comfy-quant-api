@@ -2,11 +2,14 @@ use super::base::{
     AccountInformation, Balance, BinanceOrder, BinanceTransaction, Order, SymbolInformation,
     SymbolPrice,
 };
-use crate::{client::spot_client_kind::SpotClientExecutable, exchange::binance::BinanceClient};
+use crate::{
+    client::spot_client_kind::{SpotClientExecutable, SpotclientExecutableExt},
+    exchange::binance::BinanceClient,
+};
 use anyhow::Result;
 use binance::config::Config;
 use bon::bon;
-use comfy_quant_base::{Exchange, Symbol};
+use comfy_quant_base::Exchange;
 
 #[derive(Debug, Clone)]
 pub struct BinanceSpotClient {
@@ -34,15 +37,6 @@ impl BinanceSpotClient {
 impl SpotClientExecutable for BinanceSpotClient {
     fn exchange(&self) -> Exchange {
         Exchange::Binance
-    }
-
-    fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol {
-        format!(
-            "{}{}",
-            base_asset.to_uppercase(),
-            quote_asset.to_uppercase()
-        )
-        .into()
     }
 
     async fn get_account(&self) -> Result<AccountInformation> {

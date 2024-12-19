@@ -10,7 +10,7 @@ use comfy_quant_base::{Exchange, Market, Symbol};
 // use comfy_quant_base::KlineInterval;
 use comfy_quant_exchange::client::{
     spot_client::base::Order,
-    spot_client_kind::{SpotClientExecutable, SpotClientKind},
+    spot_client_kind::{SpotClientExecutable, SpotClientKind, SpotclientExecutableExt},
 };
 use enum_dispatch::enum_dispatch;
 use rust_decimal::{Decimal, MathematicalOps};

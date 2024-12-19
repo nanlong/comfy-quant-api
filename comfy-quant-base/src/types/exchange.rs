@@ -1,10 +1,22 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+use super::Symbol;
+
 #[derive(Debug, Default, sqlx::Type, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub enum Exchange {
     #[default]
     Binance,
+}
+
+impl Exchange {
+    pub fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol {
+        match self {
+            Exchange::Binance => format!("{}{}", base_asset, quote_asset)
+                .to_uppercase()
+                .into(),
+        }
+    }
 }
 
 impl From<&str> for Exchange {

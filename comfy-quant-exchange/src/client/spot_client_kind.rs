@@ -18,8 +18,6 @@ use tower::Service;
 pub trait SpotClientExecutable {
     fn exchange(&self) -> Exchange;
 
-    fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol;
-
     // 获取账户信息，手续费
     async fn get_account(&self) -> Result<AccountInformation>;
 
@@ -62,6 +60,14 @@ pub trait SpotClientExecutable {
 
     // 获取价格
     async fn get_price(&self, base_asset: &str, quote_asset: &str) -> Result<SymbolPrice>;
+}
+
+impl<T: ?Sized> SpotclientExecutableExt for T where T: SpotClientExecutable {}
+
+pub trait SpotclientExecutableExt: SpotClientExecutable {
+    fn symbol(&self, base_asset: &str, quote_asset: &str) -> Symbol {
+        self.exchange().symbol(base_asset, quote_asset)
+    }
 }
 
 #[derive(Debug, Clone)]

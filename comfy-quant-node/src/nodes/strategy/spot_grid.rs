@@ -12,7 +12,7 @@ use bon::{bon, Builder};
 use comfy_quant_base::{Exchange, Market, Symbol};
 use comfy_quant_exchange::client::{
     spot_client::base::{Order, OrderSide},
-    spot_client_kind::{SpotClientExecutable, SpotClientKind},
+    spot_client_kind::{SpotClientExecutable, SpotClientKind, SpotclientExecutableExt},
 };
 use rust_decimal::{
     prelude::{FromPrimitive, ToPrimitive},
