@@ -298,18 +298,18 @@ mod tests {
     async fn test_create_kline(db: PgPool) -> Result<()> {
         let kline = create_kline(&db).await?;
 
-        let kline_createed = get_by_id(&db, kline.id).await?.unwrap();
+        let kline_created = get_by_id(&db, kline.id).await?.unwrap();
 
-        assert_eq!(kline_createed.id, 1);
-        assert_eq!(kline_createed.exchange, Exchange::Binance);
-        assert_eq!(kline_createed.market, Market::Spot);
-        assert_eq!(kline_createed.symbol, "BTCUSDT".into());
-        assert_eq!(kline_createed.interval, "1m".into());
-        assert_eq!(kline_createed.open_price, dec!(10000));
-        assert_eq!(kline_createed.high_price, dec!(10000));
-        assert_eq!(kline_createed.low_price, dec!(10000));
-        assert_eq!(kline_createed.close_price, dec!(10000));
-        assert_eq!(kline_createed.volume, dec!(10000));
+        assert_eq!(kline_created.id, 1);
+        assert_eq!(kline_created.exchange, Exchange::Binance);
+        assert_eq!(kline_created.market, Market::Spot);
+        assert_eq!(kline_created.symbol, "BTCUSDT".into());
+        assert_eq!(kline_created.interval, "1m".into());
+        assert_eq!(kline_created.open_price, dec!(10000));
+        assert_eq!(kline_created.high_price, dec!(10000));
+        assert_eq!(kline_created.low_price, dec!(10000));
+        assert_eq!(kline_created.close_price, dec!(10000));
+        assert_eq!(kline_created.volume, dec!(10000));
 
         Ok(())
     }
